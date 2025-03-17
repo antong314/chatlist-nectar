@@ -3,6 +3,7 @@ import React from 'react';
 import { Category } from '@/types/contact';
 import { motion } from "framer-motion";
 import { cn } from '@/lib/utils';
+import { ScrollArea } from './ui/scroll-area';
 
 interface CategoryFilterProps {
   categories: Category[];
@@ -15,10 +16,9 @@ export function CategoryFilter({
   selectedCategory, 
   onCategoryChange 
 }: CategoryFilterProps) {
-  // Use a scroll container for mobile
   return (
-    <div className="mb-6 overflow-x-auto pb-1 scrollbar-hide">
-      <div className="flex space-x-2 min-w-max">
+    <div className="mb-6">
+      <div className="flex flex-wrap gap-2">
         {categories.map((category) => (
           <button
             key={category}
