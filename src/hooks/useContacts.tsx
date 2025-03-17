@@ -11,7 +11,7 @@ const mockContacts: Contact[] = [
     category: "Car",
     description: "Airport Service/Pickup and Drop off/Tours Guide/Expatriate Adviser/Large Shuttle",
     phone: "50662932423",
-    website: ""
+    website: "https://allansallasairport.com"
   },
   {
     id: "2",
@@ -27,7 +27,7 @@ const mockContacts: Contact[] = [
     category: "Service",
     description: "Immigration Attorney based in Atenas.",
     phone: "50670700909",
-    website: ""
+    website: "https://andreslaw.cr"
   },
   {
     id: "4",
@@ -43,7 +43,7 @@ const mockContacts: Contact[] = [
     category: "Mind Body & Spirit",
     description: "Creator of this site. For all your technical needs from websites to operational automation to business development",
     phone: "16467338252",
-    website: ""
+    website: "https://anton.dev"
   },
   {
     id: "6",
@@ -51,7 +51,7 @@ const mockContacts: Contact[] = [
     category: "Mind Body & Spirit",
     description: "Body-mind therapist. Offers private and group Qigong and Taoist meditation practices, in person and in zoom. Offers Non-Violent-Communication practice groups, individual and couple counseling.",
     phone: "50661908505",
-    website: ""
+    website: "https://arielmayrose.com"
   },
   {
     id: "7",
@@ -67,7 +67,7 @@ const mockContacts: Contact[] = [
     category: "Mind Body & Spirit",
     description: "Ayurveda practitioner offering private consultation, Dosha evaluation and full Ayurvedic lifestyle plan",
     phone: "7187496303",
-    website: ""
+    website: "https://bosqueayurveda.com"
   }
 ];
 
