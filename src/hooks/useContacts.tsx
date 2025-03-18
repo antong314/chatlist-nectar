@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from "react";
 import { Contact, Category } from "../types/contact";
 import { toast } from "sonner";
@@ -23,98 +22,120 @@ export function useContacts() {
         
         console.log("Fetching data from:", apiUrl);
         
-        // Try to fetch with no-cors mode to see if that helps
-        const response = await fetch(apiUrl, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-            'Cache-Control': 'no-cache'
+        // Try using XMLHttpRequest as an alternative to fetch
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', apiUrl, true);
+        xhr.setRequestHeader('Accept', 'application/json');
+        xhr.setRequestHeader('Cache-Control', 'no-cache');
+        
+        xhr.onload = function() {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const data = JSON.parse(xhr.responseText);
+              console.log("API data received:", data);
+              
+              // If data is empty or not an array, handle gracefully
+              if (!data || !Array.isArray(data) || data.length === 0) {
+                console.warn("API returned empty data or invalid format");
+                fallbackToMockData("API returned empty data");
+                return;
+              }
+              
+              // Map API data to our Contact type
+              const mappedContacts: Contact[] = data.map((item: any) => ({
+                id: item.id?.toString() || `temp-${Date.now()}-${Math.random()}`,
+                name: item.name || "",
+                category: mapCategoryFromAPI(item.category || "Service"),
+                description: item.description || "",
+                phone: item.phone || "",
+                website: item.website || "",
+              }));
+              
+              console.log("Mapped contacts:", mappedContacts);
+              setContacts(mappedContacts);
+              setFilteredContacts(mappedContacts);
+              setIsLoading(false);
+            } catch (parseErr) {
+              console.error("Error parsing JSON:", parseErr);
+              fallbackToMockData("Error parsing API response");
+            }
+          } else {
+            console.error("XHR error:", xhr.status, xhr.statusText);
+            fallbackToMockData(`API returned status ${xhr.status}`);
           }
-        });
+        };
         
-        if (!response.ok) {
-          throw new Error(`API error: ${response.status} ${response.statusText}`);
-        }
+        xhr.onerror = function() {
+          console.error("Network error occurred");
+          fallbackToMockData("Network error");
+        };
         
-        const data = await response.json();
-        console.log("API data received:", data);
+        xhr.ontimeout = function() {
+          console.error("Request timed out");
+          fallbackToMockData("Request timed out");
+        };
         
-        // If data is empty or not an array, handle gracefully
-        if (!data || !Array.isArray(data) || data.length === 0) {
-          console.warn("API returned empty data or invalid format");
-          setContacts([]);
-          setFilteredContacts([]);
-          setIsLoading(false);
-          return;
-        }
+        xhr.timeout = 10000; // 10 seconds timeout
+        xhr.send();
         
-        // Map API data to our Contact type
-        const mappedContacts: Contact[] = data.map((item: any) => ({
-          id: item.id?.toString() || `temp-${Date.now()}-${Math.random()}`,
-          name: item.name || "",
-          category: mapCategoryFromAPI(item.category || "Service"),
-          description: item.description || "",
-          phone: item.phone || "",
-          website: item.website || "",
-        }));
-        
-        console.log("Mapped contacts:", mappedContacts);
-        setContacts(mappedContacts);
-        setFilteredContacts(mappedContacts);
-        setIsLoading(false);
       } catch (err) {
-        console.error("Error fetching contacts:", err);
-        
-        // Fallback to mock data if API fails
-        const mockContacts: Contact[] = [
-          {
-            id: "1",
-            name: "Allan Sallas Airport",
-            category: "Car",
-            description: "Airport Service/Pickup and Drop off/Tours Guide/Expatriate Adviser/Large Shuttle",
-            phone: "50662932423",
-            website: "https://allansallasairport.com"
-          },
-          {
-            id: "2",
-            name: "Allan Taxi",
-            category: "Car",
-            description: "Trips to the airport 35,000 colones ir ($70), there is no additional cost if you need to make purchases 1 hour of free waiting. Alegria to San Mateo 5000. Alegria orotina 7000",
-            phone: "50661066073",
-            website: ""
-          },
-          {
-            id: "3",
-            name: "Andres Gomez",
-            category: "Service",
-            description: "Immigration Attorney based in Atenas.",
-            phone: "50670700909",
-            website: "https://andreslaw.cr"
-          },
-          {
-            id: "4",
-            name: "Coastal Properties",
-            category: "Real Estate",
-            description: "Real estate agency specializing in coastal properties",
-            phone: "50688991234",
-            website: "https://example.com/coastal"
-          },
-          {
-            id: "5",
-            name: "Tropical Fruits Market",
-            category: "Groceries",
-            description: "Fresh local and exotic fruits, home delivery available",
-            phone: "50677883456",
-            website: "https://tropicalfruitsmarket.com"
-          }
-        ];
-        
-        setContacts(mockContacts);
-        setFilteredContacts(mockContacts);
-        setError("Failed to fetch contacts from API, showing mock data");
-        setIsLoading(false);
-        toast.error("Couldn't connect to server, showing sample data instead");
+        console.error("Error in fetch function:", err);
+        fallbackToMockData("Error in fetch function");
       }
+    };
+    
+    const fallbackToMockData = (errorMsg: string) => {
+      console.error(`Falling back to mock data: ${errorMsg}`);
+      
+      // Mock data for fallback
+      const mockContacts: Contact[] = [
+        {
+          id: "1",
+          name: "Allan Sallas Airport",
+          category: "Car",
+          description: "Airport Service/Pickup and Drop off/Tours Guide/Expatriate Adviser/Large Shuttle",
+          phone: "50662932423",
+          website: "https://allansallasairport.com"
+        },
+        {
+          id: "2",
+          name: "Allan Taxi",
+          category: "Car",
+          description: "Trips to the airport 35,000 colones ir ($70), there is no additional cost if you need to make purchases 1 hour of free waiting. Alegria to San Mateo 5000. Alegria orotina 7000",
+          phone: "50661066073",
+          website: ""
+        },
+        {
+          id: "3",
+          name: "Andres Gomez",
+          category: "Service",
+          description: "Immigration Attorney based in Atenas.",
+          phone: "50670700909",
+          website: "https://andreslaw.cr"
+        },
+        {
+          id: "4",
+          name: "Coastal Properties",
+          category: "Real Estate",
+          description: "Real estate agency specializing in coastal properties",
+          phone: "50688991234",
+          website: "https://example.com/coastal"
+        },
+        {
+          id: "5",
+          name: "Tropical Fruits Market",
+          category: "Groceries",
+          description: "Fresh local and exotic fruits, home delivery available",
+          phone: "50677883456",
+          website: "https://tropicalfruitsmarket.com"
+        }
+      ];
+      
+      setContacts(mockContacts);
+      setFilteredContacts(mockContacts);
+      setError(errorMsg);
+      setIsLoading(false);
+      toast.error("Couldn't connect to server, showing sample data instead");
     };
 
     fetchContacts();
