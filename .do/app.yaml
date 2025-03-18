@@ -7,6 +7,9 @@ services:
     deploy_on_push: true
     repo: antongorshkov/chatlist-nectar
   name: web
+  http_port: 3000
+  run_command: npm start
+  build_command: npm install && npm run build
   envs:
     - key: VITE_API_URL
       value: https://machu-server-app-2tn7n.ondigitalocean.app
