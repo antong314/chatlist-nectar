@@ -56,9 +56,21 @@ export function useContacts() {
           // Extract fields from Airtable structure
           const fields = item.fields || {};
           
-          // Extract website from Formatted Link if available
+          // Get website URL - first try direct field, then fallback to Formatted Link
           let website = '';
-          if (fields['Formatted Link']) {
+          if (fields['Website URL']) {
+            website = fields['Website URL'];
+            // Add https:// if not present
+            if (!website.startsWith('http')) {
+              website = 'https://' + website;
+            }
+          } else if (fields['Open URL'] && fields['Open URL'].url) {
+            website = fields['Open URL'].url;
+            // Add https:// if not present
+            if (!website.startsWith('http')) {
+              website = 'https://' + website;
+            }
+          } else if (fields['Formatted Link']) {
             const websiteMatch = fields['Formatted Link'].match(/\[Website\]\(([^)]+)\)/);
             if (websiteMatch && websiteMatch[1]) {
               website = websiteMatch[1];
@@ -69,9 +81,15 @@ export function useContacts() {
             }
           }
           
-          // Extract phone from Formatted Link if available
+          // Get phone number - first try direct field, then fallback to Formatted Link
           let phone = '';
-          if (fields['Formatted Link']) {
+          if (fields['Phone Number']) {
+            phone = fields['Phone Number'];
+            // Format if needed - add + if it's just digits
+            if (/^\d+$/.test(phone) && !phone.startsWith('+')) {
+              phone = '+' + phone;
+            }
+          } else if (fields['Formatted Link']) {
             const phoneMatch = fields['Formatted Link'].match(/\[WhatsApp\]\(https:\/\/api\.whatsapp\.com\/send\/\?phone=(%2B\d+)\)/);
             if (phoneMatch && phoneMatch[1]) {
               // Decode the URL-encoded phone number
@@ -91,9 +109,9 @@ export function useContacts() {
           
           return {
             id: item.id?.toString() || `temp-${Date.now()}-${Math.random()}`,
-            name: fields.Name || '',
+            name: fields.Title || '', // Name is stored as Title in Airtable
             category,
-            description: fields.Description || '',
+            description: fields.Subtitle || '', // Description is stored as Subtitle in Airtable
             phone,
             website,
             avatarUrl
