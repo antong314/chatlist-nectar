@@ -1,20 +1,17 @@
 
 name: mv-directory-app
 region: nyc
-services:
+static_sites:
   - name: web
     github:
       branch: main
       deploy_on_push: true
       repo: antongorshkov/chatlist-nectar
-    build_command: npm install && npm install serve --save && npm run build
-    run_command: npx serve -s dist
+    build_command: npm install && npm run build
+    output_dir: dist
     envs:
       - key: VITE_API_URL
         value: https://machu-server-app-2tn7n.ondigitalocean.app
-        scope: RUN_TIME
-    http_port: 3000
-    instance_count: 1
-    instance_size_slug: basic-xs
+        scope: BUILD_TIME
     routes:
       - path: /
