@@ -24,6 +24,7 @@ export function useContacts() {
         console.log("Fetching data from:", apiUrl);
         
         // Try using fetch with proper CORS headers
+        console.log("About to fetch from:", apiUrl);
         const response = await fetch(apiUrl, {
           method: 'GET',
           headers: {
@@ -35,18 +36,66 @@ export function useContacts() {
           // credentials: 'include'
         });
         
+        console.log("Response status:", response.status);
+        console.log("Response headers:", Object.fromEntries([...response.headers.entries()]));
+        
         if (!response.ok) {
           console.error("API returned error status:", response.status);
           throw new Error(`API returned status ${response.status}`);
         }
         
-        const data = await response.json();
-        console.log("API data received:", data);
+        const responseText = await response.text();
+        console.log("Raw response:", responseText.substring(0, 300) + "...");
+        
+        let data;
+        try {
+          data = JSON.parse(responseText);
+          console.log("API data parsed successfully");
+          console.log("API data type:", typeof data);
+          console.log("Is array:", Array.isArray(data));
+          console.log("Data length (if array):", Array.isArray(data) ? data.length : 'not an array');
+          console.log("First item (if exists):", Array.isArray(data) && data.length > 0 ? JSON.stringify(data[0]).substring(0, 300) + "..." : 'no items');
+        } catch (err) {
+          console.error("Error parsing JSON:", err);
+          throw new Error(`Failed to parse API response as JSON: ${err.message}`);
+        }
         
         // If data is empty or not an array, handle gracefully
-        if (!data || !Array.isArray(data) || data.length === 0) {
-          console.warn("API returned empty data or invalid format");
-          fallbackToMockData("API returned empty data");
+        if (!data) {
+          console.warn("API returned null or undefined data");
+          fallbackToMockData("API returned null or undefined data");
+          return;
+        }
+        
+        if (!Array.isArray(data)) {
+          console.warn("API returned non-array data:", typeof data);
+          console.warn("Data sample:", JSON.stringify(data).substring(0, 300));
+          
+          // Check if the data might be nested in a property
+          const possibleArrayKeys = Object.keys(data).filter(key => Array.isArray(data[key]));
+          if (possibleArrayKeys.length > 0) {
+            console.log("Found possible array data in properties:", possibleArrayKeys);
+            console.log("Using data from property:", possibleArrayKeys[0]);
+            
+            // Try using the first array property
+            data = data[possibleArrayKeys[0]];
+            
+            if (data.length === 0) {
+              console.warn("Found array property but it's empty");
+              fallbackToMockData("API returned empty array data");
+              return;
+            }
+            
+            console.log("Continuing with array data from property", possibleArrayKeys[0]);
+          } else {
+            fallbackToMockData("API returned non-array data");
+            return;
+          }
+        }
+        
+        if (data.length === 0) {
+          console.warn("API returned empty array");
+          fallbackToMockData("API returned empty array");
           return;
         }
         
