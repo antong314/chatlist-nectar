@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Contact, Category } from "../types/contact";
 import { toast } from "sonner";
+import { API_URL } from "../config/env";
 
 export function useContacts() {
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -18,69 +19,55 @@ export function useContacts() {
         
         // Add a timestamp to bypass cache issues
         const timestamp = new Date().getTime();
-        const apiUrl = `https://machu-server-app-2tn7n.ondigitalocean.app/get_directory_data?_t=${timestamp}`;
+        const apiUrl = `${API_URL}/get_directory_data?_t=${timestamp}`;
         
         console.log("Fetching data from:", apiUrl);
         
-        // Try using XMLHttpRequest as an alternative to fetch
-        const xhr = new XMLHttpRequest();
-        xhr.open('GET', apiUrl, true);
-        xhr.setRequestHeader('Accept', 'application/json');
-        xhr.setRequestHeader('Cache-Control', 'no-cache');
+        // Try using fetch with proper CORS headers
+        const response = await fetch(apiUrl, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache'
+          },
+          // Credentials can be included when both services are on the same domain or CORS is properly configured
+          // credentials: 'include'
+        });
         
-        xhr.onload = function() {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              const data = JSON.parse(xhr.responseText);
-              console.log("API data received:", data);
-              
-              // If data is empty or not an array, handle gracefully
-              if (!data || !Array.isArray(data) || data.length === 0) {
-                console.warn("API returned empty data or invalid format");
-                fallbackToMockData("API returned empty data");
-                return;
-              }
-              
-              // Map API data to our Contact type
-              const mappedContacts: Contact[] = data.map((item: any) => ({
-                id: item.id?.toString() || `temp-${Date.now()}-${Math.random()}`,
-                name: item.name || "",
-                category: mapCategoryFromAPI(item.category || "Service"),
-                description: item.description || "",
-                phone: item.phone || "",
-                website: item.website || "",
-              }));
-              
-              console.log("Mapped contacts:", mappedContacts);
-              setContacts(mappedContacts);
-              setFilteredContacts(mappedContacts);
-              setIsLoading(false);
-            } catch (parseErr) {
-              console.error("Error parsing JSON:", parseErr);
-              fallbackToMockData("Error parsing API response");
-            }
-          } else {
-            console.error("XHR error:", xhr.status, xhr.statusText);
-            fallbackToMockData(`API returned status ${xhr.status}`);
-          }
-        };
+        if (!response.ok) {
+          console.error("API returned error status:", response.status);
+          throw new Error(`API returned status ${response.status}`);
+        }
         
-        xhr.onerror = function() {
-          console.error("Network error occurred");
-          fallbackToMockData("Network error");
-        };
+        const data = await response.json();
+        console.log("API data received:", data);
         
-        xhr.ontimeout = function() {
-          console.error("Request timed out");
-          fallbackToMockData("Request timed out");
-        };
+        // If data is empty or not an array, handle gracefully
+        if (!data || !Array.isArray(data) || data.length === 0) {
+          console.warn("API returned empty data or invalid format");
+          fallbackToMockData("API returned empty data");
+          return;
+        }
         
-        xhr.timeout = 10000; // 10 seconds timeout
-        xhr.send();
+        // Map API data to our Contact type
+        const mappedContacts: Contact[] = data.map((item: any) => ({
+          id: item.id?.toString() || `temp-${Date.now()}-${Math.random()}`,
+          name: item.name || "",
+          category: mapCategoryFromAPI(item.category || "Service"),
+          description: item.description || "",
+          phone: item.phone || "",
+          website: item.website || "",
+        }));
+        
+        console.log("Mapped contacts:", mappedContacts);
+        setContacts(mappedContacts);
+        setFilteredContacts(mappedContacts);
+        setIsLoading(false);
         
       } catch (err) {
-        console.error("Error in fetch function:", err);
-        fallbackToMockData("Error in fetch function");
+        console.error("Error fetching data:", err);
+        fallbackToMockData(err instanceof Error ? err.message : "Unknown error");
       }
     };
     
