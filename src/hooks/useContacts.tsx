@@ -3,74 +3,6 @@ import { useState, useEffect, useCallback } from "react";
 import { Contact, Category } from "../types/contact";
 import { toast } from "sonner";
 
-// Temporary mock data
-const mockContacts: Contact[] = [
-  {
-    id: "1",
-    name: "Allan Sallas Airport",
-    category: "Car",
-    description: "Airport Service/Pickup and Drop off/Tours Guide/Expatriate Adviser/Large Shuttle",
-    phone: "50662932423",
-    website: "https://allansallasairport.com"
-  },
-  {
-    id: "2",
-    name: "Allan Taxi",
-    category: "Car",
-    description: "Trips to the airport 35,000 colones ir ($70), there is no additional cost if you need to make purchases 1 hour of free waiting. Alegria to San Mateo 5000. Alegria orotina 7000",
-    phone: "50661066073",
-    website: ""
-  },
-  {
-    id: "3",
-    name: "Andres Gomez",
-    category: "Service",
-    description: "Immigration Attorney based in Atenas.",
-    phone: "50670700909",
-    website: "https://andreslaw.cr"
-  },
-  {
-    id: "4",
-    name: "Another Test",
-    category: "Restaurant",
-    description: "delete me as well",
-    phone: "123289892233",
-    website: ""
-  },
-  {
-    id: "5",
-    name: "Anton",
-    category: "Mind Body & Spirit",
-    description: "Creator of this site. For all your technical needs from websites to operational automation to business development",
-    phone: "16467338252",
-    website: "https://anton.dev"
-  },
-  {
-    id: "6",
-    name: "Ariel Mayrose",
-    category: "Mind Body & Spirit",
-    description: "Body-mind therapist. Offers private and group Qigong and Taoist meditation practices, in person and in zoom. Offers Non-Violent-Communication practice groups, individual and couple counseling.",
-    phone: "50661908505",
-    website: "https://arielmayrose.com"
-  },
-  {
-    id: "7",
-    name: "Bio Natura Pest Control",
-    category: "Service",
-    description: "exterminator, natural pest control",
-    phone: "50689101466",
-    website: ""
-  },
-  {
-    id: "8",
-    name: "Bosque Ayurveda by Elvi",
-    category: "Mind Body & Spirit",
-    description: "Ayurveda practitioner offering private consultation, Dosha evaluation and full Ayurvedic lifestyle plan",
-    phone: "7187496303",
-    website: "https://bosqueayurveda.com"
-  }
-];
-
 export function useContacts() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
@@ -79,19 +11,34 @@ export function useContacts() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch contacts
+  // Fetch contacts from API
   useEffect(() => {
     const fetchContacts = async () => {
       try {
-        // In a real app, this would be an API call
-        // const response = await fetch('/api/contacts');
-        // const data = await response.json();
+        setIsLoading(true);
+        const response = await fetch('https://machu-server-app-2tn7n.ondigitalocean.app/get_directory_data');
         
-        // Using mock data for now
-        setContacts(mockContacts);
-        setFilteredContacts(mockContacts);
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        // Map API data to our Contact type
+        const mappedContacts: Contact[] = data.map((item: any) => ({
+          id: item.id.toString(),
+          name: item.name || "",
+          category: mapCategoryFromAPI(item.category || "Service"),
+          description: item.description || "",
+          phone: item.phone || "",
+          website: item.website || "",
+        }));
+        
+        setContacts(mappedContacts);
+        setFilteredContacts(mappedContacts);
         setIsLoading(false);
       } catch (err) {
+        console.error("Error fetching contacts:", err);
         setError("Failed to fetch contacts");
         setIsLoading(false);
         toast.error("Failed to load contacts");
@@ -100,6 +47,28 @@ export function useContacts() {
 
     fetchContacts();
   }, []);
+
+  // Helper function to map API categories to our Category type
+  const mapCategoryFromAPI = (apiCategory: string): Category => {
+    // Convert the API category to match our Category type
+    const categoryMap: Record<string, Category> = {
+      // Add mappings as needed
+      "car": "Car",
+      "food": "Food Ordering",
+      "groceries": "Groceries",
+      "jobs": "Jobs",
+      "mind_body_spirit": "Mind Body & Spirit",
+      "nature": "Nature",
+      "real_estate": "Real Estate",
+      "restaurant": "Restaurant",
+      "service": "Service",
+      "social_network": "Social Network",
+      "taxi": "Taxi",
+    };
+    
+    // Return the mapped category or default to "Service" if no match
+    return (categoryMap[apiCategory.toLowerCase()] as Category) || "Service";
+  };
 
   // Filter contacts based on search query and category
   useEffect(() => {
