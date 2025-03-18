@@ -52,9 +52,38 @@ export function useContacts() {
           data = JSON.parse(responseText);
           console.log("API data parsed successfully");
           console.log("API data type:", typeof data);
+          
+          // Check if data is a string that might be another JSON
+          if (typeof data === 'string' && data.trim().startsWith('{') || data.trim().startsWith('[')) {
+            console.log("Data appears to be string-encoded JSON. Trying to parse again...");
+            try {
+              data = JSON.parse(data);
+              console.log("Double-encoded JSON successfully parsed");
+            } catch (nestedErr) {
+              console.warn("Failed to parse string as nested JSON. Continuing with string value.");
+            }
+          }
+          
           console.log("Is array:", Array.isArray(data));
           console.log("Data length (if array):", Array.isArray(data) ? data.length : 'not an array');
           console.log("First item (if exists):", Array.isArray(data) && data.length > 0 ? JSON.stringify(data[0]).substring(0, 300) + "..." : 'no items');
+          
+          // If data is an object with a 'records' property that's an array, use that
+          if (!Array.isArray(data) && typeof data === 'object' && data !== null) {
+            console.log("Data is an object. Looking for common array properties...");
+            const commonArrayProps = ['records', 'data', 'items', 'results', 'values'];
+            
+            for (const prop of commonArrayProps) {
+              if (data[prop] && Array.isArray(data[prop])) {
+                console.log(`Found array in property '${prop}' with ${data[prop].length} items`);
+                if (data[prop].length > 0) {
+                  console.log(`First item in '${prop}':`, JSON.stringify(data[prop][0]).substring(0, 300) + "...");
+                  data = data[prop];
+                  break;
+                }
+              }
+            }
+          }
         } catch (err) {
           console.error("Error parsing JSON:", err);
           throw new Error(`Failed to parse API response as JSON: ${err.message}`);
@@ -71,25 +100,36 @@ export function useContacts() {
           console.warn("API returned non-array data:", typeof data);
           console.warn("Data sample:", JSON.stringify(data).substring(0, 300));
           
-          // Check if the data might be nested in a property
-          const possibleArrayKeys = Object.keys(data).filter(key => Array.isArray(data[key]));
-          if (possibleArrayKeys.length > 0) {
-            console.log("Found possible array data in properties:", possibleArrayKeys);
-            console.log("Using data from property:", possibleArrayKeys[0]);
-            
-            // Try using the first array property
-            data = data[possibleArrayKeys[0]];
-            
-            if (data.length === 0) {
-              console.warn("Found array property but it's empty");
-              fallbackToMockData("API returned empty array data");
-              return;
+          // First, specifically check for Airtable's 'records' property
+          if (data && typeof data === 'object' && 'records' in data && Array.isArray(data.records)) {
+            console.log("Found Airtable 'records' array with", data.records.length, "items");
+            if (data.records.length > 0) {
+              console.log("First record sample:", JSON.stringify(data.records[0]).substring(0, 300));
+            }
+            data = data.records;
+          } else {
+            // If no 'records' property, check for any array property
+            const possibleArrayKeys = Object.keys(data).filter(key => Array.isArray(data[key]));
+            if (possibleArrayKeys.length > 0) {
+              console.log("Found possible array data in properties:", possibleArrayKeys);
+              console.log("Using data from property:", possibleArrayKeys[0]);
+              
+              // Try using the first array property
+              data = data[possibleArrayKeys[0]];
+              
+              if (data.length === 0) {
+                console.warn("Found array property but it's empty");
+                fallbackToMockData("API returned empty array data");
+                return;
+              }
             }
             
-            console.log("Continuing with array data from property", possibleArrayKeys[0]);
-          } else {
-            fallbackToMockData("API returned non-array data");
-            return;
+            if (Array.isArray(data)) {
+              console.log("Continuing with array data from property", possibleArrayKeys[0]);
+            } else {
+              fallbackToMockData("API returned non-array data");
+              return;
+            }
           }
         }
         
@@ -101,9 +141,30 @@ export function useContacts() {
         
         // Map API data to our Contact type
         console.log('First item structure:', data[0]);
-        const mappedContacts: Contact[] = data.map((item: any) => {
+        console.log('First item keys:', data[0] ? Object.keys(data[0]) : 'no keys');
+        
+        // Debugging the expected structure
+        if (data[0]) {
+          console.log('Has fields property:', 'fields' in data[0]);
+          if ('fields' in data[0]) {
+            console.log('Fields keys:', Object.keys(data[0].fields));
+          } else {
+            console.log('Item doesn\'t have fields property. Available properties:', Object.keys(data[0]));
+          }
+        }
+        
+        const mappedContacts: Contact[] = data.map((item: any, index: number) => {
+          console.log(`Mapping item ${index}...`);
+          
+          // Ensure we have the fields property (Airtable format)
+          if (!item.fields) {
+            console.warn(`Item ${index} missing 'fields' property, available keys:`, Object.keys(item));
+            console.warn(`Item ${index} content sample:`, JSON.stringify(item).substring(0, 300));
+          }
+          
           // Extract fields from Airtable structure
           const fields = item.fields || {};
+          console.log(`Item ${index} fields:`, fields);
           
           // Get website URL - first try direct field, then fallback to Formatted Link
           let website = '';
