@@ -16,17 +16,35 @@ export function useContacts() {
     const fetchContacts = async () => {
       try {
         setIsLoading(true);
-        const response = await fetch('https://machu-server-app-2tn7n.ondigitalocean.app/get_directory_data');
+        
+        // Try to fetch with mode: 'cors' explicitly
+        const response = await fetch('https://machu-server-app-2tn7n.ondigitalocean.app/get_directory_data', {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+          },
+          mode: 'cors',
+        });
         
         if (!response.ok) {
           throw new Error(`API error: ${response.status}`);
         }
         
         const data = await response.json();
+        console.log("API data received:", data);
+        
+        // If data is empty or not an array, handle gracefully
+        if (!data || !Array.isArray(data) || data.length === 0) {
+          console.warn("API returned empty data or invalid format");
+          setContacts([]);
+          setFilteredContacts([]);
+          setIsLoading(false);
+          return;
+        }
         
         // Map API data to our Contact type
         const mappedContacts: Contact[] = data.map((item: any) => ({
-          id: item.id.toString(),
+          id: item.id?.toString() || `temp-${Date.now()}-${Math.random()}`,
           name: item.name || "",
           category: mapCategoryFromAPI(item.category || "Service"),
           description: item.description || "",
@@ -34,14 +52,46 @@ export function useContacts() {
           website: item.website || "",
         }));
         
+        console.log("Mapped contacts:", mappedContacts);
         setContacts(mappedContacts);
         setFilteredContacts(mappedContacts);
         setIsLoading(false);
       } catch (err) {
         console.error("Error fetching contacts:", err);
-        setError("Failed to fetch contacts");
+        
+        // Fallback to mock data if API fails
+        const mockContacts: Contact[] = [
+          {
+            id: "1",
+            name: "Allan Sallas Airport",
+            category: "Car",
+            description: "Airport Service/Pickup and Drop off/Tours Guide/Expatriate Adviser/Large Shuttle",
+            phone: "50662932423",
+            website: "https://allansallasairport.com"
+          },
+          {
+            id: "2",
+            name: "Allan Taxi",
+            category: "Car",
+            description: "Trips to the airport 35,000 colones ir ($70), there is no additional cost if you need to make purchases 1 hour of free waiting. Alegria to San Mateo 5000. Alegria orotina 7000",
+            phone: "50661066073",
+            website: ""
+          },
+          {
+            id: "3",
+            name: "Andres Gomez",
+            category: "Service",
+            description: "Immigration Attorney based in Atenas.",
+            phone: "50670700909",
+            website: "https://andreslaw.cr"
+          }
+        ];
+        
+        setContacts(mockContacts);
+        setFilteredContacts(mockContacts);
+        setError("Failed to fetch contacts from API, showing mock data");
         setIsLoading(false);
-        toast.error("Failed to load contacts");
+        toast.error("Couldn't connect to server, showing sample data instead");
       }
     };
 
@@ -67,7 +117,7 @@ export function useContacts() {
     };
     
     // Return the mapped category or default to "Service" if no match
-    return (categoryMap[apiCategory.toLowerCase()] as Category) || "Service";
+    return (categoryMap[apiCategory?.toLowerCase()] as Category) || "Service";
   };
 
   // Filter contacts based on search query and category
