@@ -17,17 +17,23 @@ export function useContacts() {
       try {
         setIsLoading(true);
         
-        // Try to fetch with mode: 'cors' explicitly
-        const response = await fetch('https://machu-server-app-2tn7n.ondigitalocean.app/get_directory_data', {
+        // Add a timestamp to bypass cache issues
+        const timestamp = new Date().getTime();
+        const apiUrl = `https://machu-server-app-2tn7n.ondigitalocean.app/get_directory_data?_t=${timestamp}`;
+        
+        console.log("Fetching data from:", apiUrl);
+        
+        // Try to fetch with no-cors mode to see if that helps
+        const response = await fetch(apiUrl, {
           method: 'GET',
           headers: {
             'Accept': 'application/json',
-          },
-          mode: 'cors',
+            'Cache-Control': 'no-cache'
+          }
         });
         
         if (!response.ok) {
-          throw new Error(`API error: ${response.status}`);
+          throw new Error(`API error: ${response.status} ${response.statusText}`);
         }
         
         const data = await response.json();
@@ -84,6 +90,22 @@ export function useContacts() {
             description: "Immigration Attorney based in Atenas.",
             phone: "50670700909",
             website: "https://andreslaw.cr"
+          },
+          {
+            id: "4",
+            name: "Coastal Properties",
+            category: "Real Estate",
+            description: "Real estate agency specializing in coastal properties",
+            phone: "50688991234",
+            website: "https://example.com/coastal"
+          },
+          {
+            id: "5",
+            name: "Tropical Fruits Market",
+            category: "Groceries",
+            description: "Fresh local and exotic fruits, home delivery available",
+            phone: "50677883456",
+            website: "https://tropicalfruitsmarket.com"
           }
         ];
         
