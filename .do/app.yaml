@@ -1,17 +1,13 @@
 
 name: mv-directory-app
-region: nyc
-static_sites:
-  - name: web
-    github:
-      branch: main
-      deploy_on_push: true
-      repo: antongorshkov/chatlist-nectar
-    build_command: npm install && npm run build
-    output_dir: dist
-    envs:
-      - key: VITE_API_URL
-        value: https://machu-server-app-2tn7n.ondigitalocean.app
-        scope: BUILD_TIME
-    routes:
-      - path: /
+services:
+- environment_slug: node-js
+  github:
+    branch: main
+    deploy_on_push: true
+    repo: antongorshkov/chatlist-nectar
+  name: web
+  envs:
+    - key: VITE_API_URL
+      value: https://machu-server-app-2tn7n.ondigitalocean.app
+      scope: BUILD_TIME
