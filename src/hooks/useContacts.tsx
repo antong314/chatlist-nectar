@@ -51,14 +51,54 @@ export function useContacts() {
         }
         
         // Map API data to our Contact type
-        const mappedContacts: Contact[] = data.map((item: any) => ({
-          id: item.id?.toString() || `temp-${Date.now()}-${Math.random()}`,
-          name: item.name || "",
-          category: mapCategoryFromAPI(item.category || "Service"),
-          description: item.description || "",
-          phone: item.phone || "",
-          website: item.website || "",
-        }));
+        console.log('First item structure:', data[0]);
+        const mappedContacts: Contact[] = data.map((item: any) => {
+          // Extract fields from Airtable structure
+          const fields = item.fields || {};
+          
+          // Extract website from Formatted Link if available
+          let website = '';
+          if (fields['Formatted Link']) {
+            const websiteMatch = fields['Formatted Link'].match(/\[Website\]\(([^)]+)\)/);
+            if (websiteMatch && websiteMatch[1]) {
+              website = websiteMatch[1];
+              // Add https:// if not present
+              if (!website.startsWith('http')) {
+                website = 'https://' + website;
+              }
+            }
+          }
+          
+          // Extract phone from Formatted Link if available
+          let phone = '';
+          if (fields['Formatted Link']) {
+            const phoneMatch = fields['Formatted Link'].match(/\[WhatsApp\]\(https:\/\/api\.whatsapp\.com\/send\/\?phone=(%2B\d+)\)/);
+            if (phoneMatch && phoneMatch[1]) {
+              // Decode the URL-encoded phone number
+              phone = decodeURIComponent(phoneMatch[1]);
+            }
+          }
+          
+          // Get logo URL if available
+          let avatarUrl = '';
+          if (fields.Logo && fields.Logo.length > 0 && fields.Logo[0].url) {
+            avatarUrl = fields.Logo[0].url;
+          }
+          
+          // Map category
+          const category = fields.Category && fields.Category.length > 0 ? 
+            mapCategoryFromAPI(fields.Category[0]) : 'Service';
+          
+          return {
+            id: item.id?.toString() || `temp-${Date.now()}-${Math.random()}`,
+            name: fields.Name || '',
+            category,
+            description: fields.Description || '',
+            phone,
+            website,
+            avatarUrl
+          };
+        });
         
         console.log("Mapped contacts:", mappedContacts);
         setContacts(mappedContacts);
@@ -130,19 +170,36 @@ export function useContacts() {
 
   // Helper function to map API categories to our Category type
   const mapCategoryFromAPI = (apiCategory: string): Category => {
+    // Check if the category is already in the correct format
+    if (apiCategory === "Mind Body & Spirit" || 
+        apiCategory === "Car" || 
+        apiCategory === "Food Ordering" || 
+        apiCategory === "Groceries" || 
+        apiCategory === "Jobs" || 
+        apiCategory === "Nature" || 
+        apiCategory === "Real Estate" || 
+        apiCategory === "Restaurant" || 
+        apiCategory === "Service" || 
+        apiCategory === "Social Network" || 
+        apiCategory === "Taxi") {
+      return apiCategory as Category;
+    }
+    
     // Convert the API category to match our Category type
     const categoryMap: Record<string, Category> = {
-      // Add mappings as needed
+      // Handle variations and lowercase versions
       "car": "Car",
       "food": "Food Ordering",
+      "food ordering": "Food Ordering",
       "groceries": "Groceries",
       "jobs": "Jobs",
-      "mind_body_spirit": "Mind Body & Spirit",
+      "mind body & spirit": "Mind Body & Spirit",
+      "mind body and spirit": "Mind Body & Spirit",
       "nature": "Nature",
-      "real_estate": "Real Estate",
+      "real estate": "Real Estate",
       "restaurant": "Restaurant",
       "service": "Service",
-      "social_network": "Social Network",
+      "social network": "Social Network",
       "taxi": "Taxi",
     };
     
