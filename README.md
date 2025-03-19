@@ -20,6 +20,14 @@ If you want to work locally using your own IDE, you can clone this repo and push
 
 The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
 
+## ⚠️ IMPORTANT DEVELOPMENT NOTES ⚠️
+
+### Port Requirements
+- **ALWAYS run the development server on port 8080**
+- Before restarting the server, make sure to kill any processes using port 8080
+- Use the following command to kill processes on port 8080: `lsof -ti:8080 | xargs kill -9`
+- The dev script in package.json is configured to use port 8080
+
 Follow these steps:
 
 ```sh
