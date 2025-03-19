@@ -1,7 +1,7 @@
 import React from 'react';
 import { Contact } from '@/types/contact';
 import { Button } from '@/components/ui/button';
-import { Globe, Map, Phone, Edit, X } from 'lucide-react';
+import { Globe, Map, Edit, X } from 'lucide-react';
 import { AvatarFallback } from './ui/avatar-fallback';
 import { useEffect } from 'react';
 
@@ -96,7 +96,9 @@ export function ContactDetail({ contact, onEdit, onClose }: ContactDetailProps) 
               className="p-2 text-green-600 rounded-full hover:bg-green-50 transition-colors"
               aria-label="Chat on WhatsApp"
             >
-              <Phone className="w-5 h-5" />
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M17.498 14.382c-.301-.15-1.767-.867-2.04-.966-.273-.101-.473-.15-.673.15-.2.301-.754.966-.925 1.164-.17.199-.341.15-.642 0-.3-.15-1.269-.468-2.419-1.49-.893-.8-1.498-1.786-1.673-2.086-.174-.302-.018-.466.132-.62.134-.135.299-.354.448-.531.149-.178.198-.301.297-.502.1-.2.05-.374-.05-.524-.1-.15-.671-1.643-.92-2.244-.241-.586-.485-.51-.672-.51-.169-.008-.367-.01-.566-.01-.2 0-.527.075-.803.375-.273.3-1.045 1.02-1.045 2.488s1.07 2.887 1.218 3.087c.149.2 2.095 3.195 5.076 4.483.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.571-.347z" />
+              </svg>
             </button>
           </div>
         )}
