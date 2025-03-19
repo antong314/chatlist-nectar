@@ -21,10 +21,7 @@ export function useContacts() {
         const timestamp = new Date().getTime();
         const apiUrl = `${API_URL}/get_directory_data?_t=${timestamp}`;
         
-        console.log("Fetching data from:", apiUrl);
-        
         // Try using fetch with proper CORS headers
-        console.log("About to fetch from:", apiUrl);
         const response = await fetch(apiUrl, {
           method: 'GET',
           headers: {
@@ -36,48 +33,33 @@ export function useContacts() {
           // credentials: 'include'
         });
         
-        console.log("Response status:", response.status);
-        console.log("Response headers:", Object.fromEntries([...response.headers.entries()]));
-        
+        // Check response status
         if (!response.ok) {
           console.error("API returned error status:", response.status);
           throw new Error(`API returned status ${response.status}`);
         }
         
         const responseText = await response.text();
-        console.log("Raw response:", responseText.substring(0, 300) + "...");
         
         let data;
         try {
           data = JSON.parse(responseText);
-          console.log("API data parsed successfully");
-          console.log("API data type:", typeof data);
-          
           // Check if data is a string that might be another JSON
           if (typeof data === 'string' && (data.trim().startsWith('{') || data.trim().startsWith('['))) {
-            console.log("Data appears to be string-encoded JSON. Trying to parse again...");
             try {
               data = JSON.parse(data);
-              console.log("Double-encoded JSON successfully parsed");
             } catch (nestedErr) {
               console.warn("Failed to parse string as nested JSON. Continuing with string value.");
             }
           }
           
-          console.log("Is array:", Array.isArray(data));
-          console.log("Data length (if array):", Array.isArray(data) ? data.length : 'not an array');
-          console.log("First item (if exists):", Array.isArray(data) && data.length > 0 ? JSON.stringify(data[0]).substring(0, 300) + "..." : 'no items');
-          
           // If data is an object with a 'records' property that's an array, use that
           if (!Array.isArray(data) && typeof data === 'object' && data !== null) {
-            console.log("Data is an object. Looking for common array properties...");
             const commonArrayProps = ['records', 'data', 'items', 'results', 'values'];
             
             for (const prop of commonArrayProps) {
               if (data[prop] && Array.isArray(data[prop])) {
-                console.log(`Found array in property '${prop}' with ${data[prop].length} items`);
                 if (data[prop].length > 0) {
-                  console.log(`First item in '${prop}':`, JSON.stringify(data[prop][0]).substring(0, 300) + "...");
                   data = data[prop];
                   break;
                 }
@@ -102,18 +84,11 @@ export function useContacts() {
           
           // First, specifically check for Airtable's 'records' property
           if (data && typeof data === 'object' && 'records' in data && Array.isArray(data.records)) {
-            console.log("Found Airtable 'records' array with", data.records.length, "items");
-            if (data.records.length > 0) {
-              console.log("First record sample:", JSON.stringify(data.records[0]).substring(0, 300));
-            }
             data = data.records;
           } else {
             // If no 'records' property, check for any array property
             const possibleArrayKeys = Object.keys(data).filter(key => Array.isArray(data[key]));
             if (possibleArrayKeys.length > 0) {
-              console.log("Found possible array data in properties:", possibleArrayKeys);
-              console.log("Using data from property:", possibleArrayKeys[0]);
-              
               // Try using the first array property
               data = data[possibleArrayKeys[0]];
               
@@ -124,9 +99,7 @@ export function useContacts() {
               }
             }
             
-            if (Array.isArray(data)) {
-              console.log("Continuing with array data from property", possibleArrayKeys[0]);
-            } else {
+            if (!Array.isArray(data)) {
               fallbackToMockData("API returned non-array data");
               return;
             }
@@ -140,21 +113,7 @@ export function useContacts() {
         }
         
         // Map API data to our Contact type
-        console.log('First item structure:', data[0]);
-        console.log('First item keys:', data[0] ? Object.keys(data[0]) : 'no keys');
-        
-        // Debugging the expected structure
-        if (data[0]) {
-          console.log('Has fields property:', 'fields' in data[0]);
-          if ('fields' in data[0]) {
-            console.log('Fields keys:', Object.keys(data[0].fields));
-          } else {
-            console.log('Item doesn\'t have fields property. Available properties:', Object.keys(data[0]));
-          }
-        }
-        
         const mappedContacts: Contact[] = data.map((item: any, index: number) => {
-          console.log(`Mapping item ${index}...`);
           
           // Ensure we have the fields property (Airtable format)
           if (!item.fields) {
@@ -164,7 +123,6 @@ export function useContacts() {
           
           // Extract fields from Airtable structure
           const fields = item.fields || {};
-          console.log(`Item ${index} fields:`, fields);
           
           // Get website URL - first try direct field, then fallback to Formatted Link
           let website = '';
@@ -231,7 +189,7 @@ export function useContacts() {
         // Sort contacts alphabetically by name
         const sortedContacts = sortContactsAlphabetically(mappedContacts);
         
-        console.log("Mapped and sorted contacts:", sortedContacts);
+        // Process contacts
         setContacts(sortedContacts);
         setFilteredContacts(sortedContacts);
         setIsLoading(false);
@@ -377,7 +335,7 @@ export function useContacts() {
 
   // Add a new contact
   const addContact = useCallback(async (newContact: Omit<Contact, "id">) => {
-    console.log("Attempting to add new contact:", newContact);
+    // Attempt to add a new contact
     try {
       // Prepare data for Airtable format - fields property is required
       // This format matches what the machu-server expects
@@ -393,7 +351,7 @@ export function useContacts() {
         }
       };
       
-      console.log("Preparing data for API:", fieldsData);
+      // Prepare data for API
       
       // Check if we have any logo/image file upload from the form
       // We need to create a multipart FormData to handle file uploads
@@ -423,7 +381,7 @@ export function useContacts() {
         multipartFormData.append('logo_file', logoFile);
       }
       
-      console.log(`Sending contact data with logo_action: ${logoAction}`);
+      // Prepare form data with logo if needed
       
       // Make the API call to add the contact to the server - use /add_directory_entry endpoint
       // The server expects multipart/form-data for logo uploads
@@ -433,12 +391,8 @@ export function useContacts() {
         body: multipartFormData
       });
       
-      console.log("API response status:", response.status);
-      console.log("API response headers:", Object.fromEntries([...response.headers.entries()]));
-      
-      // Get the raw response text for debugging
+      // Get the raw response text
       const responseText = await response.text();
-      console.log("Raw API response:", responseText);
       
       let data;
       try {
@@ -454,7 +408,7 @@ export function useContacts() {
         throw new Error(`API error (${response.status}): ${data.error || 'Unknown error'}`);
       }
       
-      console.log("API response data:", data);
+      // Process API response data
       
       // If we got a successful response with an ID, use it, otherwise generate temp ID
       const newId = data?.id || `temp-${Date.now()}`;
@@ -485,7 +439,7 @@ export function useContacts() {
 
   // Update an existing contact
   const updateContact = useCallback(async (updatedContact: Contact) => {
-    console.log("Attempting to update contact:", updatedContact);
+    // Attempt to update an existing contact
     try {
       // Prepare data for Airtable format - fields property is required
       // This format matches what the machu-server expects
@@ -502,7 +456,7 @@ export function useContacts() {
         record_id: updatedContact.id // Include the record ID for updates
       };
       
-      console.log("Preparing data for API:", fieldsData);
+      // Prepare data for API
       
       // Check if we have any logo/image file upload from the form
       const fileInput = document.getElementById('form-logo') as HTMLInputElement;
@@ -531,7 +485,7 @@ export function useContacts() {
         multipartFormData.append('logo_file', logoFile);
       }
       
-      console.log(`Sending contact data with logo_action: ${logoAction}`);
+      // Prepare form data with logo if needed
       
       // Make the API call to update the contact on the server
       const response = await fetch(`${API_URL}/update_directory_entry`, {
@@ -540,12 +494,8 @@ export function useContacts() {
         body: multipartFormData
       });
       
-      console.log("API response status:", response.status);
-      console.log("API response headers:", Object.fromEntries([...response.headers.entries()]));
-      
-      // Get the raw response text for debugging
+      // Get the raw response text
       const responseText = await response.text();
-      console.log("Raw API response:", responseText);
       
       let data;
       try {
@@ -561,7 +511,7 @@ export function useContacts() {
         throw new Error(`API error (${response.status}): ${data.error || 'Unknown error'}`);
       }
       
-      console.log("API response data:", data);
+      // Process API response data
       
       // Get the logo URL from the response if available
       const logoUrl = data.logoUrl || updatedContact.logoUrl;
@@ -594,7 +544,7 @@ export function useContacts() {
 
   // Delete a contact
   const deleteContact = useCallback(async (id: string) => {
-    console.log("Attempting to delete contact with ID:", id);
+    // Attempt to delete a contact
     try {
       // Make the API call to delete the contact on the server
       const response = await fetch(`${API_URL}/delete_directory_entry`, {
@@ -605,12 +555,8 @@ export function useContacts() {
         })
       });
       
-      console.log("API response status:", response.status);
-      console.log("API response headers:", Object.fromEntries([...response.headers.entries()]));
-      
-      // Get the raw response text for debugging
+      // Get the raw response text
       const responseText = await response.text();
-      console.log("Raw API response:", responseText);
       
       let data;
       try {
@@ -626,7 +572,7 @@ export function useContacts() {
         throw new Error(`API error (${response.status}): ${data.error || 'Unknown error'}`);
       }
       
-      console.log("API response data:", data);
+      // Process API response data
       
       // If we've got this far, the delete was successful
       // Remove the contact from state

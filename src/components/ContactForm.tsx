@@ -31,10 +31,35 @@ export function ContactForm({
   const [website, setWebsite] = useState(contact?.website || '');
   const [logoUrl, setLogoUrl] = useState(contact?.logoUrl || '');
   const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [logoPreview, setLogoPreview] = useState<string | null>(contact?.logoUrl || null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [logoRemoved, setLogoRemoved] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const effectRan = useRef(false);
+  
+  // Initialize logo preview for existing contact
+  useEffect(() => {
+    // This ensures the effect only runs once per contact change and helps avoid state conflicts
+    if (!effectRan.current && contact) {
+      // Try to use either logo URL or avatar URL
+      const imageUrl = contact.logoUrl || contact.avatarUrl;
+      if (imageUrl) {
+        setLogoPreview(imageUrl);
+        setLogoUrl(imageUrl);
+        setLogoRemoved(false);
+      } else {
+        setLogoPreview(null);
+        setLogoUrl('');
+      }
+      
+      effectRan.current = true;
+    }
+    
+    // Reset the effect ran ref when contact changes
+    return () => {
+      effectRan.current = false;
+    };
+  }, [contact]);
 
   // Filter out 'All' from categories for the dropdown
   const dropdownCategories = categories.filter(cat => cat !== 'All');
@@ -59,11 +84,13 @@ export function ContactForm({
     if (logoRemoved) setLogoRemoved(false);
 
     setLogoFile(file);
+    // Process the selected logo file
     
     // Create URL for preview
     const reader = new FileReader();
     reader.onloadend = () => {
-      setLogoPreview(reader.result as string);
+      const result = reader.result as string;
+      setLogoPreview(result);
     };
     reader.readAsDataURL(file);
   };
@@ -217,7 +244,7 @@ export function ContactForm({
               <div className="flex-shrink-0">
                 <AvatarFallback 
                   name={name || 'Contact'} 
-                  logoUrl={logoPreview || undefined} 
+                  logoUrl={logoRemoved ? undefined : logoPreview} 
                   className="w-16 h-16"
                 />
               </div>

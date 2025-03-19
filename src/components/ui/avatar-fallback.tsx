@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { cn } from "@/lib/utils";
 
 interface AvatarFallbackProps {
@@ -41,13 +41,24 @@ export function AvatarFallback({ name, logoUrl, className, onImageError }: Avata
   const bgColor = colors[colorIndex];
 
   const handleImageError = () => {
-    console.log('Image failed to load:', logoUrl);
-    setImageError(true);
+    // Reset error state on component remount by setting to false first
+    setImageError(false);
+    setTimeout(() => setImageError(true), 0);
     if (onImageError) onImageError();
   };
 
+  // Reset image error when logoUrl changes
+  useEffect(() => {
+    if (logoUrl) {
+      setImageError(false);
+    }
+  }, [logoUrl]);
+
   // If we have a logo URL and no error, show the image
   if (logoUrl && !imageError) {
+    // Generate a unique key to force image reload when logoUrl changes
+    const imageKey = `img-${logoUrl.replace(/[^a-zA-Z0-9]/g, '')}`;
+    
     return (
       <div 
         className={cn(
@@ -56,6 +67,7 @@ export function AvatarFallback({ name, logoUrl, className, onImageError }: Avata
         )}
       >
         <img 
+          key={imageKey}
           src={logoUrl} 
           alt={`${name} logo`}
           onError={handleImageError}
