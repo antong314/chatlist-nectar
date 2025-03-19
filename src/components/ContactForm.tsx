@@ -312,7 +312,7 @@ export function ContactForm({
                     // Debug update
                     import('../hooks/debug-contacts').then(({ sendContactUpdate }) => {
                       const apiUrl = import.meta.env.DEV 
-                        ? 'http://127.0.0.1:5000' 
+                        ? 'http://192.168.68.58:5000' // Use network IP instead of localhost to avoid CORS
                         : 'https://machu-server-app-2tn7n.ondigitalocean.app';
                       sendContactUpdate(contact, apiUrl).then(result => {
                         console.log('Debug update result:', result);

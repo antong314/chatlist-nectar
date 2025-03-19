@@ -5,7 +5,7 @@ import { Contact } from '@/types/contact';
 
 // Server API URL - dynamically determined based on environment
 const API_URL = import.meta.env.DEV 
-  ? 'http://127.0.0.1:5000' 
+  ? 'http://192.168.68.58:5000' // Use the same network IP as the client to avoid CORS issues
   : 'https://machu-server-app-2tn7n.ondigitalocean.app';
 
 /**
