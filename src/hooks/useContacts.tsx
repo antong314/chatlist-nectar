@@ -394,13 +394,25 @@ export function useContacts() {
       // Get the raw response text
       const responseText = await response.text();
       
+      // Check if the response is HTML instead of JSON
+      if (responseText.trim().startsWith('<!DOCTYPE') || responseText.trim().startsWith('<html')) {
+        console.error("Received HTML response instead of JSON");
+        
+        // Extract a more useful error message if possible
+        const titleMatch = responseText.match(/<title>(.*?)<\/title>/i);
+        const errorMessage = titleMatch ? titleMatch[1] : 'Server returned HTML instead of JSON';
+        
+        throw new Error(`API Error: ${errorMessage}`);
+      }
+      
       let data;
       try {
         // Try to parse the response as JSON
         data = JSON.parse(responseText);
       } catch (parseErr) {
         console.error("Error parsing response as JSON:", parseErr);
-        throw new Error(`Invalid response format: ${responseText.substring(0, 100)}...`);
+        // Only show a limited portion of the response to avoid huge error messages
+        throw new Error(`Invalid JSON response: ${responseText.substring(0, 50)}...`);
       }
       
       if (!response.ok) {
@@ -497,13 +509,25 @@ export function useContacts() {
       // Get the raw response text
       const responseText = await response.text();
       
+      // Check if the response is HTML instead of JSON
+      if (responseText.trim().startsWith('<!DOCTYPE') || responseText.trim().startsWith('<html')) {
+        console.error("Received HTML response instead of JSON");
+        
+        // Extract a more useful error message if possible
+        const titleMatch = responseText.match(/<title>(.*?)<\/title>/i);
+        const errorMessage = titleMatch ? titleMatch[1] : 'Server returned HTML instead of JSON';
+        
+        throw new Error(`API Error: ${errorMessage}`);
+      }
+      
       let data;
       try {
         // Try to parse the response as JSON
         data = JSON.parse(responseText);
       } catch (parseErr) {
         console.error("Error parsing response as JSON:", parseErr);
-        throw new Error(`Invalid response format: ${responseText.substring(0, 100)}...`);
+        // Only show a limited portion of the response to avoid huge error messages
+        throw new Error(`Invalid JSON response: ${responseText.substring(0, 50)}...`);
       }
       
       if (!response.ok) {
@@ -558,13 +582,25 @@ export function useContacts() {
       // Get the raw response text
       const responseText = await response.text();
       
+      // Check if the response is HTML instead of JSON
+      if (responseText.trim().startsWith('<!DOCTYPE') || responseText.trim().startsWith('<html')) {
+        console.error("Received HTML response instead of JSON");
+        
+        // Extract a more useful error message if possible
+        const titleMatch = responseText.match(/<title>(.*?)<\/title>/i);
+        const errorMessage = titleMatch ? titleMatch[1] : 'Server returned HTML instead of JSON';
+        
+        throw new Error(`API Error: ${errorMessage}`);
+      }
+      
       let data;
       try {
         // Try to parse the response as JSON
         data = JSON.parse(responseText);
       } catch (parseErr) {
         console.error("Error parsing response as JSON:", parseErr);
-        throw new Error(`Invalid response format: ${responseText.substring(0, 100)}...`);
+        // Only show a limited portion of the response to avoid huge error messages
+        throw new Error(`Invalid JSON response: ${responseText.substring(0, 50)}...`);
       }
       
       if (!response.ok) {
