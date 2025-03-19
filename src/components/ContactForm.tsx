@@ -29,6 +29,7 @@ export function ContactForm({
   const [description, setDescription] = useState(contact?.description || '');
   const [phone, setPhone] = useState(contact?.phone || '');
   const [website, setWebsite] = useState(contact?.website || '');
+  const [mapUrl, setMapUrl] = useState(contact?.mapUrl || '');
   const [logoUrl, setLogoUrl] = useState(contact?.logoUrl || '');
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -124,6 +125,7 @@ export function ContactForm({
       description: description.trim(),
       phone: phone.trim(),
       website: website.trim() || undefined,
+      mapUrl: mapUrl.trim() || undefined,
       logoUrl: logoRemoved ? undefined : (logoUrl || undefined),
     };
 
@@ -234,6 +236,16 @@ export function ContactForm({
               id="website"
               value={website}
               onChange={(e) => setWebsite(e.target.value)}
+            />
+          </div>
+          
+          <div>
+            <Label htmlFor="mapUrl">Map URL (optional)</Label>
+            <Input
+              id="mapUrl"
+              value={mapUrl}
+              onChange={(e) => setMapUrl(e.target.value)}
+              placeholder="https://maps.google.com/..."
             />
           </div>
 

@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Contact } from '@/types/contact';
-import { Edit, Globe, Phone } from 'lucide-react';
+import { Edit, Globe, Phone, Map } from 'lucide-react';
 import { AvatarFallback } from './ui/avatar-fallback';
 import { useIsMobile } from '@/hooks/use-mobile';
 
@@ -55,6 +55,19 @@ export function ContactItem({ contact, onEdit }: ContactItemProps) {
               onClick={(e) => e.stopPropagation()}
             >
               <Globe className="w-5 h-5" />
+            </a>
+          )}
+          
+          {contact.mapUrl && (
+            <a 
+              href={contact.mapUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-2 text-amber-600 rounded-full hover:bg-amber-50 transition-colors mr-1" 
+              aria-label="View on map"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Map className="w-5 h-5" />
             </a>
           )}
           
@@ -130,6 +143,18 @@ export function ContactItem({ contact, onEdit }: ContactItemProps) {
             className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors ml-1"
           >
             <Globe className="w-4 h-4" />
+          </a>
+        )}
+        
+        {contact.mapUrl && (
+          <a 
+            href={contact.mapUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-1.5 text-gray-500 hover:text-amber-600 hover:bg-amber-50 rounded-full transition-colors ml-1"
+            aria-label="View on map"
+          >
+            <Map className="w-4 h-4" />
           </a>
         )}
       </div>

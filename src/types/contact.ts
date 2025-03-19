@@ -17,4 +17,5 @@ export interface Contact {
   logoUrl?: string; // URL to the logo image in Airtable or Cloudinary
   avatarUrl?: string; // URL for the avatar (fallback or alternative to logo)
   website?: string;
+  mapUrl?: string; // URL to the map location
 }

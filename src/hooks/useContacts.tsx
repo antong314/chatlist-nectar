@@ -114,6 +114,7 @@ export const useContacts = () => {
               category: fields.Category?.[0] || 'General',
               phone: fields['Phone Number'] || '',
               website: fields['Website URL'] || '',
+              mapUrl: fields['Map URL'] || '',
               logoUrl: fields.Logo?.[0]?.thumbnails?.large?.url || fields.Logo?.[0]?.url || fields.LogoUrl || fields.CloudinaryUrl || '',
               avatarUrl: fields.Logo?.[0]?.thumbnails?.large?.url || fields.Logo?.[0]?.url || fields.LogoUrl || fields.CloudinaryUrl || '',
             };
@@ -172,6 +173,7 @@ export const useContacts = () => {
       multipartFormData.append('Subtitle', newContact.description.trim());
       multipartFormData.append('Phone Number', newContact.phone.trim());
       multipartFormData.append('Website URL', newContact.website?.trim() || '');
+      multipartFormData.append('Map URL', newContact.mapUrl?.trim() || '');
       
       // Append logo action and file if needed
       multipartFormData.append('logo_action', logoAction);
@@ -294,6 +296,7 @@ export const useContacts = () => {
       multipartFormData.append('Subtitle', updatedContact.description.trim());
       multipartFormData.append('Phone Number', updatedContact.phone.trim());
       multipartFormData.append('Website URL', updatedContact.website?.trim() || '');
+      multipartFormData.append('Map URL', updatedContact.mapUrl?.trim() || '');
       
       // Always include record_id for updates and ensure it's correctly set
       if (!updatedContact.id) {
