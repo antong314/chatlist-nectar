@@ -17,6 +17,7 @@ const CATEGORIES = [
   'Food Ordering',
   'Groceries',
   'Jobs',
+  'Mechanic',
   'Mind Body & Spirit',
   'Nature',
   'Real Estate',

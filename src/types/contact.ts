@@ -5,6 +5,7 @@ export type Category =
   | 'Food Ordering'
   | 'Groceries'
   | 'Jobs'
+  | 'Mechanic'
   | 'Mind Body & Spirit'
   | 'Nature'
   | 'Real Estate'
