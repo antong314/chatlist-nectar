@@ -10,7 +10,8 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // All available categories
-const CATEGORIES: Category[] = [
+// Type assertion to ensure 'All' is recognized as part of the Category type
+const CATEGORIES = [
   'All',
   'Car',
   'Food Ordering',
@@ -23,12 +24,12 @@ const CATEGORIES: Category[] = [
   'Service',
   'Social Network',
   'Taxi'
-];
+] as Category[];
 
 const Index = () => {
   const {
     contacts,
-    isLoading,
+    loading,
     error,
     searchQuery,
     setSearchQuery,
@@ -87,6 +88,21 @@ const Index = () => {
     return () => window.removeEventListener('keydown', handleEscape);
   }, []);
 
+  // Update page title based on search/filter state
+  useEffect(() => {
+    let title = 'MV Directory';
+    
+    if (searchQuery && selectedCategory !== 'All') {
+      title = `${searchQuery} in ${selectedCategory} - MV Directory`;
+    } else if (searchQuery) {
+      title = `${searchQuery} - MV Directory`;
+    } else if (selectedCategory !== 'All') {
+      title = `${selectedCategory} - MV Directory`;
+    }
+    
+    document.title = title;
+  }, [searchQuery, selectedCategory]);
+
   return (
     <div className="min-h-screen bg-gray-50 pb-10">
       <div className="directory-container py-6">
@@ -123,7 +139,7 @@ const Index = () => {
           <ContactsList
             contacts={contacts}
             onEditContact={handleEditContact}
-            isLoading={isLoading}
+            isLoading={loading}
           />
         </motion.div>
 

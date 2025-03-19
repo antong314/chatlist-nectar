@@ -1,7 +1,8 @@
 // Custom hook to manage contacts
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
-import { Contact } from '@/types/contact';
+import { Contact, Category } from '@/types/contact';
+import { useSearchParams } from 'react-router-dom';
 
 // Server API URL - dynamically determined based on environment
 const API_URL = import.meta.env.DEV 
@@ -18,9 +19,41 @@ export const useContacts = () => {
   const [error, setError] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
   
+  // Use URL search params for search and filtering
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  // Get initial values from URL or use defaults
+  const initialSearch = searchParams.get('q') || '';
+  const initialCategory = searchParams.get('category') || 'All';
+  
   // State for search and filtering
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [searchQuery, setSearchQueryState] = useState<string>(initialSearch);
+  const [selectedCategory, setSelectedCategoryState] = useState<Category>(initialCategory as Category);
+  
+  // Custom setters that update both state and URL params
+  const setSearchQuery = useCallback((query: string) => {
+    setSearchQueryState(query);
+    setSearchParams(params => {
+      if (query) {
+        params.set('q', query);
+      } else {
+        params.delete('q');
+      }
+      return params;
+    }, { replace: true });
+  }, [setSearchParams]);
+  
+  const setSelectedCategory = useCallback((category: Category) => {
+    setSelectedCategoryState(category);
+    setSearchParams(params => {
+      if (category && category !== 'All') {
+        params.set('category', category);
+      } else {
+        params.delete('category');
+      }
+      return params;
+    }, { replace: true });
+  }, [setSearchParams]);
 
   // Function to sort contacts alphabetically
   const sortContactsAlphabetically = (contactsToSort: Contact[]): Contact[] => {
