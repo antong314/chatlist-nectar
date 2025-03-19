@@ -84,7 +84,12 @@ export function ContactDetail({ contact, onEdit, onClose }: ContactDetailProps) 
           <div className="border-b pb-2 flex justify-between items-center">
             <div>
               <h4 className="text-sm font-medium text-gray-500 mb-1">Phone Number</h4>
-              <p className="text-gray-900">{contact.phone}</p>
+              <button 
+                onClick={() => openWhatsApp(contact.phone)}
+                className="text-gray-900 hover:text-green-600 transition-colors flex items-center"
+              >
+                {contact.phone}
+              </button>
             </div>
             <button
               onClick={() => openWhatsApp(contact.phone)}
