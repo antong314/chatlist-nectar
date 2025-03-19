@@ -6,7 +6,17 @@ import { Contact, Category } from '../types/contact';
 // This is an integration test that makes real API calls
 // It tests the actual API functionality rather than mocking
 
-// API URL used in the useContacts hook
+// Mock import.meta for testing
+jest.mock('../hooks/useContacts', () => {
+  const originalModule = jest.requireActual('../hooks/useContacts');
+  return {
+    ...originalModule,
+    // Mock any environment specific values
+    API_URL: 'https://machu-server-app-2tn7n.ondigitalocean.app'
+  };
+});
+
+// API URL used for testing
 const API_URL = 'https://machu-server-app-2tn7n.ondigitalocean.app';
 
 // Helper to create a test contact

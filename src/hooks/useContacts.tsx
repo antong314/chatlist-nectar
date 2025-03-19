@@ -3,8 +3,10 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 import { Contact } from '@/types/contact';
 
-// Server API URL
-const API_URL = 'https://machu-server-app-2tn7n.ondigitalocean.app';
+// Server API URL - dynamically determined based on environment
+const API_URL = import.meta.env.DEV 
+  ? 'http://127.0.0.1:5000' 
+  : 'https://machu-server-app-2tn7n.ondigitalocean.app';
 
 /**
  * Custom hook for managing contacts
