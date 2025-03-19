@@ -54,7 +54,7 @@ export function useContacts() {
           console.log("API data type:", typeof data);
           
           // Check if data is a string that might be another JSON
-          if (typeof data === 'string' && data.trim().startsWith('{') || data.trim().startsWith('[')) {
+          if (typeof data === 'string' && (data.trim().startsWith('{') || data.trim().startsWith('['))) {
             console.log("Data appears to be string-encoded JSON. Trying to parse again...");
             try {
               data = JSON.parse(data);
@@ -228,9 +228,12 @@ export function useContacts() {
           };
         });
         
-        console.log("Mapped contacts:", mappedContacts);
-        setContacts(mappedContacts);
-        setFilteredContacts(mappedContacts);
+        // Sort contacts alphabetically by name
+        const sortedContacts = sortContactsAlphabetically(mappedContacts);
+        
+        console.log("Mapped and sorted contacts:", sortedContacts);
+        setContacts(sortedContacts);
+        setFilteredContacts(sortedContacts);
         setIsLoading(false);
         
       } catch (err) {
@@ -286,8 +289,11 @@ export function useContacts() {
         }
       ];
       
-      setContacts(mockContacts);
-      setFilteredContacts(mockContacts);
+      // Sort mock contacts alphabetically by name
+      const sortedMockContacts = sortContactsAlphabetically(mockContacts);
+      
+      setContacts(sortedMockContacts);
+      setFilteredContacts(sortedMockContacts);
       setError(errorMsg);
       setIsLoading(false);
       toast.error("Couldn't connect to server, showing sample data instead");
@@ -295,6 +301,13 @@ export function useContacts() {
 
     fetchContacts();
   }, []);
+
+  // Helper function to sort contacts alphabetically by name
+  const sortContactsAlphabetically = (contacts: Contact[]): Contact[] => {
+    return [...contacts].sort((a, b) => {
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+    });
+  };
 
   // Helper function to map API categories to our Category type
   const mapCategoryFromAPI = (apiCategory: string): Category => {
@@ -356,73 +369,201 @@ export function useContacts() {
       );
     }
 
-    setFilteredContacts(results);
+    // Sort the filtered results alphabetically by name
+    const sortedResults = sortContactsAlphabetically(results);
+
+    setFilteredContacts(sortedResults);
   }, [contacts, searchQuery, selectedCategory]);
 
   // Add a new contact
   const addContact = useCallback(async (newContact: Omit<Contact, "id">) => {
+    console.log("Attempting to add new contact:", newContact);
     try {
-      // In a real app, this would be an API call
-      // const response = await fetch('/api/contacts', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(newContact)
-      // });
-      // const data = await response.json();
-      
-      // Generate a temporary ID
-      const tempContact: Contact = {
-        ...newContact,
-        id: `temp-${Date.now()}`
+      // Prepare data for Airtable format - fields property is required
+      // This format matches what the machu-server expects
+      const airtableData = {
+        fields: {
+          "Title": newContact.name.trim(),
+          "Category": [newContact.category], // Category must be in an array for Airtable Multiple Select field
+          "Subtitle": newContact.description.trim(),
+          "Phone Number": newContact.phone.trim(),
+          "Website URL": newContact.website?.trim() || null,
+          // For Formatted Link, follow the exact format the backend expects
+          "Formatted Link": newContact.website ? `[Website](${newContact.website})` : ''
+        }
       };
       
-      setContacts(prev => [...prev, tempContact]);
+      console.log("Sending to API:", JSON.stringify(airtableData));
+      
+      // Make the API call to add the contact to the server - use /add_directory_entry endpoint
+      // The server expects data in a specific format
+      const response = await fetch(`${API_URL}/add_directory_entry`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(airtableData)
+      });
+      
+      console.log("API response status:", response.status);
+      console.log("API response headers:", Object.fromEntries([...response.headers.entries()]));
+      
+      // Get the raw response text for debugging
+      const responseText = await response.text();
+      console.log("Raw API response:", responseText);
+      
+      let data;
+      try {
+        // Try to parse the response as JSON
+        data = JSON.parse(responseText);
+      } catch (parseErr) {
+        console.error("Error parsing response as JSON:", parseErr);
+        throw new Error(`Invalid response format: ${responseText.substring(0, 100)}...`);
+      }
+      
+      if (!response.ok) {
+        console.error("API error response:", data);
+        throw new Error(`API error (${response.status}): ${data.error || 'Unknown error'}`);
+      }
+      
+      console.log("API response data:", data);
+      
+      // If we got a successful response with an ID, use it, otherwise generate temp ID
+      const newId = data?.id || `temp-${Date.now()}`;
+      
+      const tempContact: Contact = {
+        ...newContact,
+        id: newId
+      };
+      
+      // Add new contact and maintain alphabetical sorting
+      setContacts(prev => {
+        const updatedContacts = [...prev, tempContact];
+        return sortContactsAlphabetically(updatedContacts);
+      });
+      
       toast.success("Contact added successfully");
       return true;
     } catch (err) {
-      toast.error("Failed to add contact");
+      console.error("Error adding contact:", err);
+      toast.error(err instanceof Error ? `Failed to add contact: ${err.message}` : "Failed to add contact");
       return false;
     }
   }, []);
 
   // Update an existing contact
   const updateContact = useCallback(async (updatedContact: Contact) => {
+    console.log("Attempting to update contact:", updatedContact);
     try {
-      // In a real app, this would be an API call
-      // const response = await fetch(`/api/contacts/${updatedContact.id}`, {
-      //   method: 'PUT',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(updatedContact)
-      // });
-      // const data = await response.json();
+      // Prepare data for Airtable format - fields property is required
+      // This format matches what the machu-server expects
+      const airtableData = {
+        fields: {
+          "Title": updatedContact.name.trim(),
+          "Category": [updatedContact.category], // Category must be in an array for Airtable Multiple Select field
+          "Subtitle": updatedContact.description.trim(),
+          "Phone Number": updatedContact.phone.trim(),
+          "Website URL": updatedContact.website?.trim() || null,
+          // For Formatted Link, follow the exact format the backend expects
+          "Formatted Link": updatedContact.website ? `[Website](${updatedContact.website})` : ''
+        },
+        record_id: updatedContact.id // Include the record ID for updates
+      };
       
-      setContacts(prev => 
-        prev.map(contact => 
+      console.log("Sending to API:", JSON.stringify(airtableData));
+      
+      // Make the API call to update the contact on the server
+      const response = await fetch(`${API_URL}/update_directory_entry`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(airtableData)
+      });
+      
+      console.log("API response status:", response.status);
+      console.log("API response headers:", Object.fromEntries([...response.headers.entries()]));
+      
+      // Get the raw response text for debugging
+      const responseText = await response.text();
+      console.log("Raw API response:", responseText);
+      
+      let data;
+      try {
+        // Try to parse the response as JSON
+        data = JSON.parse(responseText);
+      } catch (parseErr) {
+        console.error("Error parsing response as JSON:", parseErr);
+        throw new Error(`Invalid response format: ${responseText.substring(0, 100)}...`);
+      }
+      
+      if (!response.ok) {
+        console.error("API error response:", data);
+        throw new Error(`API error (${response.status}): ${data.error || 'Unknown error'}`);
+      }
+      
+      console.log("API response data:", data);
+      
+      // Update the contacts state with the updated contact
+      setContacts(prev => {
+        // Update the contact
+        const updatedContacts = prev.map(contact => 
           contact.id === updatedContact.id ? updatedContact : contact
-        )
-      );
+        );
+        
+        // Maintain alphabetical sorting
+        return sortContactsAlphabetically(updatedContacts);
+      });
       
       toast.success("Contact updated successfully");
       return true;
     } catch (err) {
-      toast.error("Failed to update contact");
+      console.error("Error updating contact:", err);
+      toast.error(err instanceof Error ? `Failed to update contact: ${err.message}` : "Failed to update contact");
       return false;
     }
   }, []);
 
   // Delete a contact
   const deleteContact = useCallback(async (id: string) => {
+    console.log("Attempting to delete contact with ID:", id);
     try {
-      // In a real app, this would be an API call
-      // await fetch(`/api/contacts/${id}`, {
-      //   method: 'DELETE'
-      // });
+      // Make the API call to delete the contact on the server
+      const response = await fetch(`${API_URL}/delete_directory_entry`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          record_id: id
+        })
+      });
       
+      console.log("API response status:", response.status);
+      console.log("API response headers:", Object.fromEntries([...response.headers.entries()]));
+      
+      // Get the raw response text for debugging
+      const responseText = await response.text();
+      console.log("Raw API response:", responseText);
+      
+      let data;
+      try {
+        // Try to parse the response as JSON
+        data = JSON.parse(responseText);
+      } catch (parseErr) {
+        console.error("Error parsing response as JSON:", parseErr);
+        throw new Error(`Invalid response format: ${responseText.substring(0, 100)}...`);
+      }
+      
+      if (!response.ok) {
+        console.error("API error response:", data);
+        throw new Error(`API error (${response.status}): ${data.error || 'Unknown error'}`);
+      }
+      
+      console.log("API response data:", data);
+      
+      // If we've got this far, the delete was successful
+      // Remove the contact from state
       setContacts(prev => prev.filter(contact => contact.id !== id));
       toast.success("Contact deleted successfully");
       return true;
     } catch (err) {
-      toast.error("Failed to delete contact");
+      console.error("Error deleting contact:", err);
+      toast.error(err instanceof Error ? `Failed to delete contact: ${err.message}` : "Failed to delete contact");
       return false;
     }
   }, []);
