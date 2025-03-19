@@ -1,5 +1,6 @@
 // Debug file to test contact updates
 import { Contact } from '@/types/contact';
+import { logFormData, logApiResponse } from '@/utils/debug-logger';
 
 /**
  * Helper function to send a contact update to the server
@@ -11,7 +12,8 @@ export const sendContactUpdate = async (contact: Contact, apiUrl: string) => {
       return { success: false, error: 'Record ID is required for updates' };
     }
     
-    console.log('Updating contact with ID:', contact.id);
+    console.log('Updating contact:', contact);
+    console.log('Contact ID type:', typeof contact.id);
     
     // Create FormData
     const formData = new FormData();
@@ -24,12 +26,19 @@ export const sendContactUpdate = async (contact: Contact, apiUrl: string) => {
     formData.append('Website URL', contact.website || '');
     formData.append('record_id', contact.id);
     
-    // Log what we're sending
+    // Log what we're sending with enhanced logger
     console.log('Updating contact at:', `${apiUrl}/update_directory_entry`);
-    console.log('Form data contents:');
-    for (const pair of formData.entries()) {
-      console.log(`${pair[0]}: ${pair[1]}`);
-    }
+    logFormData(formData, 'Update Contact FormData');
+    
+    // Also log as a plain JSON object for comparison
+    console.log('Contact as JSON:', {
+      'Title': contact.name,
+      'Category': JSON.stringify([contact.category]),
+      'Subtitle': contact.description,
+      'Phone Number': contact.phone,
+      'Website URL': contact.website || '',
+      'record_id': contact.id
+    });
     
     // Send request
     const response = await fetch(`${apiUrl}/update_directory_entry`, {
@@ -37,10 +46,8 @@ export const sendContactUpdate = async (contact: Contact, apiUrl: string) => {
       body: formData
     });
     
-    console.log('Response status:', response.status, response.statusText);
-    
     const responseText = await response.text();
-    console.log('Response text:', responseText.substring(0, 200));
+    await logApiResponse(response, responseText, 'Update Contact Response');
     
     if (!responseText.trim()) {
       return { success: false, error: 'Empty response from server' };
