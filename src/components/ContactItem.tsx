@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Contact } from '@/types/contact';
 import { Edit, Globe, Phone, Map } from 'lucide-react';
 import { AvatarFallback } from './ui/avatar-fallback';
@@ -19,11 +19,22 @@ export function ContactItem({ contact, onEdit }: ContactItemProps) {
     window.open(`https://wa.me/${formattedNumber}`, '_blank');
   };
   
+  // Track highlight state for mobile view
+  const [isHighlighted, setIsHighlighted] = useState(false);
+  
+  // Function to toggle highlight
+  const toggleHighlight = () => {
+    setIsHighlighted(!isHighlighted);
+  };
+  
   // WhatsApp-like view for mobile
   if (isMobile) {
     return (
-      <div className="whatsapp-contact-item">
-        <div onClick={() => onEdit(contact)}>
+      <div 
+        className={`whatsapp-contact-item ${isHighlighted ? 'bg-blue-50' : ''}`}
+        onClick={toggleHighlight}
+      >
+        <div>
           <AvatarFallback 
             name={contact.name} 
             logoUrl={contact.logoUrl || contact.avatarUrl} 
@@ -31,7 +42,7 @@ export function ContactItem({ contact, onEdit }: ContactItemProps) {
           />
         </div>
         
-        <div className="flex-1 min-w-0" onClick={() => onEdit(contact)}>
+        <div className="flex-1 min-w-0">
           <div className="flex justify-between items-start">
             <h3 className="font-semibold text-gray-900 truncate">{contact.name}</h3>
             {contact.phone && (
@@ -45,6 +56,17 @@ export function ContactItem({ contact, onEdit }: ContactItemProps) {
         </div>
         
         <div className="flex items-center">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit(contact);
+            }}
+            className="p-2 text-gray-600 rounded-full hover:bg-gray-100 transition-colors mr-1"
+            aria-label="Edit contact"
+          >
+            <Edit className="w-5 h-5" />
+          </button>
+
           {contact.website && (
             <a 
               href={contact.website}
