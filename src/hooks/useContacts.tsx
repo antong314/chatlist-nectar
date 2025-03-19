@@ -1,358 +1,117 @@
-import { useState, useEffect, useCallback } from "react";
-import { Contact, Category } from "../types/contact";
-import { toast } from "sonner";
-import { API_URL } from "../config/env";
+// Custom hook to manage contacts
+import { useState, useCallback, useEffect, useMemo } from 'react';
+import { toast } from 'sonner';
+import { Contact } from '@/types/contact';
 
-export function useContacts() {
+// Server API URL
+const API_URL = 'https://machu-server-app-2tn7n.ondigitalocean.app';
+
+/**
+ * Custom hook for managing contacts
+ */
+export const useContacts = () => {
+  // State to store contacts
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<Category>("All");
-  const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
+  
+  // State for search and filtering
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
 
-  // Fetch contacts from API
+  // Function to sort contacts alphabetically
+  const sortContactsAlphabetically = (contactsToSort: Contact[]): Contact[] => {
+    return [...contactsToSort].sort((a, b) => a.name.localeCompare(b.name));
+  };
+
+  // Fetch contacts from the server
   useEffect(() => {
     const fetchContacts = async () => {
       try {
-        setIsLoading(true);
+        setLoading(true);
+        setError(null);
+
+        // Fetch contacts from the API - use /get_directory_data endpoint
+        const response = await fetch(`${API_URL}/get_directory_data`);
         
-        // Add a timestamp to bypass cache issues
-        const timestamp = new Date().getTime();
-        const apiUrl = `${API_URL}/get_directory_data?_t=${timestamp}`;
-        
-        // Try using fetch with proper CORS headers
-        const response = await fetch(apiUrl, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'Cache-Control': 'no-cache'
-          },
-          // Credentials can be included when both services are on the same domain or CORS is properly configured
-          // credentials: 'include'
-        });
-        
-        // Check response status
-        if (!response.ok) {
-          console.error("API returned error status:", response.status);
-          throw new Error(`API returned status ${response.status}`);
-        }
-        
+        // Get the raw response text
         const responseText = await response.text();
         
-        let data;
+        // Check if the response is HTML instead of JSON
+        if (responseText.trim().startsWith('<!DOCTYPE') || responseText.trim().startsWith('<html')) {
+          console.error("Received HTML response instead of JSON");
+          
+          // Extract a more useful error message if possible
+          const titleMatch = responseText.match(/<title>(.*?)<\/title>/i);
+          const errorMessage = titleMatch ? titleMatch[1] : 'Server returned HTML instead of JSON';
+          
+          throw new Error(`API Error: ${errorMessage}`);
+        }
+        
         try {
-          data = JSON.parse(responseText);
-          // Check if data is a string that might be another JSON
-          if (typeof data === 'string' && (data.trim().startsWith('{') || data.trim().startsWith('['))) {
-            try {
-              data = JSON.parse(data);
-            } catch (nestedErr) {
-              console.warn("Failed to parse string as nested JSON. Continuing with string value.");
-            }
+          // Parse the response text as JSON
+          const data = JSON.parse(responseText);
+          
+          // Log the structure for debugging
+          console.log('API Response Structure:', JSON.stringify(data, null, 2).substring(0, 500));
+          if (data.records && data.records.length > 0) {
+            console.log('First record sample:', JSON.stringify(data.records[0], null, 2));
           }
           
-          // If data is an object with a 'records' property that's an array, use that
-          if (!Array.isArray(data) && typeof data === 'object' && data !== null) {
-            const commonArrayProps = ['records', 'data', 'items', 'results', 'values'];
+          // Check if the data contains a records array (Airtable format)
+          const recordsArray = data.records || data;
+          
+          // Map the data to our Contact type
+          const fetchedContacts: Contact[] = recordsArray.map((contactData: any) => {
+            // Check if this is Airtable format with nested fields
+            const fields = contactData.fields || contactData;
             
-            for (const prop of commonArrayProps) {
-              if (data[prop] && Array.isArray(data[prop])) {
-                if (data[prop].length > 0) {
-                  data = data[prop];
-                  break;
-                }
-              }
-            }
-          }
-        } catch (err) {
-          console.error("Error parsing JSON:", err);
-          throw new Error(`Failed to parse API response as JSON: ${err.message}`);
-        }
-        
-        // If data is empty or not an array, handle gracefully
-        if (!data) {
-          console.warn("API returned null or undefined data");
-          fallbackToMockData("API returned null or undefined data");
-          return;
-        }
-        
-        if (!Array.isArray(data)) {
-          console.warn("API returned non-array data:", typeof data);
-          console.warn("Data sample:", JSON.stringify(data).substring(0, 300));
-          
-          // First, specifically check for Airtable's 'records' property
-          if (data && typeof data === 'object' && 'records' in data && Array.isArray(data.records)) {
-            data = data.records;
-          } else {
-            // If no 'records' property, check for any array property
-            const possibleArrayKeys = Object.keys(data).filter(key => Array.isArray(data[key]));
-            if (possibleArrayKeys.length > 0) {
-              // Try using the first array property
-              data = data[possibleArrayKeys[0]];
-              
-              if (data.length === 0) {
-                console.warn("Found array property but it's empty");
-                fallbackToMockData("API returned empty array data");
-                return;
-              }
+            // Debug first record only to keep console clean
+            if (recordsArray.indexOf(contactData) === 0) {
+              console.log('Sample record fields:', fields);
             }
             
-            if (!Array.isArray(data)) {
-              fallbackToMockData("API returned non-array data");
-              return;
-            }
-          }
+            return {
+              id: contactData.id || contactData._id,
+              name: fields.Title || '',
+              description: fields.Subtitle || '',
+              category: fields.Category?.[0] || 'General',
+              phone: fields['Phone Number'] || '',
+              website: fields['Website URL'] || '',
+              logoUrl: fields.Logo?.[0]?.thumbnails?.large?.url || fields.Logo?.[0]?.url || fields.LogoUrl || fields.CloudinaryUrl || '',
+              avatarUrl: fields.Logo?.[0]?.thumbnails?.large?.url || fields.Logo?.[0]?.url || fields.LogoUrl || fields.CloudinaryUrl || '',
+            };
+          });
+
+          // Sort contacts alphabetically and update state
+          setContacts(sortContactsAlphabetically(fetchedContacts));
+        } catch (parseError) {
+          console.error("Error parsing JSON response:", parseError);
+          // Show a snippet of the invalid JSON response (limit to prevent huge logs)
+          console.error("Response text (first 50 chars):", responseText.substring(0, 50));
+          throw new Error(`Invalid JSON response: ${parseError.message}`);
         }
-        
-        if (data.length === 0) {
-          console.warn("API returned empty array");
-          fallbackToMockData("API returned empty array");
-          return;
-        }
-        
-        // Map API data to our Contact type
-        const mappedContacts: Contact[] = data.map((item: any, index: number) => {
-          
-          // Ensure we have the fields property (Airtable format)
-          if (!item.fields) {
-            console.warn(`Item ${index} missing 'fields' property, available keys:`, Object.keys(item));
-            console.warn(`Item ${index} content sample:`, JSON.stringify(item).substring(0, 300));
-          }
-          
-          // Extract fields from Airtable structure
-          const fields = item.fields || {};
-          
-          // Get website URL - first try direct field, then fallback to Formatted Link
-          let website = '';
-          if (fields['Website URL']) {
-            website = fields['Website URL'];
-            // Add https:// if not present
-            if (!website.startsWith('http')) {
-              website = 'https://' + website;
-            }
-          } else if (fields['Open URL'] && fields['Open URL'].url) {
-            website = fields['Open URL'].url;
-            // Add https:// if not present
-            if (!website.startsWith('http')) {
-              website = 'https://' + website;
-            }
-          } else if (fields['Formatted Link']) {
-            const websiteMatch = fields['Formatted Link'].match(/\[Website\]\(([^)]+)\)/);
-            if (websiteMatch && websiteMatch[1]) {
-              website = websiteMatch[1];
-              // Add https:// if not present
-              if (!website.startsWith('http')) {
-                website = 'https://' + website;
-              }
-            }
-          }
-          
-          // Get phone number - first try direct field, then fallback to Formatted Link
-          let phone = '';
-          if (fields['Phone Number']) {
-            phone = fields['Phone Number'];
-            // Format if needed - add + if it's just digits
-            if (/^\d+$/.test(phone) && !phone.startsWith('+')) {
-              phone = '+' + phone;
-            }
-          } else if (fields['Formatted Link']) {
-            const phoneMatch = fields['Formatted Link'].match(/\[WhatsApp\]\(https:\/\/api\.whatsapp\.com\/send\/\?phone=(%2B\d+)\)/);
-            if (phoneMatch && phoneMatch[1]) {
-              // Decode the URL-encoded phone number
-              phone = decodeURIComponent(phoneMatch[1]);
-            }
-          }
-          
-          // Get logo URL if available
-          let avatarUrl = '';
-          if (fields.Logo && fields.Logo.length > 0 && fields.Logo[0].url) {
-            avatarUrl = fields.Logo[0].url;
-          }
-          
-          // Map category
-          const category = fields.Category && fields.Category.length > 0 ? 
-            mapCategoryFromAPI(fields.Category[0]) : 'Service';
-          
-          return {
-            id: item.id?.toString() || `temp-${Date.now()}-${Math.random()}`,
-            name: fields.Title || '', // Name is stored as Title in Airtable
-            category,
-            description: fields.Subtitle || '', // Description is stored as Subtitle in Airtable
-            phone,
-            website,
-            avatarUrl
-          };
-        });
-        
-        // Sort contacts alphabetically by name
-        const sortedContacts = sortContactsAlphabetically(mappedContacts);
-        
-        // Process contacts
-        setContacts(sortedContacts);
-        setFilteredContacts(sortedContacts);
-        setIsLoading(false);
-        
       } catch (err) {
-        console.error("Error fetching data:", err);
-        fallbackToMockData(err instanceof Error ? err.message : "Unknown error");
+        setError(err.message || 'Error fetching contacts');
+        console.error('Error fetching contacts:', err);
+      } finally {
+        setLoading(false);
       }
-    };
-    
-    const fallbackToMockData = (errorMsg: string) => {
-      console.error(`Falling back to mock data: ${errorMsg}`);
-      
-      // Mock data for fallback
-      const mockContacts: Contact[] = [
-        {
-          id: "1",
-          name: "Allan Sallas Airport",
-          category: "Car",
-          description: "Airport Service/Pickup and Drop off/Tours Guide/Expatriate Adviser/Large Shuttle",
-          phone: "50662932423",
-          website: "https://allansallasairport.com"
-        },
-        {
-          id: "2",
-          name: "Allan Taxi",
-          category: "Car",
-          description: "Trips to the airport 35,000 colones ir ($70), there is no additional cost if you need to make purchases 1 hour of free waiting. Alegria to San Mateo 5000. Alegria orotina 7000",
-          phone: "50661066073",
-          website: ""
-        },
-        {
-          id: "3",
-          name: "Andres Gomez",
-          category: "Service",
-          description: "Immigration Attorney based in Atenas.",
-          phone: "50670700909",
-          website: "https://andreslaw.cr"
-        },
-        {
-          id: "4",
-          name: "Coastal Properties",
-          category: "Real Estate",
-          description: "Real estate agency specializing in coastal properties",
-          phone: "50688991234",
-          website: "https://example.com/coastal"
-        },
-        {
-          id: "5",
-          name: "Tropical Fruits Market",
-          category: "Groceries",
-          description: "Fresh local and exotic fruits, home delivery available",
-          phone: "50677883456",
-          website: "https://tropicalfruitsmarket.com"
-        }
-      ];
-      
-      // Sort mock contacts alphabetically by name
-      const sortedMockContacts = sortContactsAlphabetically(mockContacts);
-      
-      setContacts(sortedMockContacts);
-      setFilteredContacts(sortedMockContacts);
-      setError(errorMsg);
-      setIsLoading(false);
-      toast.error("Couldn't connect to server, showing sample data instead");
     };
 
     fetchContacts();
+  }, [refreshTrigger]);
+
+  // Function to refresh contacts
+  const refreshContacts = useCallback(() => {
+    setRefreshTrigger(prev => prev + 1);
   }, []);
-
-  // Helper function to sort contacts alphabetically by name
-  const sortContactsAlphabetically = (contacts: Contact[]): Contact[] => {
-    return [...contacts].sort((a, b) => {
-      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
-    });
-  };
-
-  // Helper function to map API categories to our Category type
-  const mapCategoryFromAPI = (apiCategory: string): Category => {
-    // Check if the category is already in the correct format
-    if (apiCategory === "Mind Body & Spirit" || 
-        apiCategory === "Car" || 
-        apiCategory === "Food Ordering" || 
-        apiCategory === "Groceries" || 
-        apiCategory === "Jobs" || 
-        apiCategory === "Nature" || 
-        apiCategory === "Real Estate" || 
-        apiCategory === "Restaurant" || 
-        apiCategory === "Service" || 
-        apiCategory === "Social Network" || 
-        apiCategory === "Taxi") {
-      return apiCategory as Category;
-    }
-    
-    // Convert the API category to match our Category type
-    const categoryMap: Record<string, Category> = {
-      // Handle variations and lowercase versions
-      "car": "Car",
-      "food": "Food Ordering",
-      "food ordering": "Food Ordering",
-      "groceries": "Groceries",
-      "jobs": "Jobs",
-      "mind body & spirit": "Mind Body & Spirit",
-      "mind body and spirit": "Mind Body & Spirit",
-      "nature": "Nature",
-      "real estate": "Real Estate",
-      "restaurant": "Restaurant",
-      "service": "Service",
-      "social network": "Social Network",
-      "taxi": "Taxi",
-    };
-    
-    // Return the mapped category or default to "Service" if no match
-    return (categoryMap[apiCategory?.toLowerCase()] as Category) || "Service";
-  };
-
-  // Filter contacts based on search query and category
-  useEffect(() => {
-    let results = contacts;
-
-    // Filter by category
-    if (selectedCategory !== "All") {
-      results = results.filter(contact => contact.category === selectedCategory);
-    }
-
-    // Filter by search query
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      results = results.filter(
-        contact =>
-          contact.name.toLowerCase().includes(query) ||
-          contact.description.toLowerCase().includes(query) ||
-          contact.category.toLowerCase().includes(query) ||
-          contact.phone.toLowerCase().includes(query)
-      );
-    }
-
-    // Sort the filtered results alphabetically by name
-    const sortedResults = sortContactsAlphabetically(results);
-
-    setFilteredContacts(sortedResults);
-  }, [contacts, searchQuery, selectedCategory]);
 
   // Add a new contact
   const addContact = useCallback(async (newContact: Omit<Contact, "id">) => {
     // Attempt to add a new contact
     try {
-      // Prepare data for Airtable format - fields property is required
-      // This format matches what the machu-server expects
-      const fieldsData = {
-        fields: {
-          "Title": newContact.name.trim(),
-          "Category": [newContact.category], // Category must be in an array for Airtable Multiple Select field
-          "Subtitle": newContact.description.trim(),
-          "Phone Number": newContact.phone.trim(),
-          "Website URL": newContact.website?.trim() || null,
-          // For Formatted Link, follow the exact format the backend expects
-          "Formatted Link": newContact.website ? `[Website](${newContact.website})` : ''
-        }
-      };
-      
-      // Prepare data for API
-      
       // Check if we have any logo/image file upload from the form
       // We need to create a multipart FormData to handle file uploads
       const fileInput = document.getElementById('form-logo') as HTMLInputElement;
@@ -372,16 +131,18 @@ export function useContacts() {
       // Use multipart FormData for file uploads
       const multipartFormData = new FormData();
       
-      // Append fields data as JSON
-      multipartFormData.append('data', JSON.stringify(fieldsData));
+      // Add each field directly to FormData to match server expectations
+      multipartFormData.append('Title', newContact.name.trim());
+      multipartFormData.append('Category', JSON.stringify([newContact.category])); // Category as JSON array
+      multipartFormData.append('Subtitle', newContact.description.trim());
+      multipartFormData.append('Phone Number', newContact.phone.trim());
+      multipartFormData.append('Website URL', newContact.website?.trim() || '');
       
       // Append logo action and file if needed
       multipartFormData.append('logo_action', logoAction);
       if (logoFile) {
         multipartFormData.append('logo_file', logoFile);
       }
-      
-      // Prepare form data with logo if needed
       
       // Make the API call to add the contact to the server - use /add_directory_entry endpoint
       // The server expects multipart/form-data for logo uploads
@@ -407,30 +168,35 @@ export function useContacts() {
       
       let data;
       try {
-        // Try to parse the response as JSON
+        // Parse the response text as JSON
         data = JSON.parse(responseText);
-      } catch (parseErr) {
-        console.error("Error parsing response as JSON:", parseErr);
-        // Only show a limited portion of the response to avoid huge error messages
-        throw new Error(`Invalid JSON response: ${responseText.substring(0, 50)}...`);
+      } catch (parseError) {
+        console.error("Error parsing JSON response:", parseError);
+        // Show a snippet of the invalid JSON response (limit to prevent huge logs)
+        console.error("Response text (first 50 chars):", responseText.substring(0, 50));
+        throw new Error(`Invalid JSON response: ${parseError.message}`);
       }
       
-      if (!response.ok) {
-        console.error("API error response:", data);
-        throw new Error(`API error (${response.status}): ${data.error || 'Unknown error'}`);
+      if (!data.success) {
+        throw new Error(data.error || 'Error adding contact');
       }
       
       // Process API response data
       
-      // If we got a successful response with an ID, use it, otherwise generate temp ID
-      const newId = data?.id || `temp-${Date.now()}`;
+      // Get the new contact ID from the response
+      const id = data.id;
       
       // Get the logo URL from the response if available
-      const logoUrl = data.logoUrl || undefined;
-
+      const logoUrl = data.logoUrl || '';
+      
+      // Create a temporary contact with the new ID
       const tempContact: Contact = {
-        ...newContact,
-        id: newId,
+        id,
+        name: newContact.name,
+        description: newContact.description,
+        category: newContact.category,
+        phone: newContact.phone,
+        website: newContact.website || '',
         logoUrl: logoUrl
       };
       
@@ -443,8 +209,8 @@ export function useContacts() {
       toast.success("Contact added successfully");
       return true;
     } catch (err) {
-      console.error("Error adding contact:", err);
-      toast.error(err instanceof Error ? `Failed to add contact: ${err.message}` : "Failed to add contact");
+      console.error('Error adding contact:', err);
+      toast.error(`Error adding contact: ${err.message}`);
       return false;
     }
   }, []);
@@ -453,23 +219,6 @@ export function useContacts() {
   const updateContact = useCallback(async (updatedContact: Contact) => {
     // Attempt to update an existing contact
     try {
-      // Prepare data for Airtable format - fields property is required
-      // This format matches what the machu-server expects
-      const fieldsData = {
-        fields: {
-          "Title": updatedContact.name.trim(),
-          "Category": [updatedContact.category], // Category must be in an array for Airtable Multiple Select field
-          "Subtitle": updatedContact.description.trim(),
-          "Phone Number": updatedContact.phone.trim(),
-          "Website URL": updatedContact.website?.trim() || null,
-          // For Formatted Link, follow the exact format the backend expects
-          "Formatted Link": updatedContact.website ? `[Website](${updatedContact.website})` : ''
-        },
-        record_id: updatedContact.id // Include the record ID for updates
-      };
-      
-      // Prepare data for API
-      
       // Check if we have any logo/image file upload from the form
       const fileInput = document.getElementById('form-logo') as HTMLInputElement;
       const logoRemovedFlag = document.getElementById('logo-removed-flag') as HTMLInputElement;
@@ -488,16 +237,19 @@ export function useContacts() {
       // Use multipart FormData for file uploads
       const multipartFormData = new FormData();
       
-      // Append fields data as JSON
-      multipartFormData.append('data', JSON.stringify(fieldsData));
+      // Add each field directly to FormData to match server expectations
+      multipartFormData.append('Title', updatedContact.name.trim());
+      multipartFormData.append('Category', JSON.stringify([updatedContact.category])); // Category as JSON array
+      multipartFormData.append('Subtitle', updatedContact.description.trim());
+      multipartFormData.append('Phone Number', updatedContact.phone.trim());
+      multipartFormData.append('Website URL', updatedContact.website?.trim() || '');
+      multipartFormData.append('record_id', updatedContact.id); // Include record_id for updates
       
       // Append logo action and file if needed
       multipartFormData.append('logo_action', logoAction);
       if (logoFile) {
         multipartFormData.append('logo_file', logoFile);
       }
-      
-      // Prepare form data with logo if needed
       
       // Make the API call to update the contact on the server
       const response = await fetch(`${API_URL}/update_directory_entry`, {
@@ -522,17 +274,17 @@ export function useContacts() {
       
       let data;
       try {
-        // Try to parse the response as JSON
+        // Parse the response text as JSON
         data = JSON.parse(responseText);
-      } catch (parseErr) {
-        console.error("Error parsing response as JSON:", parseErr);
-        // Only show a limited portion of the response to avoid huge error messages
-        throw new Error(`Invalid JSON response: ${responseText.substring(0, 50)}...`);
+      } catch (parseError) {
+        console.error("Error parsing JSON response:", parseError);
+        // Show a snippet of the invalid JSON response (limit to prevent huge logs)
+        console.error("Response text (first 50 chars):", responseText.substring(0, 50));
+        throw new Error(`Invalid JSON response: ${parseError.message}`);
       }
       
-      if (!response.ok) {
-        console.error("API error response:", data);
-        throw new Error(`API error (${response.status}): ${data.error || 'Unknown error'}`);
+      if (!data.success) {
+        throw new Error(data.error || 'Error updating contact');
       }
       
       // Process API response data
@@ -560,23 +312,24 @@ export function useContacts() {
       toast.success("Contact updated successfully");
       return true;
     } catch (err) {
-      console.error("Error updating contact:", err);
-      toast.error(err instanceof Error ? `Failed to update contact: ${err.message}` : "Failed to update contact");
+      console.error('Error updating contact:', err);
+      toast.error(`Error updating contact: ${err.message}`);
       return false;
     }
   }, []);
 
   // Delete a contact
-  const deleteContact = useCallback(async (id: string) => {
+  const deleteContact = useCallback(async (contactId: string) => {
     // Attempt to delete a contact
     try {
-      // Make the API call to delete the contact on the server
+      // Create form data with the record ID
+      const formData = new FormData();
+      formData.append('record_id', contactId); 
+      
+      // Make API call to delete the contact
       const response = await fetch(`${API_URL}/delete_directory_entry`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          record_id: id
-        })
+        body: formData
       });
       
       // Get the raw response text
@@ -595,43 +348,60 @@ export function useContacts() {
       
       let data;
       try {
-        // Try to parse the response as JSON
+        // Parse the response text as JSON
         data = JSON.parse(responseText);
-      } catch (parseErr) {
-        console.error("Error parsing response as JSON:", parseErr);
-        // Only show a limited portion of the response to avoid huge error messages
-        throw new Error(`Invalid JSON response: ${responseText.substring(0, 50)}...`);
+      } catch (parseError) {
+        console.error("Error parsing JSON response:", parseError);
+        // Show a snippet of the invalid JSON response (limit to prevent huge logs)
+        console.error("Response text (first 50 chars):", responseText.substring(0, 50));
+        throw new Error(`Invalid JSON response: ${parseError.message}`);
       }
       
-      if (!response.ok) {
-        console.error("API error response:", data);
-        throw new Error(`API error (${response.status}): ${data.error || 'Unknown error'}`);
+      if (!data.success) {
+        throw new Error(data.error || 'Error deleting contact');
       }
       
-      // Process API response data
+      // Remove the deleted contact from state
+      setContacts(prev => prev.filter(contact => contact.id !== contactId));
       
-      // If we've got this far, the delete was successful
-      // Remove the contact from state
-      setContacts(prev => prev.filter(contact => contact.id !== id));
       toast.success("Contact deleted successfully");
       return true;
     } catch (err) {
-      console.error("Error deleting contact:", err);
-      toast.error(err instanceof Error ? `Failed to delete contact: ${err.message}` : "Failed to delete contact");
+      console.error('Error deleting contact:', err);
+      toast.error(`Error deleting contact: ${err.message}`);
       return false;
     }
   }, []);
 
+  // Apply search query and category filters
+  const filteredContacts = useMemo(() => {
+    return contacts.filter(contact => {
+      // First filter by search query
+      const matchesSearch = searchQuery.trim() === '' || 
+        contact.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        contact.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (contact.category && contact.category.toLowerCase().includes(searchQuery.toLowerCase()));
+      
+      // Then filter by category
+      const matchesCategory = selectedCategory === 'All' || contact.category === selectedCategory;
+      
+      // Return true if matches both filters
+      return matchesSearch && matchesCategory;
+    });
+  }, [contacts, searchQuery, selectedCategory]);
+
+  // Return the hook state and functions
   return {
     contacts: filteredContacts,
-    isLoading,
+    loading,
     error,
     searchQuery,
     setSearchQuery,
     selectedCategory,
     setSelectedCategory,
+    refreshContacts,
     addContact,
     updateContact,
     deleteContact
   };
-}
+};

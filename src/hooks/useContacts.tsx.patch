@@ -1,0 +1,87 @@
+--- src/hooks/useContacts.tsx.orig
++++ src/hooks/useContacts.tsx
+@@ -338,17 +338,12 @@
+     // Attempt to add a new contact
+     try {
+       // Prepare data for Airtable format - fields property is required
+-      // This format matches what the machu-server expects
++      // Prepare data for machu-server format - must match expected API schema
+       const fieldsData = {
+-        fields: {
+-          "Title": newContact.name.trim(),
+-          "Category": [newContact.category], // Category must be in an array for Airtable Multiple Select field
+-          "Subtitle": newContact.description.trim(),
+-          "Phone Number": newContact.phone.trim(),
+-          "Website URL": newContact.website?.trim() || null,
+-          // For Formatted Link, follow the exact format the backend expects
+-          "Formatted Link": newContact.website ? `[Website](${newContact.website})` : ''
+-        }
++        "Title": newContact.name.trim(),
++        "Category": [newContact.category], // Category must be in an array 
++        "Subtitle": newContact.description.trim(),
++        "Phone Number": newContact.phone.trim(),
++        "Website URL": newContact.website?.trim() || ''
+       };
+       
+       // Prepare data for API
+@@ -370,8 +365,16 @@
+       const multipartFormData = new FormData();
+       
+       // Append fields data as JSON
+-      multipartFormData.append('data', JSON.stringify(fieldsData));
+-      
++      // Append each field directly to FormData
++      Object.entries(fieldsData).forEach(([key, value]) => {
++        if (Array.isArray(value)) {
++          // For array values like Category, use JSON.stringify
++          multipartFormData.append(key, JSON.stringify(value));
++        } else {
++          multipartFormData.append(key, value as string);
++        }
++      });
++
+       // Append logo action and file if needed
+       multipartFormData.append('logo_action', logoAction);
+       if (logoFile) {
+@@ -455,16 +458,12 @@
+     try {
+       // Prepare data for Airtable format - fields property is required
+       // This format matches what the machu-server expects
++      // Prepare data for machu-server format
+       const fieldsData = {
+-        fields: {
+-          "Title": updatedContact.name.trim(),
+-          "Category": [updatedContact.category], // Category must be in an array for Airtable Multiple Select field
+-          "Subtitle": updatedContact.description.trim(),
+-          "Phone Number": updatedContact.phone.trim(),
+-          "Website URL": updatedContact.website?.trim() || null,
+-          // For Formatted Link, follow the exact format the backend expects
+-          "Formatted Link": updatedContact.website ? `[Website](${updatedContact.website})` : ''
+-        },
++        "Title": updatedContact.name.trim(),
++        "Category": [updatedContact.category], // Category must be in an array
++        "Subtitle": updatedContact.description.trim(),
++        "Phone Number": updatedContact.phone.trim(),
++        "Website URL": updatedContact.website?.trim() || '',
+         "record_id": updatedContact.id // Include the record ID for updates
+       };
+       
+@@ -488,8 +487,16 @@
+       const multipartFormData = new FormData();
+       
+       // Append fields data as JSON
+-      multipartFormData.append('data', JSON.stringify(fieldsData));
+-      
++      // Append each field directly to FormData
++      Object.entries(fieldsData).forEach(([key, value]) => {
++        if (Array.isArray(value)) {
++          // For array values like Category, use JSON.stringify
++          multipartFormData.append(key, JSON.stringify(value));
++        } else {
++          multipartFormData.append(key, value as string);
++        }
++      });
++
+       // Append logo action and file if needed
+       multipartFormData.append('logo_action', logoAction);
+       if (logoFile) {
