@@ -306,31 +306,6 @@ export function ContactForm({
             )}
             
             <div className="space-x-2">
-              {contact?.id && (
-                <Button 
-                  onClick={() => {
-                    // Debug update
-                    import('../hooks/debug-contacts').then(({ sendContactUpdate }) => {
-                      const apiUrl = import.meta.env.DEV 
-                        ? 'http://192.168.68.58:5000' // Use network IP instead of localhost to avoid CORS
-                        : 'https://machu-server-app-2tn7n.ondigitalocean.app';
-                      sendContactUpdate(contact, apiUrl).then(result => {
-                        console.log('Debug update result:', result);
-                        if (result.success) {
-                          alert('Debug update successful!');
-                        } else {
-                          alert(`Debug update failed: ${result.error}`);
-                        }
-                      });
-                    });
-                  }} 
-                  variant="secondary" 
-                  type="button"
-                  className="mr-2"
-                >
-                  Debug Update
-                </Button>
-              )}
               <Button
                 type="button"
                 variant="outline"
