@@ -4,6 +4,7 @@ import { ContactsHeader } from '@/components/ContactsHeader';
 import { CategoryFilter } from '@/components/CategoryFilter';
 import { ContactsList } from '@/components/ContactsList';
 import { ContactForm } from '@/components/ContactForm';
+import { ContactDetail } from '@/components/ContactDetail';
 import { useContacts } from '@/hooks/useContacts';
 import { Contact, Category } from '@/types/contact';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -27,6 +28,8 @@ const Index = () => {
   } = useContacts();
 
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [selectedContact, setSelectedContact] = useState<Contact | undefined>(undefined);
   const [editingContact, setEditingContact] = useState<Contact | undefined>(undefined);
   const isMobile = useIsMobile();
 
@@ -34,17 +37,40 @@ const Index = () => {
   const handleOpenForm = () => {
     setEditingContact(undefined);
     setIsFormOpen(true);
+    setIsDetailOpen(false);
   };
 
   const handleCloseForm = () => {
     setIsFormOpen(false);
     setEditingContact(undefined);
   };
+  
+  // Handle detail view open/close
+  const handleViewContact = (contact: Contact) => {
+    setSelectedContact(contact);
+    setIsDetailOpen(true);
+    setIsFormOpen(false);
+  };
 
-  // Handle contact edit
+  const handleCloseDetail = () => {
+    setIsDetailOpen(false);
+    setSelectedContact(undefined);
+  };
+
+  // Handle contact edit from detail view
+  const handleEditFromDetail = () => {
+    if (selectedContact) {
+      setEditingContact(selectedContact);
+      setIsFormOpen(true);
+      setIsDetailOpen(false);
+    }
+  };
+
+  // Handle contact edit (direct from list)
   const handleEditContact = (contact: Contact) => {
     setEditingContact(contact);
     setIsFormOpen(true);
+    setIsDetailOpen(false);
   };
 
   // Handle form submit
@@ -64,15 +90,18 @@ const Index = () => {
     if (success) handleCloseForm();
   };
 
-  // Close form on escape key
+  // Close form and detail view on escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') handleCloseForm();
+      if (e.key === 'Escape') {
+        if (isFormOpen) handleCloseForm();
+        if (isDetailOpen) handleCloseDetail();
+      }
     };
     
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, []);
+  }, [isFormOpen, isDetailOpen]);
 
   // Update page title based on search/filter state
   useEffect(() => {
@@ -125,6 +154,7 @@ const Index = () => {
           <ContactsList
             contacts={contacts}
             onEditContact={handleEditContact}
+            onViewContact={handleViewContact}
             isLoading={loading}
           />
         </motion.div>
@@ -137,6 +167,14 @@ const Index = () => {
               onSave={handleSaveContact}
               onCancel={handleCloseForm}
               onDelete={handleDeleteContact}
+            />
+          )}
+          
+          {isDetailOpen && selectedContact && (
+            <ContactDetail
+              contact={selectedContact}
+              onEdit={handleEditFromDetail}
+              onClose={handleCloseDetail}
             />
           )}
         </AnimatePresence>

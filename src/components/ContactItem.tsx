@@ -8,9 +8,10 @@ import { useIsMobile } from '@/hooks/use-mobile';
 interface ContactItemProps {
   contact: Contact;
   onEdit: (contact: Contact) => void;
+  onView: (contact: Contact) => void;
 }
 
-export function ContactItem({ contact, onEdit }: ContactItemProps) {
+export function ContactItem({ contact, onEdit, onView }: ContactItemProps) {
   const isMobile = useIsMobile();
   
   const openWhatsApp = (phoneNumber: string) => {
@@ -32,7 +33,10 @@ export function ContactItem({ contact, onEdit }: ContactItemProps) {
     return (
       <div 
         className={`whatsapp-contact-item ${isHighlighted ? 'bg-blue-50' : ''}`}
-        onClick={toggleHighlight}
+        onClick={(e) => {
+          toggleHighlight();
+          onView(contact);
+        }}
       >
         <div>
           <AvatarFallback 
@@ -114,7 +118,7 @@ export function ContactItem({ contact, onEdit }: ContactItemProps) {
   
   // Desktop table view
   return (
-    <div className="contact-row grid grid-cols-12 items-center py-4">
+    <div className="contact-row grid grid-cols-12 items-center py-4 hover:bg-gray-50 cursor-pointer" onClick={() => onView(contact)}>
       <div className="col-span-3 pl-4 flex items-center gap-3">
         <AvatarFallback 
           name={contact.name} 
@@ -137,7 +141,10 @@ export function ContactItem({ contact, onEdit }: ContactItemProps) {
       <div className="col-span-2 text-sm flex items-center text-gray-600">
         {contact.phone && (
           <button 
-            onClick={() => openWhatsApp(contact.phone)}
+            onClick={(e) => {
+              e.stopPropagation();
+              openWhatsApp(contact.phone);
+            }}
             className="flex items-center text-green-600 hover:text-green-700 transition-colors"
             aria-label="Chat on WhatsApp"
           >
@@ -151,7 +158,10 @@ export function ContactItem({ contact, onEdit }: ContactItemProps) {
       
       <div className="col-span-1 flex items-center justify-end pr-4">
         <button 
-          onClick={() => onEdit(contact)} 
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit(contact);
+          }} 
           className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
         >
           <Edit className="w-4 h-4" />
@@ -163,6 +173,7 @@ export function ContactItem({ contact, onEdit }: ContactItemProps) {
             target="_blank"
             rel="noopener noreferrer"
             className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors ml-1"
+            onClick={(e) => e.stopPropagation()}
           >
             <Globe className="w-4 h-4" />
           </a>
@@ -175,6 +186,7 @@ export function ContactItem({ contact, onEdit }: ContactItemProps) {
             rel="noopener noreferrer"
             className="p-1.5 text-gray-500 hover:text-amber-600 hover:bg-amber-50 rounded-full transition-colors ml-1"
             aria-label="View on map"
+            onClick={(e) => e.stopPropagation()}
           >
             <Map className="w-4 h-4" />
           </a>

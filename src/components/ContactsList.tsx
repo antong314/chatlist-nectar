@@ -7,12 +7,14 @@ import { useIsMobile } from '@/hooks/use-mobile';
 interface ContactsListProps {
   contacts: Contact[];
   onEditContact: (contact: Contact) => void;
+  onViewContact: (contact: Contact) => void;
   isLoading: boolean;
 }
 
 export function ContactsList({ 
   contacts, 
-  onEditContact, 
+  onEditContact,
+  onViewContact,
   isLoading 
 }: ContactsListProps) {
   const isMobile = useIsMobile();
@@ -72,6 +74,7 @@ export function ContactsList({
           key={contact.id}
           contact={contact}
           onEdit={onEditContact}
+          onView={onViewContact}
         />
       ))}
     </div>
