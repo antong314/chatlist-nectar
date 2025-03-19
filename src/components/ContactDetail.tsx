@@ -1,8 +1,9 @@
 import React from 'react';
 import { Contact } from '@/types/contact';
 import { Button } from '@/components/ui/button';
-import { Globe, Map, Phone, Edit } from 'lucide-react';
+import { Globe, Map, Phone, Edit, X } from 'lucide-react';
 import { AvatarFallback } from './ui/avatar-fallback';
+import { useEffect } from 'react';
 
 interface ContactDetailProps {
   contact: Contact;
@@ -18,19 +19,42 @@ export function ContactDetail({ contact, onEdit, onClose }: ContactDetailProps) 
     window.open(`https://wa.me/${formattedNumber}`, '_blank');
   };
 
+  // Handle Escape key press to close detail view
+  useEffect(() => {
+    const handleEscapeKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    
+    document.addEventListener('keydown', handleEscapeKey);
+    return () => document.removeEventListener('keydown', handleEscapeKey);
+  }, [onClose]);
+
+  // Click outside to close
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.classList.contains('detail-container')) {
+        onClose();
+      }
+    };
+    
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [onClose]);
+
   return (
-    <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full mx-auto">
+    <div className="detail-container fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-auto">
+      <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full mx-auto" onClick={(e) => e.stopPropagation()}>
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-xl font-bold text-gray-900">Contact Details</h2>
         <button
           onClick={onClose}
-          className="text-gray-500 hover:text-gray-700"
+          className="p-1 rounded-full hover:bg-gray-100 transition-colors"
           aria-label="Close"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
+          <X className="w-5 h-5 text-gray-500" />
         </button>
       </div>
 
@@ -134,5 +158,6 @@ export function ContactDetail({ contact, onEdit, onClose }: ContactDetailProps) 
         </Button>
       </div>
     </div>
+  </div>
   );
 }
