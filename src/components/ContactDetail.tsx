@@ -93,7 +93,7 @@ export function ContactDetail({ contact, onEdit, onClose }: ContactDetailProps) 
             </div>
             <button
               onClick={() => openWhatsApp(contact.phone)}
-              className="p-2 text-green-600 rounded-full hover:bg-green-50 transition-colors"
+              className="flex items-center justify-center p-2 text-white bg-green-500 rounded-full hover:bg-green-600 transition-colors"
               aria-label="Chat on WhatsApp"
             >
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
