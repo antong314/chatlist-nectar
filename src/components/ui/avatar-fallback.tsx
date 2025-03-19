@@ -1,10 +1,12 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { cn } from "@/lib/utils";
 
 interface AvatarFallbackProps {
   name: string;
+  logoUrl?: string;
   className?: string;
+  onImageError?: () => void;
 }
 
 const colors = [
@@ -20,7 +22,9 @@ const colors = [
   'bg-cyan-500'
 ];
 
-export function AvatarFallback({ name, className }: AvatarFallbackProps) {
+export function AvatarFallback({ name, logoUrl, className, onImageError }: AvatarFallbackProps) {
+  const [imageError, setImageError] = useState(false);
+  
   // Get initials from name
   const initials = name
     .split(' ')
@@ -36,6 +40,32 @@ export function AvatarFallback({ name, className }: AvatarFallbackProps) {
   
   const bgColor = colors[colorIndex];
 
+  const handleImageError = () => {
+    console.log('Image failed to load:', logoUrl);
+    setImageError(true);
+    if (onImageError) onImageError();
+  };
+
+  // If we have a logo URL and no error, show the image
+  if (logoUrl && !imageError) {
+    return (
+      <div 
+        className={cn(
+          "rounded-full overflow-hidden",
+          className
+        )}
+      >
+        <img 
+          src={logoUrl} 
+          alt={`${name} logo`}
+          onError={handleImageError}
+          className="w-full h-full object-cover"
+        />
+      </div>
+    );
+  }
+
+  // Otherwise show the fallback with initials
   return (
     <div 
       className={cn(

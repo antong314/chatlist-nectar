@@ -1,12 +1,13 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Contact, Category } from '@/types/contact';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { X } from 'lucide-react';
+import { X, Upload, Trash2 } from 'lucide-react';
+import { AvatarFallback } from './ui/avatar-fallback';
 
 interface ContactFormProps {
   contact?: Contact;
@@ -28,7 +29,12 @@ export function ContactForm({
   const [description, setDescription] = useState(contact?.description || '');
   const [phone, setPhone] = useState(contact?.phone || '');
   const [website, setWebsite] = useState(contact?.website || '');
+  const [logoUrl, setLogoUrl] = useState(contact?.logoUrl || '');
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(contact?.logoUrl || null);
+  const [logoRemoved, setLogoRemoved] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Filter out 'All' from categories for the dropdown
   const dropdownCategories = categories.filter(cat => cat !== 'All');
@@ -44,6 +50,42 @@ export function ContactForm({
     return Object.keys(newErrors).length === 0;
   };
 
+  // Handle file selection for logo
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Reset logo removed flag if user selects a new logo
+    if (logoRemoved) setLogoRemoved(false);
+
+    setLogoFile(file);
+    
+    // Create URL for preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setLogoPreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Trigger file input click
+  const triggerFileInput = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  // Remove logo
+  const removeLogo = () => {
+    setLogoFile(null);
+    setLogoPreview(null);
+    setLogoUrl('');
+    setLogoRemoved(true);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -55,13 +97,19 @@ export function ContactForm({
       description: description.trim(),
       phone: phone.trim(),
       website: website.trim() || undefined,
+      logoUrl: logoRemoved ? undefined : (logoUrl || undefined),
     };
+
+    // Store logo information for later handling by the API
+    // We'll handle this in the useContacts hook by accessing DOM elements
     
-    if (contact?.id) {
-      onSave({ ...contactData, id: contact.id });
-    } else {
-      onSave(contactData);
-    }
+    // Prepare the contact data to be saved
+    const finalContactData = contact?.id 
+      ? { ...contactData, id: contact.id }
+      : contactData;
+    
+    // Pass the data to the parent component
+    onSave(finalContactData);
   };
 
   const handleDelete = () => {
@@ -160,6 +208,61 @@ export function ContactForm({
               value={website}
               onChange={(e) => setWebsite(e.target.value)}
             />
+          </div>
+
+          <div>
+            <Label>Logo/Avatar (optional)</Label>
+            <div className="mt-2 flex items-start space-x-4">
+              {/* Preview of current logo or initial */}
+              <div className="flex-shrink-0">
+                <AvatarFallback 
+                  name={name || 'Contact'} 
+                  logoUrl={logoPreview || undefined} 
+                  className="w-16 h-16"
+                />
+              </div>
+
+              <div className="flex-1 space-y-2">
+                {/* Hidden file input */}
+                <input
+                  type="file"
+                  id="form-logo"
+                  ref={fileInputRef}
+                  onChange={handleLogoChange}
+                  accept="image/*"
+                  className="hidden"
+                />
+                <input 
+                  type="hidden"
+                  id="logo-removed-flag"
+                  value={logoRemoved ? 'true' : 'false'}
+                />
+
+                {/* Button to trigger file selection */}
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={triggerFileInput}
+                  className="w-full flex items-center justify-center"
+                >
+                  <Upload className="w-4 h-4 mr-2" />
+                  {logoPreview ? 'Change Logo' : 'Upload Logo'}
+                </Button>
+
+                {/* Button to remove logo if one exists */}
+                {(logoPreview || logoUrl) && !logoRemoved && (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={removeLogo}
+                    className="w-full flex items-center justify-center mt-2"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Remove Logo
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
           
           <div className="flex justify-between pt-4">

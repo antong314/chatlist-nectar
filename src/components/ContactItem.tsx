@@ -24,7 +24,11 @@ export function ContactItem({ contact, onEdit }: ContactItemProps) {
     return (
       <div className="whatsapp-contact-item">
         <div onClick={() => onEdit(contact)}>
-          <AvatarFallback name={contact.name} className="w-12 h-12 shrink-0" />
+          <AvatarFallback 
+            name={contact.name} 
+            logoUrl={contact.logoUrl || contact.avatarUrl} 
+            className="w-12 h-12 shrink-0" 
+          />
         </div>
         
         <div className="flex-1 min-w-0" onClick={() => onEdit(contact)}>
@@ -77,7 +81,11 @@ export function ContactItem({ contact, onEdit }: ContactItemProps) {
   return (
     <div className="contact-row grid grid-cols-12 items-center py-4">
       <div className="col-span-3 pl-4 flex items-center gap-3">
-        <AvatarFallback name={contact.name} className="w-10 h-10 shrink-0" />
+        <AvatarFallback 
+          name={contact.name} 
+          logoUrl={contact.logoUrl || contact.avatarUrl}
+          className="w-10 h-10 shrink-0" 
+        />
         <span className="font-medium text-gray-900 truncate">{contact.name}</span>
       </div>
       

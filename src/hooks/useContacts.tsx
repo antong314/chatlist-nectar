@@ -381,7 +381,7 @@ export function useContacts() {
     try {
       // Prepare data for Airtable format - fields property is required
       // This format matches what the machu-server expects
-      const airtableData = {
+      const fieldsData = {
         fields: {
           "Title": newContact.name.trim(),
           "Category": [newContact.category], // Category must be in an array for Airtable Multiple Select field
@@ -393,14 +393,44 @@ export function useContacts() {
         }
       };
       
-      console.log("Sending to API:", JSON.stringify(airtableData));
+      console.log("Preparing data for API:", fieldsData);
+      
+      // Check if we have any logo/image file upload from the form
+      // We need to create a multipart FormData to handle file uploads
+      const fileInput = document.getElementById('form-logo') as HTMLInputElement;
+      const logoRemovedFlag = document.getElementById('logo-removed-flag') as HTMLInputElement;
+      
+      // Determine logo action based on DOM elements
+      let logoAction = 'keep'; // Default action
+      let logoFile = null;
+      
+      if (fileInput && fileInput.files && fileInput.files.length > 0) {
+        logoAction = 'upload';
+        logoFile = fileInput.files[0];
+      } else if (logoRemovedFlag && logoRemovedFlag.value === 'true') {
+        logoAction = 'remove';
+      }
+
+      // Use multipart FormData for file uploads
+      const multipartFormData = new FormData();
+      
+      // Append fields data as JSON
+      multipartFormData.append('data', JSON.stringify(fieldsData));
+      
+      // Append logo action and file if needed
+      multipartFormData.append('logo_action', logoAction);
+      if (logoFile) {
+        multipartFormData.append('logo_file', logoFile);
+      }
+      
+      console.log(`Sending contact data with logo_action: ${logoAction}`);
       
       // Make the API call to add the contact to the server - use /add_directory_entry endpoint
-      // The server expects data in a specific format
+      // The server expects multipart/form-data for logo uploads
       const response = await fetch(`${API_URL}/add_directory_entry`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(airtableData)
+        // Don't set Content-Type header - browser will set it with the boundary
+        body: multipartFormData
       });
       
       console.log("API response status:", response.status);
@@ -429,9 +459,13 @@ export function useContacts() {
       // If we got a successful response with an ID, use it, otherwise generate temp ID
       const newId = data?.id || `temp-${Date.now()}`;
       
+      // Get the logo URL from the response if available
+      const logoUrl = data.logoUrl || undefined;
+
       const tempContact: Contact = {
         ...newContact,
-        id: newId
+        id: newId,
+        logoUrl: logoUrl
       };
       
       // Add new contact and maintain alphabetical sorting
@@ -455,7 +489,7 @@ export function useContacts() {
     try {
       // Prepare data for Airtable format - fields property is required
       // This format matches what the machu-server expects
-      const airtableData = {
+      const fieldsData = {
         fields: {
           "Title": updatedContact.name.trim(),
           "Category": [updatedContact.category], // Category must be in an array for Airtable Multiple Select field
@@ -468,13 +502,42 @@ export function useContacts() {
         record_id: updatedContact.id // Include the record ID for updates
       };
       
-      console.log("Sending to API:", JSON.stringify(airtableData));
+      console.log("Preparing data for API:", fieldsData);
+      
+      // Check if we have any logo/image file upload from the form
+      const fileInput = document.getElementById('form-logo') as HTMLInputElement;
+      const logoRemovedFlag = document.getElementById('logo-removed-flag') as HTMLInputElement;
+      
+      // Determine logo action based on DOM elements
+      let logoAction = 'keep'; // Default action
+      let logoFile = null;
+      
+      if (fileInput && fileInput.files && fileInput.files.length > 0) {
+        logoAction = 'upload';
+        logoFile = fileInput.files[0];
+      } else if (logoRemovedFlag && logoRemovedFlag.value === 'true') {
+        logoAction = 'remove';
+      }
+
+      // Use multipart FormData for file uploads
+      const multipartFormData = new FormData();
+      
+      // Append fields data as JSON
+      multipartFormData.append('data', JSON.stringify(fieldsData));
+      
+      // Append logo action and file if needed
+      multipartFormData.append('logo_action', logoAction);
+      if (logoFile) {
+        multipartFormData.append('logo_file', logoFile);
+      }
+      
+      console.log(`Sending contact data with logo_action: ${logoAction}`);
       
       // Make the API call to update the contact on the server
       const response = await fetch(`${API_URL}/update_directory_entry`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(airtableData)
+        // Don't set Content-Type header for multipart/form-data
+        body: multipartFormData
       });
       
       console.log("API response status:", response.status);
@@ -500,11 +563,20 @@ export function useContacts() {
       
       console.log("API response data:", data);
       
+      // Get the logo URL from the response if available
+      const logoUrl = data.logoUrl || updatedContact.logoUrl;
+
+      // Create updated contact with possible new logo URL
+      const updatedContactWithLogo = {
+        ...updatedContact,
+        logoUrl
+      };
+      
       // Update the contacts state with the updated contact
       setContacts(prev => {
         // Update the contact
         const updatedContacts = prev.map(contact => 
-          contact.id === updatedContact.id ? updatedContact : contact
+          contact.id === updatedContact.id ? updatedContactWithLogo : contact
         );
         
         // Maintain alphabetical sorting

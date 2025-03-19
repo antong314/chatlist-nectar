@@ -19,6 +19,7 @@ export interface Contact {
   category: Category;
   description: string;
   phone: string;
-  avatarUrl?: string;
+  logoUrl?: string; // URL to the logo image in Airtable or Cloudinary
+  avatarUrl?: string; // URL for the avatar (fallback or alternative to logo)
   website?: string;
 }
