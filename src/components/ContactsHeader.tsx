@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Search } from "lucide-react";
@@ -17,6 +17,15 @@ export function ContactsHeader({
   setSearchQuery, 
   onAddClick 
 }: ContactsHeaderProps) {
+  // Create a ref for the search input to auto-focus it
+  const inputRef = useRef<HTMLInputElement>(null);
+  
+  // Focus the search input when component mounts
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, []);
   return (
     <div className="flex flex-col space-y-4 mb-4">
       <div className="flex items-center justify-between">
@@ -53,6 +62,8 @@ export function ContactsHeader({
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="pl-10 py-6 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all duration-200"
+          autoFocus
+          ref={inputRef}
         />
       </div>
     </div>
