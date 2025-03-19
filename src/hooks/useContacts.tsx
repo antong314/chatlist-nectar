@@ -476,6 +476,22 @@ export const useContacts = () => {
     });
   }, [contacts, searchQuery, selectedCategory]);
 
+  // Extract unique categories from the contacts data
+  const uniqueCategories = useMemo(() => {
+    // Get all unique categories from contacts
+    const categorySet = new Set<string>();
+    
+    // Add each unique category to the set
+    contacts.forEach(contact => {
+      if (contact.category) {
+        categorySet.add(contact.category);
+      }
+    });
+    
+    // Convert set to sorted array
+    return ['All', ...Array.from(categorySet).sort()] as Category[];
+  }, [contacts]);
+  
   // Return the hook state and functions
   return {
     contacts: filteredContacts,
@@ -485,6 +501,7 @@ export const useContacts = () => {
     setSearchQuery,
     selectedCategory,
     setSelectedCategory,
+    uniqueCategories,
     refreshContacts,
     addContact,
     updateContact,

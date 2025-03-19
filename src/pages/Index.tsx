@@ -9,23 +9,7 @@ import { Contact, Category } from '@/types/contact';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { motion, AnimatePresence } from 'framer-motion';
 
-// All available categories
-// Type assertion to ensure 'All' is recognized as part of the Category type
-const CATEGORIES = [
-  'All',
-  'Car',
-  'Food Ordering',
-  'Groceries',
-  'Jobs',
-  'Mechanic',
-  'Mind Body & Spirit',
-  'Nature',
-  'Real Estate',
-  'Restaurant',
-  'Service',
-  'Social Network',
-  'Taxi'
-] as Category[];
+// Categories are now dynamically loaded from the data
 
 const Index = () => {
   const {
@@ -36,6 +20,7 @@ const Index = () => {
     setSearchQuery,
     selectedCategory,
     setSelectedCategory,
+    uniqueCategories,
     addContact,
     updateContact,
     deleteContact
@@ -126,7 +111,7 @@ const Index = () => {
           transition={{ delay: 0.1, duration: 0.3 }}
         >
           <CategoryFilter
-            categories={CATEGORIES}
+            categories={uniqueCategories}
             selectedCategory={selectedCategory}
             onCategoryChange={setSelectedCategory}
           />
@@ -148,7 +133,7 @@ const Index = () => {
           {isFormOpen && (
             <ContactForm
               contact={editingContact}
-              categories={CATEGORIES}
+              categories={uniqueCategories.filter(cat => cat !== 'All')}
               onSave={handleSaveContact}
               onCancel={handleCloseForm}
               onDelete={handleDeleteContact}

@@ -1,18 +1,12 @@
 
-export type Category = 
-  | 'All'
-  | 'Car'
-  | 'Food Ordering'
-  | 'Groceries'
-  | 'Jobs'
-  | 'Mechanic'
-  | 'Mind Body & Spirit'
-  | 'Nature'
-  | 'Real Estate'
-  | 'Restaurant'
-  | 'Service'
-  | 'Social Network'
-  | 'Taxi';
+// Reserved special filter category - not an actual data category
+export type SpecialCategory = 'All';
+
+// Data-driven category string (any string can be a category)
+export type DataCategory = string;
+
+// Combined category type for UI and data handling
+export type Category = SpecialCategory | DataCategory;
 
 export interface Contact {
   id: string;
