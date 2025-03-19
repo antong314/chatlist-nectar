@@ -146,6 +146,15 @@ export const useContacts = () => {
         multipartFormData.append('logo_file', logoFile);
       }
       
+      // Log what we're sending to help debug
+      console.log('Sending add request to:', `${API_URL}/add_directory_entry`);  
+      
+      // Log FormData content (this is for debugging only)
+      console.log('Form data contents:');
+      for (const pair of multipartFormData.entries()) {
+        console.log(`${pair[0]}: ${pair[1]}`);
+      }
+      
       // Make the API call to add the contact to the server - use /add_directory_entry endpoint
       // The server expects multipart/form-data for logo uploads
       const response = await fetch(`${API_URL}/add_directory_entry`, {
@@ -221,6 +230,13 @@ export const useContacts = () => {
   const updateContact = useCallback(async (updatedContact: Contact) => {
     // Attempt to update an existing contact
     try {
+      // Validate that we have a record_id for updates
+      if (!updatedContact.id) {
+        throw new Error('Record ID is required for updates');
+      }
+
+      console.log('Updating contact with ID:', updatedContact.id);
+      
       // Check if we have any logo/image file upload from the form
       const fileInput = document.getElementById('form-logo') as HTMLInputElement;
       const logoRemovedFlag = document.getElementById('logo-removed-flag') as HTMLInputElement;
@@ -245,12 +261,47 @@ export const useContacts = () => {
       multipartFormData.append('Subtitle', updatedContact.description.trim());
       multipartFormData.append('Phone Number', updatedContact.phone.trim());
       multipartFormData.append('Website URL', updatedContact.website?.trim() || '');
-      multipartFormData.append('record_id', updatedContact.id); // Include record_id for updates
+      
+      // Always include record_id for updates and ensure it's correctly set
+      if (!updatedContact.id) {
+        console.error('Missing record_id for update operation');
+        throw new Error('Record ID is required for updates');
+      }
+      console.log('Setting record_id for update:', updatedContact.id);
+      // Debug: Log record_id type before appending
+      console.log('Record ID before append:', updatedContact.id, '(type:', typeof updatedContact.id, ')');
+      
+      // Ensure record_id is a string
+      multipartFormData.append('record_id', String(updatedContact.id));
       
       // Append logo action and file if needed
       multipartFormData.append('logo_action', logoAction);
       if (logoFile) {
         multipartFormData.append('logo_file', logoFile);
+      }
+      
+      // Log what we're sending to help debug
+      console.log('Sending update to:', `${API_URL}/update_directory_entry`);
+      
+      // Create a JSON object to represent what we're sending
+      const debugPayload = {
+        Title: updatedContact.name.trim(),
+        Category: JSON.stringify([updatedContact.category]),
+        Subtitle: updatedContact.description.trim(),
+        'Phone Number': updatedContact.phone.trim(),
+        'Website URL': updatedContact.website?.trim() || '',
+        record_id: updatedContact.id,
+        logo_action: logoAction
+      };
+      
+      // Log the full contact object and the payload
+      console.log('Full contact object:', updatedContact);
+      console.log('JSON payload representation:', debugPayload);
+      
+      // Log FormData content (this is for debugging only)
+      console.log('Form data contents:');
+      for (const pair of multipartFormData.entries()) {
+        console.log(`${pair[0]}: ${pair[1]}`);
       }
       
       // Make the API call to update the contact on the server
