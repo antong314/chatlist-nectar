@@ -299,7 +299,7 @@ export function ContactForm({
                       className="flex items-center justify-center"
                     >
                       <Trash2 className="w-4 h-4 mr-2" />
-                      Remove
+                      Remove Logo
                     </Button>
                   ) : <div className="w-0"></div>}
                 </div>
