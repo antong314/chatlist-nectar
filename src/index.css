@@ -150,7 +150,7 @@
   }
   
   .whatsapp-contact-item {
-    @apply flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors cursor-pointer border-b border-directory-border;
+    @apply flex items-center gap-3 p-3 hover:bg-gray-50 transition-colors cursor-pointer border-b border-directory-border min-h-[80px];
   }
   
   .form-container {

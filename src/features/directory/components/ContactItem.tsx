@@ -47,21 +47,22 @@ export function ContactItem({ contact, onEdit, onView }: ContactItemProps) {
           />
         </div>
         
-        <div className="flex-1 min-w-0">
-          <div className="flex justify-between items-start">
-            <h3 className="font-semibold text-gray-900 truncate">{contact.name}</h3>
-            {contact.phone && (
+        <div className="flex-1 min-w-0 px-3 py-1">
+          <h3 className="font-semibold text-gray-900 truncate max-w-[160px] sm:max-w-full">{contact.name}</h3>
+          <p className="text-sm text-gray-500 line-clamp-1">{contact.description}</p>
+        </div>
+        
+        <div className="flex flex-col items-end justify-between h-full">
+          {contact.category && (
+            <div className="mb-1.5">
               <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full flex items-center gap-1">
                 {React.createElement(categoryIconMap[contact.category], { size: 12, className: "inline-block" })}
                 <span>{contact.category}</span>
               </span>
-            )}
-          </div>
+            </div>
+          )}
           
-          <p className="text-sm text-gray-500 line-clamp-1">{contact.description}</p>
-        </div>
-        
-        <div className="flex items-center">
+          <div className="flex items-center">
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -115,6 +116,7 @@ export function ContactItem({ contact, onEdit, onView }: ContactItemProps) {
               />
             </button>
           )}
+          </div>
         </div>
       </div>
     );
