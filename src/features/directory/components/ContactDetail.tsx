@@ -2,6 +2,7 @@ import React from 'react';
 import { Contact } from '@/features/directory/types/contact';
 import { Button } from '@/components/ui/button';
 import { Globe, Map, Edit, X } from 'lucide-react';
+import { categoryIconMap } from '@/features/directory/data/categoryIcons';
 import { AvatarFallback } from '@/components/ui/avatar-fallback';
 import { useEffect } from 'react';
 
@@ -66,8 +67,9 @@ export function ContactDetail({ contact, onEdit, onClose }: ContactDetailProps) 
         />
         <div>
           <h3 className="text-lg font-semibold text-gray-900">{contact.name}</h3>
-          <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full mt-1">
-            {contact.category}
+          <span className="inline-flex items-center gap-1.5 bg-blue-100 text-blue-800 text-xs px-2.5 py-1.5 rounded-full mt-1">
+            {React.createElement(categoryIconMap[contact.category], { size: 16, className: "inline-block" })}
+            <span>{contact.category}</span>
           </span>
         </div>
       </div>

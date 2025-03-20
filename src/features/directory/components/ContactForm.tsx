@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { countryCodes, extractCountryCode } from '@/features/directory/data/countryCodes';
+import { categoryIconMap } from '@/features/directory/data/categoryIcons';
 import { Contact, Category } from '@/features/directory/types/contact';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -226,12 +227,28 @@ export function ContactForm({
               onValueChange={(value) => setCategory(value as Category)}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Select a category" />
+                <SelectValue placeholder="Select a category">
+                  {category && (
+                    <div className="flex items-center gap-2">
+                      {React.createElement(categoryIconMap[category], { 
+                        size: 18, 
+                        className: "inline-block text-blue-600" 
+                      })}
+                      <span className="font-medium">{category}</span>
+                    </div>
+                  )}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {dropdownCategories.map((cat) => (
                   <SelectItem key={cat} value={cat}>
-                    {cat}
+                    <div className="flex items-center gap-2">
+                      {React.createElement(categoryIconMap[cat], { 
+                        size: 18, 
+                        className: "inline-block text-gray-600" 
+                      })}
+                      <span>{cat}</span>
+                    </div>
                   </SelectItem>
                 ))}
               </SelectContent>

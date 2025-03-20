@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Contact } from '@/features/directory/types/contact';
 import { Edit, Globe, Phone, Map } from 'lucide-react';
+import { categoryIconMap } from '@/features/directory/data/categoryIcons';
 import { AvatarFallback } from '@/components/ui/avatar-fallback';
 import { useIsMobile } from '@/hooks/use-mobile';
 
@@ -50,8 +51,9 @@ export function ContactItem({ contact, onEdit, onView }: ContactItemProps) {
           <div className="flex justify-between items-start">
             <h3 className="font-semibold text-gray-900 truncate">{contact.name}</h3>
             {contact.phone && (
-              <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
-                {contact.category}
+              <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full flex items-center gap-1">
+                {React.createElement(categoryIconMap[contact.category], { size: 12, className: "inline-block" })}
+                <span>{contact.category}</span>
               </span>
             )}
           </div>
@@ -131,8 +133,9 @@ export function ContactItem({ contact, onEdit, onView }: ContactItemProps) {
       </div>
       
       <div className="col-span-2">
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-          {contact.category}
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+          {React.createElement(categoryIconMap[contact.category], { size: 14, className: "inline-block" })}
+          <span>{contact.category}</span>
         </span>
       </div>
       
