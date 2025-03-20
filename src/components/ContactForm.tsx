@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import { toast } from 'react-hot-toast';
 import { Contact, Category } from '@/types/contact';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,6 +36,7 @@ export function ContactForm({
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [logoRemoved, setLogoRemoved] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const effectRan = useRef(false);
   
@@ -114,10 +116,16 @@ export function ContactForm({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!validate()) return;
+    
+    // Set loading state to true
+    setIsSubmitting(true);
+    
+    // Show a loading toast notification
+    const toastId = toast.loading(contact ? 'Saving contact...' : 'Adding new contact...');
     
     const contactData: Omit<Contact, 'id'> = {
       name: name.trim(),
@@ -137,8 +145,21 @@ export function ContactForm({
       ? { ...contactData, id: contact.id }
       : contactData;
     
-    // Pass the data to the parent component
-    onSave(finalContactData);
+    try {
+      // Pass the data to the parent component
+      await onSave(finalContactData);
+      // Dismiss the loading toast and show success
+      toast.dismiss(toastId);
+      // The success toast is already shown in the useContacts hook
+    } catch (error) {
+      console.error('Error saving contact:', error);
+      // Dismiss the loading toast and show error
+      toast.dismiss(toastId);
+      toast.error('Failed to save contact');
+    } finally {
+      // Reset loading state regardless of success or failure
+      setIsSubmitting(false);
+    }
   };
 
   const handleDelete = () => {
@@ -328,8 +349,20 @@ export function ContactForm({
               >
                 Cancel
               </Button>
-              <Button type="submit" variant="default">
-                {contact ? 'Save Changes' : 'Add Contact'}
+              <Button 
+                type="submit" 
+                variant="default" 
+                disabled={isSubmitting}
+                className={isSubmitting ? 'opacity-70 cursor-not-allowed' : ''}
+              >
+                {isSubmitting ? (
+                  <>
+                    <span className="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-solid border-current border-r-transparent"></span>
+                    {contact ? 'Saving...' : 'Adding...'}
+                  </>
+                ) : (
+                  contact ? 'Save Changes' : 'Add Contact'
+                )}
               </Button>
             </div>
           </div>

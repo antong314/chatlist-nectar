@@ -68,7 +68,18 @@ export const useContacts = () => {
         setError(null);
 
         // Fetch contacts from the API - use /get_directory_data endpoint
-        const response = await fetch(`${API_URL}/get_directory_data`);
+        // Add a timestamp parameter to prevent caching
+        const timestamp = new Date().getTime();
+        const response = await fetch(`${API_URL}/get_directory_data?nocache=${timestamp}`, {
+          method: 'GET',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          },
+          // Using no-store to ensure the browser doesn't cache the response
+          cache: 'no-store'
+        });
         
         // Get the raw response text
         const responseText = await response.text();
@@ -235,7 +246,7 @@ export const useContacts = () => {
       // Get the logo URL from the response if available
       const logoUrl = data.logoUrl || '';
       
-      // Create a temporary contact with the new ID
+      // Create a more complete temporary contact with the new ID and all fields
       const tempContact: Contact = {
         id,
         name: newContact.name,
@@ -243,10 +254,12 @@ export const useContacts = () => {
         category: newContact.category,
         phone: newContact.phone,
         website: newContact.website || '',
-        logoUrl: logoUrl
+        mapUrl: newContact.mapUrl || '',
+        logoUrl: logoUrl,
+        avatarUrl: logoUrl
       };
       
-      // Add new contact and maintain alphabetical sorting
+      // Add new contact immediately to local state and maintain alphabetical sorting
       setContacts(prev => {
         const updatedContacts = [...prev, tempContact];
         return sortContactsAlphabetically(updatedContacts);
@@ -381,13 +394,14 @@ export const useContacts = () => {
       // Get the logo URL from the response if available
       const logoUrl = data.logoUrl || updatedContact.logoUrl;
 
-      // Create updated contact with possible new logo URL
+      // Create a fully updated contact with all fields synchronized
       const updatedContactWithLogo = {
         ...updatedContact,
-        logoUrl
+        logoUrl,
+        avatarUrl: logoUrl
       };
       
-      // Update the contacts state with the updated contact
+      // Update the contacts state with the updated contact immediately
       setContacts(prev => {
         // Update the contact
         const updatedContacts = prev.map(contact => 
