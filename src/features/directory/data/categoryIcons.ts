@@ -7,7 +7,7 @@ import {
   Heart,
   Gauge,
   BedDouble,
-  Drill,
+  HandPlatter,
   CarTaxiFront,
   Truck,
   LucideIcon
@@ -22,7 +22,7 @@ export const categoryIconMap: Record<Category, LucideIcon> = {
   'Healer': Heart,
   'Mechanic': Gauge,
   'Retreats': BedDouble,
-  'Service': Drill,
+  'Service': HandPlatter,
   'Taxi': CarTaxiFront,
   'Tow Truck': Truck
 };
