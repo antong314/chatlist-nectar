@@ -52,9 +52,9 @@ export function ContactItem({ contact, onEdit, onView }: ContactItemProps) {
           <p className="text-sm text-gray-500 line-clamp-1">{contact.description}</p>
         </div>
         
-        <div className="flex flex-col items-end justify-between h-full">
+        <div className="flex flex-col items-end justify-between h-full min-w-[100px]">
           {contact.category && (
-            <div className="mb-1.5">
+            <div className="mb-1.5 mr-0.5">
               <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full flex items-center gap-1">
                 {React.createElement(categoryIconMap[contact.category], { size: 12, className: "inline-block" })}
                 <span>{contact.category}</span>
@@ -62,13 +62,13 @@ export function ContactItem({ contact, onEdit, onView }: ContactItemProps) {
             </div>
           )}
           
-          <div className="flex items-center">
+          <div className="flex items-center justify-end">
           <button
             onClick={(e) => {
               e.stopPropagation();
               onEdit(contact);
             }}
-            className="p-2 text-gray-600 rounded-full hover:bg-gray-100 transition-colors mr-1"
+            className="p-2 text-gray-600 rounded-full hover:bg-gray-100 transition-colors ml-1"
             aria-label="Edit contact"
           >
             <Edit className="w-5 h-5" />
@@ -79,7 +79,7 @@ export function ContactItem({ contact, onEdit, onView }: ContactItemProps) {
               href={contact.website}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-2 text-blue-600 rounded-full hover:bg-blue-50 transition-colors mr-1" 
+              className="p-2 text-blue-600 rounded-full hover:bg-blue-50 transition-colors ml-1" 
               aria-label="Visit website"
               onClick={(e) => e.stopPropagation()}
             >
@@ -92,7 +92,7 @@ export function ContactItem({ contact, onEdit, onView }: ContactItemProps) {
               href={contact.mapUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-2 text-amber-600 rounded-full hover:bg-amber-50 transition-colors mr-1" 
+              className="p-2 text-amber-600 rounded-full hover:bg-amber-50 transition-colors ml-1" 
               aria-label="View on map"
               onClick={(e) => e.stopPropagation()}
             >
@@ -102,7 +102,7 @@ export function ContactItem({ contact, onEdit, onView }: ContactItemProps) {
           
           {contact.phone && (
             <button 
-              className="p-2 text-green-600 rounded-full hover:bg-green-50 transition-colors" 
+              className="p-2 text-green-600 rounded-full hover:bg-green-50 transition-colors ml-1" 
               onClick={(e) => {
                 e.stopPropagation();
                 openWhatsApp(contact.phone);
