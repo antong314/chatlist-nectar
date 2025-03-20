@@ -277,29 +277,32 @@ export function ContactForm({
                   value={logoRemoved ? 'true' : 'false'}
                 />
 
-                {/* Button to trigger file selection */}
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  onClick={triggerFileInput}
-                  className="w-full flex items-center justify-center"
-                >
-                  <Upload className="w-4 h-4 mr-2" />
-                  {logoPreview ? 'Change Logo' : 'Upload Logo'}
-                </Button>
-
-                {/* Button to remove logo if one exists */}
-                {(logoPreview || logoUrl) && !logoRemoved && (
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    onClick={removeLogo}
-                    className="w-full flex items-center justify-center mt-2"
+                {/* Logo buttons container */}
+                <div className="flex space-x-2">
+                  {/* Button to trigger file selection */}
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={triggerFileInput}
+                    className="flex items-center justify-center flex-1"
                   >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Remove Logo
+                    <Upload className="w-4 h-4 mr-2" />
+                    {logoPreview ? 'Change Logo' : 'Upload Logo'}
                   </Button>
-                )}
+
+                  {/* Button to remove logo if one exists */}
+                  {(logoPreview || logoUrl) && !logoRemoved ? (
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={removeLogo}
+                      className="flex items-center justify-center"
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Remove
+                    </Button>
+                  ) : <div className="w-0"></div>}
+                </div>
               </div>
             </div>
           </div>
