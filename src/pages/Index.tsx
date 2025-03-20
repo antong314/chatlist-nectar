@@ -1,12 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
-import { ContactsHeader } from '@/components/ContactsHeader';
-import { CategoryFilter } from '@/components/CategoryFilter';
-import { ContactsList } from '@/components/ContactsList';
-import { ContactForm } from '@/components/ContactForm';
-import { ContactDetail } from '@/components/ContactDetail';
-import { useContacts } from '@/hooks/useContacts';
-import { Contact, Category } from '@/types/contact';
+import {
+  ContactsHeader,
+  CategoryFilter,
+  ContactsList,
+  ContactForm,
+  ContactDetail
+} from '@/features/directory/components';
+import { useContacts } from '@/features/directory/hooks';
+import { Contact, Category } from '@/features/directory/types';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { motion, AnimatePresence } from 'framer-motion';
 
