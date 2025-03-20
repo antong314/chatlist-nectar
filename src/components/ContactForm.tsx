@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
+import { countryCodes, extractCountryCode } from '@/data/countryCodes';
 import { Contact, Category } from '@/types/contact';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,6 +29,9 @@ export function ContactForm({
   const [name, setName] = useState(contact?.name || '');
   const [category, setCategory] = useState<Category>(contact?.category || 'Service');
   const [description, setDescription] = useState(contact?.description || '');
+  const { countryCode: initialCountryCode, localNumber: initialLocalNumber } = extractCountryCode(contact?.phone || '');
+  const [countryCode, setCountryCode] = useState(initialCountryCode);
+  const [localPhoneNumber, setLocalPhoneNumber] = useState(initialLocalNumber);
   const [phone, setPhone] = useState(contact?.phone || '');
   const [website, setWebsite] = useState(contact?.website || '');
   const [mapUrl, setMapUrl] = useState(contact?.mapUrl || '');
@@ -40,6 +44,11 @@ export function ContactForm({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const effectRan = useRef(false);
   
+  // Update combined phone number when country code or local number changes
+  useEffect(() => {
+    setPhone(`${countryCode}${localPhoneNumber}`);
+  }, [countryCode, localPhoneNumber]);
+
   // Initialize logo preview for existing contact
   useEffect(() => {
     // This ensures the effect only runs once per contact change and helps avoid state conflicts
@@ -72,7 +81,7 @@ export function ContactForm({
     
     if (!name.trim()) newErrors.name = 'Name is required';
     if (!description.trim()) newErrors.description = 'Description is required';
-    if (!phone.trim()) newErrors.phone = 'Phone number is required';
+    if (!localPhoneNumber.trim()) newErrors.phone = 'Phone number is required';
     
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -242,12 +251,31 @@ export function ContactForm({
           
           <div>
             <Label htmlFor="phone">Phone Number</Label>
-            <Input
-              id="phone"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className={errors.phone ? 'border-red-500' : ''}
-            />
+            <div className="flex space-x-2">
+              <Select
+                value={countryCode}
+                onValueChange={(value) => setCountryCode(value)}
+              >
+                <SelectTrigger className="w-[120px]">
+                  <SelectValue placeholder="Code" />
+                </SelectTrigger>
+                <SelectContent>
+                  {countryCodes.map((country) => (
+                    <SelectItem key={country.code} value={country.code}>
+                      {country.code} {country.country}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Input
+                id="localPhoneNumber"
+                value={localPhoneNumber}
+                onChange={(e) => setLocalPhoneNumber(e.target.value)}
+                className={errors.phone ? 'border-red-500' : ''}
+                placeholder="Local number"
+              />
+            </div>
+            <input type="hidden" id="phone" value={phone} />
             {errors.phone && <p className="text-sm text-red-500 mt-1">{errors.phone}</p>}
           </div>
           
