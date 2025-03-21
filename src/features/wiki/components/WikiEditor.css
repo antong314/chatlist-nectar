@@ -1,0 +1,73 @@
+/* Custom styles for the BlockNote editor */
+
+/* Override BlockNote container to put toolbar above editor */
+.bn-container {
+  display: flex !important;
+  flex-direction: column-reverse !important; /* This puts the toolbar above the editor */
+  gap: 0 !important; /* Remove gap between toolbar and editor */
+  background-color: white !important;
+  border-radius: 8px !important;
+  overflow: hidden !important; /* Ensure content doesn't overflow rounded corners */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important; /* Add subtle shadow like in image 2 */
+}
+
+/* Center the formatting toolbar and set background color */
+.bn-formatting-toolbar {
+  margin-inline: auto !important;
+  background-color: white !important;
+  border-radius: 8px !important;
+  padding: 4px 8px !important;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Fix editor background color */
+.bn-editor {
+  background-color: white !important;
+  border-radius: 0 0 8px 8px !important; /* Round bottom corners */
+}
+
+/* Ensure the editor has proper padding */
+.wiki-editor-container .bn-editor {
+  padding: 1.5rem !important; /* Slightly more padding like in image 2 */
+}
+
+/* Editor text styling - default styles but allow colors to be changed */
+.bn-editor p,
+.bn-editor div,
+.bn-editor span,
+.bn-editor h1,
+.bn-editor h2,
+.bn-editor h3,
+.bn-editor li {
+  font-family: inherit; /* Use the inherited font family */
+}
+
+/* Make sure the formatting toolbar container has proper styling */
+.formatting-toolbar-container {
+  background-color: white !important;
+  border-bottom: none !important; /* Remove border between toolbar and editor */
+  padding: 8px !important;
+  display: flex !important;
+  justify-content: center !important;
+  border-radius: 8px 8px 0 0 !important; /* Round top corners */
+}
+
+/* Style the toolbar buttons to have white background */
+.bn-formatting-toolbar button {
+  background-color: white !important;
+  color: #333 !important;
+  border-radius: 4px !important;
+  margin: 0 2px !important;
+}
+
+/* Style the toolbar button hover state */
+.bn-formatting-toolbar button:hover {
+  background-color: #f5f5f5 !important;
+}
+
+/* Style the wiki editor container to match image 2 */
+.wiki-editor-container {
+  border-radius: 8px !important;
+  overflow: hidden !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+}

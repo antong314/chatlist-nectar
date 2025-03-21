@@ -158,7 +158,6 @@ const WikiPage: React.FC = () => {
             initialContent={page.content || ''}
             readOnly={!isEditing}
             onChange={(content) => {
-              console.log('Content changed in WikiPage:', content);
               setEditedContent(content);
             }}
             className="min-h-[60vh] transition-all duration-300"

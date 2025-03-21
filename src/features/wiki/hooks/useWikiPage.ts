@@ -65,8 +65,7 @@ export const useWikiPage = (slug: string) => {
       return;
     }
     
-    console.log('Saving content:', editedContent);
-    console.log('Current page:', page);
+    // Prepare to save the edited content
     
     try {
       // Make sure we have content to save
@@ -87,10 +86,7 @@ export const useWikiPage = (slug: string) => {
         excerpt: page.excerpt || `A page about ${page.title}` // Ensure excerpt is preserved
       };
       
-      console.log('Sending update with payload:', pageUpdate);
-      
       const updatedPage = await updateWikiPage(page.slug, pageUpdate);
-      console.log('Received updated page:', updatedPage);
       
       // Update local state with the returned page
       setPage(updatedPage);
