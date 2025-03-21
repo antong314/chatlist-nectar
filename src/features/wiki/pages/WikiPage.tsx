@@ -141,7 +141,6 @@ const WikiPage: React.FC = () => {
     <WikiLayout 
       title={page.title} 
       isEditing={isEditing}
-      onSave={handleSave}
     >
       <div className="animate-fade-in">
         <PageHeader
@@ -151,6 +150,7 @@ const WikiPage: React.FC = () => {
           updatedAt={page.updated_at}
           onEdit={handleEdit}
           onDelete={handleDelete}
+          onSave={handleSave}
         />
         
         <div className="relative" ref={editorContainerRef}>

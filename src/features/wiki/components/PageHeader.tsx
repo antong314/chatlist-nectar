@@ -1,6 +1,6 @@
 import React from 'react';
 import { Button } from "@/components/ui/button";
-import { Calendar, Edit, Trash2 } from "lucide-react";
+import { Calendar, Edit, Trash2, Save } from "lucide-react";
 
 interface PageHeaderProps {
   title: string;
@@ -9,6 +9,7 @@ interface PageHeaderProps {
   isEditing: boolean;
   onEdit: () => void;
   onDelete: () => void;
+  onSave?: () => void;
 }
 
 const PageHeader: React.FC<PageHeaderProps> = ({
@@ -18,6 +19,7 @@ const PageHeader: React.FC<PageHeaderProps> = ({
   isEditing,
   onEdit,
   onDelete,
+  onSave,
 }) => {
   // Format the date to be more readable
   const formatDate = (dateString?: string) => {
@@ -42,30 +44,41 @@ const PageHeader: React.FC<PageHeaderProps> = ({
         </div>
       </div>
       
-      {!isEditing && (
-        <div className="flex items-center mt-4 sm:mt-0 space-x-2">
+      <div className="flex items-center mt-4 sm:mt-0 space-x-2">
+        {isEditing && onSave ? (
           <Button 
             variant="outline" 
             size="sm" 
             className="flex items-center" 
-            onClick={onEdit}
+            onClick={onSave}
           >
-            <Edit className="h-4 w-4 mr-1" />
-            Edit
+            <Save className="h-4 w-4 mr-1" />
+            Save
           </Button>
-          
-
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex items-center text-destructive hover:text-destructive"
-            onClick={onDelete}
-          >
-            <Trash2 className="h-4 w-4 mr-1" />
-            Delete
-          </Button>
-        </div>
-      )}
+        ) : (
+          <>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="flex items-center" 
+              onClick={onEdit}
+            >
+              <Edit className="h-4 w-4 mr-1" />
+              Edit
+            </Button>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex items-center text-destructive hover:text-destructive"
+              onClick={onDelete}
+            >
+              <Trash2 className="h-4 w-4 mr-1" />
+              Delete
+            </Button>
+          </>
+        )}
+      </div>
     </div>
   );
 };

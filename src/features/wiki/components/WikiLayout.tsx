@@ -14,14 +14,12 @@ interface WikiLayoutProps {
   children: React.ReactNode;
   title?: string;
   isEditing?: boolean;
-  onSave?: () => void;
 }
 
 const WikiLayout: React.FC<WikiLayoutProps> = ({ 
   children, 
   title = "Machuca Wiki", 
-  isEditing = false,
-  onSave
+  isEditing = false
 }) => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const location = useLocation();
@@ -71,7 +69,6 @@ const WikiLayout: React.FC<WikiLayoutProps> = ({
         title={title} 
         onMenuToggle={toggleSidebar} 
         isEditing={isEditing}
-        onSave={onSave}
       />
       
       <div className="flex flex-1">

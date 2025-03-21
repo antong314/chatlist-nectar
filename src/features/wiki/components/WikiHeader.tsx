@@ -1,20 +1,18 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
-import { Menu, Save, Newspaper, BookOpen, FileText } from "lucide-react";
+import { Menu, Newspaper, BookOpen, FileText } from "lucide-react";
 
 interface WikiHeaderProps {
   title: string;
   isEditing?: boolean;
   onMenuToggle: () => void;
-  onSave?: () => void;
 }
 
 const WikiHeader: React.FC<WikiHeaderProps> = ({
   title,
   isEditing = false,
-  onMenuToggle,
-  onSave
+  onMenuToggle
 }) => {
   return (
     <header className="h-16 border-b bg-white sticky top-0 z-50">
@@ -46,16 +44,7 @@ const WikiHeader: React.FC<WikiHeaderProps> = ({
         </div>
         
         <div className="flex items-center">
-          {isEditing && onSave && (
-            <Button 
-              onClick={onSave}
-              className="flex items-center"
-              size="sm"
-            >
-              <Save className="h-4 w-4 mr-1" />
-              Save
-            </Button>
-          )}
+          {/* Save button moved to PageHeader */}
         </div>
       </div>
     </header>
