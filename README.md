@@ -40,7 +40,11 @@ cd <YOUR_PROJECT_NAME>
 # Step 3: Install the necessary dependencies.
 npm i
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Step 4: Configure Supabase for the wiki feature.
+# Copy .env.example to .env and set your Supabase credentials.
+cp .env.example .env
+
+# Step 5: Start the development server with auto-reloading and an instant preview.
 npm run dev
 ```
 
@@ -49,6 +53,26 @@ npm run dev
 - Navigate to the desired file(s).
 - Click the "Edit" button (pencil icon) at the top right of the file view.
 - Make your changes and commit the changes.
+
+## Supabase Integration
+
+This project now includes a Wiki feature that integrates with Supabase for data storage.
+
+### Setting up Supabase
+
+1. [Create a Supabase account](https://supabase.com) if you don't have one already
+2. Create a new Supabase project
+3. Set up the database using the SQL script in `database/wiki_setup.sql`
+4. Configure your environment variables in `.env`
+
+For detailed setup instructions, refer to the [Supabase Setup Guide](docs/SUPABASE_SETUP.md) in the docs folder.
+
+### Wiki Features
+
+- Create and edit wiki pages with a rich text editor
+- Store wiki content in a PostgreSQL database via Supabase
+- Browse and search wiki pages
+- Export pages for sharing
 
 **Use GitHub Codespaces**
 

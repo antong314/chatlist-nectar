@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import {
-  ContactsHeader,
   CategoryFilter,
   ContactsList,
   ContactForm,
@@ -11,6 +11,8 @@ import { useContacts } from '@/features/directory/hooks';
 import { Contact, Category } from '@/features/directory/types';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Button } from '@/components/ui/button';
+import { Newspaper, Plus, Search } from 'lucide-react';
 
 // Categories are now dynamically loaded from the data
 
@@ -123,17 +125,56 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-gray-50 pb-10">
       <div className="directory-container py-6">
+        {/* Feature Navigation Tabs */}
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
         >
-          <ContactsHeader
-            title="MV Directory"
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-            onAddClick={handleOpenForm}
-          />
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-2">
+              <div className="bg-gray-100 p-2 rounded-md">
+                <svg 
+                  className="w-6 h-6 text-gray-700" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24" 
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    strokeWidth={2} 
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                  />
+                </svg>
+              </div>
+              <div className="flex items-center space-x-4">
+                <h1 className="text-2xl font-bold">MV Directory</h1>
+                <div className="h-6 w-px bg-gray-300"></div>
+                <Link to="/wiki" className="text-gray-500 hover:text-gray-800 transition-colors flex items-center">
+                  <Newspaper className="h-5 w-5 mr-1.5" />
+                  <span className="text-lg">Machuca Wiki</span>
+                </Link>
+              </div>
+            </div>
+            <Button onClick={handleOpenForm} className="add-entry-btn">
+              <Plus className="w-4 h-4 mr-1" />
+              Add Entry
+            </Button>
+          </div>
+          
+          <div className="relative mb-4">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+            <input
+              type="text"
+              placeholder="Search by name, category, or description..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 py-3 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all duration-200"
+              autoFocus
+            />
+          </div>
         </motion.div>
 
         <motion.div

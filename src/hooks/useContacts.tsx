@@ -4,10 +4,11 @@ import { toast } from 'sonner';
 import { Contact, Category } from '@/types/contact';
 import { useSearchParams } from 'react-router-dom';
 
-// Server API URL - dynamically determined based on environment
-const API_URL = import.meta.env.DEV 
-  ? 'http://192.168.68.58:5000' // Use the same network IP as the client to avoid CORS issues
-  : 'https://machu-server-app-2tn7n.ondigitalocean.app';
+// Server API URL - from environment variables with fallback
+const API_URL = import.meta.env.VITE_API_URL || 
+  (import.meta.env.DEV 
+    ? 'http://localhost:5000' // Local fallback
+    : 'https://machu-server-app-2tn7n.ondigitalocean.app'); // Production fallback
 
 /**
  * Custom hook for managing contacts
