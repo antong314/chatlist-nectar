@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import { DirectoryPage } from "./features/directory/pages";
 import { WikiIndexPage, WikiPage } from "./features/wiki/pages";
 import NotFound from "./pages/NotFound";
+import Elements from "./pages/Elements";
 
 const queryClient = new QueryClient();
 
@@ -24,6 +25,7 @@ const App = () => (
           <Route path="/directory" element={<DirectoryPage />} />
           <Route path="/wiki" element={<WikiIndexPage />} />
           <Route path="/wiki/:pageId" element={<WikiPage />} />
+          <Route path="/elements" element={<Elements />} />
           
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

@@ -39,6 +39,11 @@ const WikiHeader: React.FC<WikiHeaderProps> = ({
                 <BookOpen className="h-4 w-4 md:h-5 md:w-5 mr-1" />
                 <span className="text-sm md:text-lg">MV Directory</span>
               </Link>
+              <div className="h-6 w-px bg-gray-300 hidden sm:block"></div>
+              <Link to="/elements" className="text-gray-500 hover:text-gray-800 transition-colors flex items-center">
+                <Newspaper className="h-4 w-4 md:h-5 md:w-5 mr-1" />
+                <span className="text-sm md:text-lg">Elements</span>
+              </Link>
             </div>
           </div>
         </div>
