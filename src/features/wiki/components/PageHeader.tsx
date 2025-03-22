@@ -10,6 +10,7 @@ interface PageHeaderProps {
   onEdit: () => void;
   onDelete: () => void;
   onSave?: () => void;
+  onTitleChange?: (newTitle: string) => void;
 }
 
 const PageHeader: React.FC<PageHeaderProps> = ({
@@ -20,6 +21,7 @@ const PageHeader: React.FC<PageHeaderProps> = ({
   onEdit,
   onDelete,
   onSave,
+  onTitleChange,
 }) => {
   // Format the date to be more readable
   const formatDate = (dateString?: string) => {
@@ -37,7 +39,16 @@ const PageHeader: React.FC<PageHeaderProps> = ({
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 pb-4 border-b">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">{title}</h1>
+        {isEditing && onTitleChange ? (
+          <input 
+            type="text" 
+            value={title} 
+            onChange={(e) => onTitleChange(e.target.value)}
+            className="text-3xl font-bold text-gray-900 border-b border-gray-300 focus:border-primary focus:outline-none bg-transparent w-full mb-1 px-1"
+          />
+        ) : (
+          <h1 className="text-3xl font-bold text-gray-900">{title}</h1>
+        )}
         <div className="flex items-center text-sm text-muted-foreground mt-2">
           <Calendar className="h-4 w-4 mr-1" />
           <span>Last edited: {displayDate}</span>

@@ -18,6 +18,7 @@ export const useWikiPage = (slug: string) => {
   const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState('');
+  const [editedTitle, setEditedTitle] = useState('');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   
   // Fetch page when slug changes
@@ -28,6 +29,7 @@ export const useWikiPage = (slug: string) => {
         const fetchedPage = await getWikiPage(slug);
         setPage(fetchedPage);
         setEditedContent(fetchedPage.content || '');
+        setEditedTitle(fetchedPage.title);
         
         // Auto-enter edit mode if this is a new page (either from navigation state or by timestamp)
         const isNewlyCreated = fetchedPage.created_at && 
@@ -79,11 +81,11 @@ export const useWikiPage = (slug: string) => {
         return;
       }
       
-      // Create a copy of the current page with updated content
+      // Create a copy of the current page with updated content and title
       const pageUpdate = { 
         content: editedContent,
-        title: page.title, // Include title to ensure it's preserved
-        excerpt: page.excerpt || `A page about ${page.title}` // Ensure excerpt is preserved
+        title: editedTitle || page.title, // Use edited title if available
+        excerpt: page.excerpt || `A page about ${editedTitle || page.title}` // Ensure excerpt is preserved
       };
       
       const updatedPage = await updateWikiPage(page.slug, pageUpdate);
@@ -138,8 +140,10 @@ export const useWikiPage = (slug: string) => {
     error,
     isEditing,
     editedContent,
+    editedTitle,
     deleteDialogOpen,
     setEditedContent,
+    setEditedTitle,
     setDeleteDialogOpen,
     handleEdit,
     handleSave,

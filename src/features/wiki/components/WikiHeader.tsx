@@ -25,19 +25,19 @@ const WikiHeader: React.FC<WikiHeaderProps> = ({
             onClick={onMenuToggle}
             aria-label="Toggle menu"
           >
-            <Menu className="h-5 w-5" />
+            <Menu className="h-4 w-4 md:h-5 md:w-5" />
           </Button>
           
           <div className="flex items-center space-x-2">
-            <div className="bg-gray-100 p-2 rounded-md">
-              <FileText className="h-5 w-5 text-gray-700" />
+            <div className="bg-gray-100 p-1.5 md:p-2 rounded-md">
+              <FileText className="h-4 w-4 md:h-5 md:w-5 text-gray-700" />
             </div>
             <div className="flex items-center space-x-4">
-              <Link to="/wiki" className="text-2xl font-bold">Machuca Wiki</Link>
+              <Link to="/wiki" className="text-xl md:text-2xl font-bold">Machuca Wiki</Link>
               <div className="h-6 w-px bg-gray-300"></div>
               <Link to="/" className="text-gray-500 hover:text-gray-800 transition-colors flex items-center">
-                <BookOpen className="h-5 w-5 mr-1.5" />
-                <span className="text-lg">MV Directory</span>
+                <BookOpen className="h-4 w-4 md:h-5 md:w-5 mr-1" />
+                <span className="text-sm md:text-lg">MV Directory</span>
               </Link>
             </div>
           </div>

@@ -150,15 +150,15 @@ const Index = () => {
                 </svg>
               </div>
               <div className="flex items-center space-x-4">
-                <h1 className="text-2xl font-bold">MV Directory</h1>
+                <h1 className="text-xl md:text-2xl font-bold">MV Directory</h1>
                 <div className="h-6 w-px bg-gray-300"></div>
                 <Link to="/wiki" className="text-gray-500 hover:text-gray-800 transition-colors flex items-center">
-                  <Newspaper className="h-5 w-5 mr-1.5" />
-                  <span className="text-lg">Machuca Wiki</span>
+                  <Newspaper className="h-4 w-4 md:h-5 md:w-5 mr-1" />
+                  <span className="text-sm md:text-lg">Machuca Wiki</span>
                 </Link>
               </div>
             </div>
-            <Button onClick={handleOpenForm} className="add-entry-btn">
+            <Button onClick={handleOpenForm} className="add-entry-btn text-sm md:text-base">
               <Plus className="w-4 h-4 mr-1" />
               Add Entry
             </Button>

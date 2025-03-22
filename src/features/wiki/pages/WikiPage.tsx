@@ -16,8 +16,10 @@ const WikiPage: React.FC = () => {
     error,
     isEditing,
     editedContent,
+    editedTitle,
     deleteDialogOpen,
     setEditedContent,
+    setEditedTitle,
     setDeleteDialogOpen,
     handleEdit,
     handleSave,
@@ -139,18 +141,19 @@ const WikiPage: React.FC = () => {
   
   return (
     <WikiLayout 
-      title={page.title} 
+      title={isEditing ? editedTitle : page.title} 
       isEditing={isEditing}
     >
       <div className="animate-fade-in">
         <PageHeader
-          title={page.title}
+          title={isEditing ? editedTitle : page.title}
           isEditing={isEditing}
           lastEdited={page.lastEdited || ''}
           updatedAt={page.updated_at}
           onEdit={handleEdit}
           onDelete={handleDelete}
           onSave={handleSave}
+          onTitleChange={setEditedTitle}
         />
         
         <div className="relative" ref={editorContainerRef}>
