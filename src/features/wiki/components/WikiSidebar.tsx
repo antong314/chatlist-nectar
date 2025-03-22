@@ -1,9 +1,21 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ChevronLeft, ChevronRight, FilePlus, Newspaper, Loader2 } from "lucide-react";
+import { 
+  ChevronLeft, 
+  ChevronRight, 
+  FilePlus, 
+  Newspaper, 
+  Loader2, 
+  ChevronDown, 
+  ChevronUp,
+  FolderTree,
+  File
+} from "lucide-react";
 import { useWikiIndex } from '@/features/wiki/hooks';
+import { WikiPage } from '@/features/wiki/types';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 interface WikiSidebarProps {
   isOpen: boolean;
@@ -20,7 +32,7 @@ const WikiSidebar: React.FC<WikiSidebarProps> = ({
   const currentPath = location.pathname;
   
   // Get real pages data from the hook
-  const { pages, isLoading } = useWikiIndex();
+  const { pages, categories, isLoading } = useWikiIndex();
   
   return (
     <>
@@ -59,7 +71,7 @@ const WikiSidebar: React.FC<WikiSidebarProps> = ({
             </Button>
           </div>
           
-          {/* Pages list */}
+          {/* Pages list by category */}
           <ScrollArea className="flex-1">
             <nav className="px-2 py-4">
               {isLoading ? (
@@ -68,21 +80,74 @@ const WikiSidebar: React.FC<WikiSidebarProps> = ({
                   <span className="text-sm">Loading pages...</span>
                 </div>
               ) : pages.length > 0 ? (
-                pages.map((page) => (
-                  <Link 
-                    key={page.id}
-                    to={`/wiki/${page.slug || page.id}`}
-                    className={`
-                      block px-3 py-2 mb-1 rounded-md 
-                      ${currentPath === `/wiki/${page.slug || page.id}` 
-                        ? 'bg-primary/10 text-primary font-medium' 
-                        : 'hover:bg-gray-100'
-                      }
-                    `}
-                  >
-                    {page.title}
-                  </Link>
-                ))
+                // Group pages by category
+                <>
+                  {console.log('Available wiki pages:', pages)}
+                  {console.log('Dynamic categories from hook:', categories)}
+                  
+                  {/* First, find all unique categories that exist in the pages */}
+                  {(() => {
+                    const uniqueCategories = [...new Set(pages.map(page => page.category || 'Uncategorized'))];
+                    console.log('Unique categories found in pages:', uniqueCategories);
+                    return null;
+                  })()}
+                  
+                  {/* Now map through categories from our dynamic list */}
+                  {categories.map((category) => {
+                    console.log(`Checking predefined category: "${category}"`);
+                    const categoryPages = pages.filter(page => {
+                      // Make comparison case-insensitive
+                      const pageCategory = page.category || 'Uncategorized';
+                      const result = pageCategory.toLowerCase() === category.toLowerCase();
+                      console.log(`Page "${page.title}" with category "${pageCategory}" matches "${category}": ${result}`);
+                      return result;
+                    });
+                    
+                    console.log(`Category "${category}" has ${categoryPages.length} pages`);
+                    if (categoryPages.length === 0) return null;
+                    
+                    return (
+                      <CategoryItem
+                        key={category}
+                        category={category}
+                        pages={categoryPages}
+                        currentPath={currentPath}
+                      />
+                    );
+                  })}
+                  
+                  {/* Add any categories that weren't in our predefined list */}
+                  {(() => {
+                    const predefinedCategoriesLower = categories.map(c => c.toLowerCase());
+                    const uncategorizedPages = pages.filter(page => {
+                      const pageCategory = page.category || 'Uncategorized';
+                      // Show pages with categories not in our predefined list
+                      return !predefinedCategoriesLower.includes(pageCategory.toLowerCase());
+                    });
+                    
+                    if (uncategorizedPages.length === 0) return null;
+                    
+                    console.log(`Found ${uncategorizedPages.length} pages with non-standard categories`);
+                    
+                    // Group these pages by their actual category
+                    const otherCategories = [...new Set(uncategorizedPages.map(p => p.category || 'Other'))];
+                    
+                    return otherCategories.map(otherCategory => {
+                      const pagesInCategory = uncategorizedPages.filter(
+                        p => (p.category || 'Other').toLowerCase() === otherCategory.toLowerCase()
+                      );
+                      
+                      return (
+                        <CategoryItem
+                          key={`other-${otherCategory}`}
+                          category={otherCategory}
+                          pages={pagesInCategory}
+                          currentPath={currentPath}
+                        />
+                      );
+                    });
+                  })()}
+                </>
               ) : (
                 <div className="px-3 py-2 text-sm text-muted-foreground">
                   No pages found. Create your first page with the + button above.
@@ -117,6 +182,66 @@ const WikiSidebar: React.FC<WikiSidebarProps> = ({
         </button>
       )}
     </>
+  );
+};
+
+// Category item component with collapsible content
+interface CategoryItemProps {
+  category: string;
+  pages: WikiPage[];
+  currentPath: string;
+}
+
+const CategoryItem: React.FC<CategoryItemProps> = ({ 
+  category, 
+  pages, 
+  currentPath 
+}) => {
+  const [isOpen, setIsOpen] = useState(true);
+  
+  return (
+    <div className="mb-2">
+      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+        <CollapsibleTrigger asChild>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="w-full flex items-center justify-between px-3 py-2 mb-1 text-left font-medium"
+          >
+            <span className="flex items-center">
+              <FolderTree className="h-4 w-4 mr-2" />
+              {category}
+            </span>
+            {isOpen ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
+          </Button>
+        </CollapsibleTrigger>
+        
+        <CollapsibleContent>
+          <div className="pl-2 border-l ml-4 mt-1">
+            {pages.map((page) => (
+              <Link 
+                key={page.id}
+                to={`/wiki/${page.slug || page.id}`}
+                className={`
+                  flex items-center px-3 py-2 mb-1 rounded-md text-sm
+                  ${currentPath === `/wiki/${page.slug || page.id}` 
+                    ? 'bg-primary/10 text-primary font-medium' 
+                    : 'hover:bg-gray-100'
+                  }
+                `}
+              >
+                <File className="h-3.5 w-3.5 mr-2 flex-shrink-0" />
+                {page.title}
+              </Link>
+            ))}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </div>
   );
 };
 

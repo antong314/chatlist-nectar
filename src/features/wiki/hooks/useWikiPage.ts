@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useToast } from '@/components/ui/use-toast';
 import { WikiPage } from '@/features/wiki/types';
-import { getWikiPage, updateWikiPage, deleteWikiPage } from '@/features/wiki/api';
+import { getWikiPage, updateWikiPage, deleteWikiPage, getWikiCategories } from '@/features/wiki/api';
 
 export const useWikiPage = (slug: string) => {
   const navigate = useNavigate();
@@ -14,22 +14,34 @@ export const useWikiPage = (slug: string) => {
   
   // State
   const [page, setPage] = useState<WikiPage | null>(null);
+  const [categories, setCategories] = useState<string[]>(['Uncategorized']);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState('');
   const [editedTitle, setEditedTitle] = useState('');
+  const [editedCategory, setEditedCategory] = useState<string>('');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   
   // Fetch page when slug changes
   useEffect(() => {
-    const fetchPage = async () => {
+    const fetchData = async () => {
       setIsLoading(true);
       try {
-        const fetchedPage = await getWikiPage(slug);
+        // Fetch page and categories in parallel for better performance
+        const [fetchedPage, wikiCategories] = await Promise.all([
+          getWikiPage(slug),
+          getWikiCategories()
+        ]);
+        
+        // Update categories state with dynamically fetched categories
+        setCategories(wikiCategories);
+        console.log('Dynamic categories loaded in useWikiPage:', wikiCategories);
+        
         setPage(fetchedPage);
         setEditedContent(fetchedPage.content || '');
         setEditedTitle(fetchedPage.title);
+        setEditedCategory(fetchedPage.category || 'Uncategorized');
         
         // Auto-enter edit mode if this is a new page (either from navigation state or by timestamp)
         const isNewlyCreated = fetchedPage.created_at && 
@@ -39,7 +51,7 @@ export const useWikiPage = (slug: string) => {
         setIsEditing(isNewPage || isNewlyCreated);
         setError(null);
       } catch (err) {
-        console.error('Error fetching wiki page:', err);
+        console.error('Error fetching wiki data:', err);
         setError('Failed to load the wiki page');
         // Navigate to wiki index if page not found
         navigate('/wiki');
@@ -48,8 +60,8 @@ export const useWikiPage = (slug: string) => {
       }
     };
     
-    fetchPage();
-  }, [slug, navigate]);
+    fetchData();
+  }, [slug, navigate, isNewPage]);
   
   const handleEdit = () => {
     setIsEditing(true);
@@ -81,11 +93,12 @@ export const useWikiPage = (slug: string) => {
         return;
       }
       
-      // Create a copy of the current page with updated content and title
+      // Create a copy of the current page with updated content, title, and category
       const pageUpdate = { 
         content: editedContent,
         title: editedTitle || page.title, // Use edited title if available
-        excerpt: page.excerpt || `A page about ${editedTitle || page.title}` // Ensure excerpt is preserved
+        excerpt: page.excerpt || `A page about ${editedTitle || page.title}`, // Ensure excerpt is preserved
+        category: editedCategory || 'Uncategorized'
       };
       
       const updatedPage = await updateWikiPage(page.slug, pageUpdate);
@@ -136,14 +149,17 @@ export const useWikiPage = (slug: string) => {
   
   return {
     page,
+    categories,
     isLoading,
     error,
     isEditing,
     editedContent,
     editedTitle,
+    editedCategory,
     deleteDialogOpen,
     setEditedContent,
     setEditedTitle,
+    setEditedCategory,
     setDeleteDialogOpen,
     handleEdit,
     handleSave,

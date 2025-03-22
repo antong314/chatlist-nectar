@@ -12,14 +12,17 @@ const WikiPage: React.FC = () => {
   const prevEditingState = useRef<boolean>(false);
   const {
     page,
+    categories,
     isLoading,
     error,
     isEditing,
     editedContent,
     editedTitle,
+    editedCategory,
     deleteDialogOpen,
     setEditedContent,
     setEditedTitle,
+    setEditedCategory,
     setDeleteDialogOpen,
     handleEdit,
     handleSave,
@@ -150,10 +153,13 @@ const WikiPage: React.FC = () => {
           isEditing={isEditing}
           lastEdited={page.lastEdited || ''}
           updatedAt={page.updated_at}
+          category={isEditing ? editedCategory : page.category}
+          categories={categories}
           onEdit={handleEdit}
           onDelete={handleDelete}
           onSave={handleSave}
           onTitleChange={setEditedTitle}
+          onCategoryChange={setEditedCategory}
         />
         
         <div className="relative" ref={editorContainerRef}>

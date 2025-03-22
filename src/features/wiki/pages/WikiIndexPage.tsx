@@ -2,14 +2,15 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Book, Plus } from "lucide-react";
+import { Book, Plus, FolderTree, ChevronUp, ChevronDown } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import WikiLayout from '@/features/wiki/components/WikiLayout';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { useWikiIndex } from '@/features/wiki/hooks';
-import { WikiPage } from '@/features/wiki/types';
+import { WikiPage, WIKI_CATEGORIES } from '@/features/wiki/types';
 
 const PageTile: React.FC<{ 
   page: WikiPage, 
@@ -52,8 +53,11 @@ const PageTile: React.FC<{
 };
 
 const WikiIndexPage: React.FC = () => {
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('cat-4'); // Default to Uncategorized
+  
   const {
     pages,
+    categories,
     isLoading,
     error,
     newPageDialogOpen,
@@ -62,7 +66,7 @@ const WikiIndexPage: React.FC = () => {
     setNewPageTitle,
     handlePageClick,
     handleCreatePageClick,
-    handleCreatePage
+    handleCreatePage: createPage
   } = useWikiIndex();
   
   return (
@@ -106,14 +110,57 @@ const WikiIndexPage: React.FC = () => {
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {pages.map((page) => (
-              <PageTile 
-                key={page.id} 
-                page={page} 
-                onClick={() => handlePageClick(page.slug)} 
-              />
-            ))}
+          <div className="space-y-8">
+            {/* Standard categories from our predefined list */}
+            {categories.map((category) => {
+              console.log(`IndexPage checking category: ${category}`);
+              const categoryPages = pages.filter(page => {
+                // Make comparison case-insensitive
+                const pageCategory = page.category || 'Uncategorized';
+                return pageCategory.toLowerCase() === category.toLowerCase();
+              });
+              
+              if (categoryPages.length === 0) return null;
+              
+              return (
+                <CategorySection 
+                  key={category}
+                  category={category}
+                  pages={categoryPages}
+                  onPageClick={handlePageClick}
+                />
+              );
+            })}
+            
+            {/* Custom categories not in our predefined list */}
+            {(() => {
+              const predefinedCategoriesLower = categories.map(c => c.toLowerCase());
+              const pagesWithCustomCategories = pages.filter(page => {
+                const pageCategory = page.category || 'Uncategorized';
+                return !predefinedCategoriesLower.includes(pageCategory.toLowerCase());
+              });
+              
+              if (pagesWithCustomCategories.length === 0) return null;
+              
+              // Group by their actual category values
+              const customCategories = [...new Set(pagesWithCustomCategories.map(p => p.category || 'Other'))];
+              
+              return customCategories.map(customCategory => {
+                const pagesInCategory = pagesWithCustomCategories.filter(
+                  p => (p.category || 'Other').toLowerCase() === customCategory.toLowerCase()
+                );
+                
+                return (
+                  <CategorySection 
+                    key={`custom-${customCategory}`}
+                    category={customCategory}
+                    pages={pagesInCategory}
+                    onPageClick={handlePageClick}
+                  />
+                );
+              });
+            })()
+            }
           </div>
         )}
       </div>
@@ -123,27 +170,106 @@ const WikiIndexPage: React.FC = () => {
           <DialogHeader>
             <DialogTitle>Create New Page</DialogTitle>
           </DialogHeader>
-          <div className="py-4">
-            <Label htmlFor="title" className="text-right">
-              Page Title
-            </Label>
-            <Input
-              id="title"
-              value={newPageTitle}
-              onChange={(e) => setNewPageTitle(e.target.value)}
-              placeholder="Enter page title"
-              className="mt-1"
-            />
+          <div className="py-4 space-y-4">
+            <div>
+              <Label htmlFor="title" className="text-right">
+                Page Title
+              </Label>
+              <Input
+                id="title"
+                value={newPageTitle}
+                onChange={(e) => setNewPageTitle(e.target.value)}
+                placeholder="Enter page title"
+                className="mt-1"
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="category" className="text-right">
+                Category
+              </Label>
+              <select
+                id="category"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 mt-1"
+                value={selectedCategoryId}
+                onChange={(e) => setSelectedCategoryId(e.target.value)}
+              >
+                {categories.map(category => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewPageDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleCreatePage}>Create</Button>
+            <Button onClick={() => {
+              // Create page with the selected category
+              // Use the selected category directly
+              createPage({
+                title: newPageTitle,
+                category: selectedCategoryId || 'Uncategorized'
+              });
+            }}>Create</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </WikiLayout>
+  );
+};
+
+// Category Section Component
+interface CategorySectionProps {
+  category: string;
+  pages: WikiPage[];
+  onPageClick: (slug: string) => void;
+}
+
+const CategorySection: React.FC<CategorySectionProps> = ({ 
+  category, 
+  pages, 
+  onPageClick 
+}) => {
+  const [isOpen, setIsOpen] = useState(true);
+  
+  return (
+    <div className="border rounded-lg overflow-hidden bg-white">
+      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+        <CollapsibleTrigger asChild>
+          <Button 
+            variant="ghost" 
+            className="w-full flex items-center justify-between p-4 bg-muted/30 hover:bg-muted/50 rounded-none border-b text-left h-auto"
+          >
+            <span className="flex items-center text-lg font-medium">
+              <FolderTree className="h-5 w-5 mr-2" />
+              {category}
+            </span>
+            {isOpen ? (
+              <ChevronUp className="h-5 w-5" />
+            ) : (
+              <ChevronDown className="h-5 w-5" />
+            )}
+          </Button>
+        </CollapsibleTrigger>
+        
+        <CollapsibleContent>
+          <div className="p-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {pages.map((page) => (
+                <PageTile 
+                  key={page.id} 
+                  page={page} 
+                  onClick={() => onPageClick(page.slug)} 
+                />
+              ))}
+            </div>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </div>
   );
 };
 

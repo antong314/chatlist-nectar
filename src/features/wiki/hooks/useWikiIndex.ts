@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/components/ui/use-toast';
 import { WikiPage } from '@/features/wiki/types';
-import { getWikiPages, createWikiPage } from '@/features/wiki/api';
+import { getWikiPages, createWikiPage, getWikiCategories } from '@/features/wiki/api';
 
 export const useWikiIndex = () => {
   const navigate = useNavigate();
@@ -10,26 +10,34 @@ export const useWikiIndex = () => {
   const [newPageDialogOpen, setNewPageDialogOpen] = useState(false);
   const [newPageTitle, setNewPageTitle] = useState('');
   const [pages, setPages] = useState<WikiPage[]>([]);
+  const [categories, setCategories] = useState<string[]>(['Uncategorized']); // Start with default until loaded
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Fetch all wiki pages
+  // Fetch all wiki pages and categories
   useEffect(() => {
-    const fetchPages = async () => {
+    const fetchData = async () => {
       setIsLoading(true);
       try {
-        const wikiPages = await getWikiPages();
+        // Fetch wiki pages and categories in parallel
+        const [wikiPages, wikiCategories] = await Promise.all([
+          getWikiPages(),
+          getWikiCategories()
+        ]);
+        
         setPages(wikiPages);
+        setCategories(wikiCategories); // Set categories dynamically from DB
+        console.log('Dynamic categories loaded:', wikiCategories);
         setError(null);
       } catch (err) {
-        console.error('Error fetching wiki pages:', err);
-        setError('Failed to load wiki pages');
+        console.error('Error fetching wiki data:', err);
+        setError('Failed to load wiki data');
       } finally {
         setIsLoading(false);
       }
     };
     
-    fetchPages();
+    fetchData();
   }, []);
   
   const handlePageClick = (slug: string) => {
@@ -40,14 +48,17 @@ export const useWikiIndex = () => {
     setNewPageDialogOpen(true);
   };
   
-  const handleCreatePage = async () => {
-    if (newPageTitle.trim()) {
+  const handleCreatePage = async (pageData?: Partial<WikiPage>) => {
+    if ((pageData?.title || newPageTitle).trim()) {
       try {
         // Create a new page with initial empty content
+        // Use provided data or defaults
+        const title = pageData?.title || newPageTitle;
         const newPage = await createWikiPage({
-          title: newPageTitle,
+          title,
           content: JSON.stringify([{ type: 'paragraph', content: [{ type: 'text', text: '' }] }]),
-          excerpt: `A page about ${newPageTitle}`
+          excerpt: pageData?.excerpt || `A page about ${title}`,
+          category: pageData?.category || 'Uncategorized' // Default to Uncategorized category
         });
         
         toast({
@@ -72,6 +83,7 @@ export const useWikiIndex = () => {
   
   return {
     pages,
+    categories,
     isLoading,
     error,
     newPageDialogOpen,

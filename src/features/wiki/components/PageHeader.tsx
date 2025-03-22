@@ -1,27 +1,35 @@
 import React from 'react';
 import { Button } from "@/components/ui/button";
-import { Calendar, Edit, Trash2, Save } from "lucide-react";
+import { Calendar, Edit, Trash2, Save, FolderTree } from "lucide-react";
+import { Label } from "@/components/ui/label";
+// Categories now come from props instead of a static constant
 
 interface PageHeaderProps {
   title: string;
   lastEdited?: string;
   updatedAt?: string;
+  category?: string;
+  categories?: string[];
   isEditing: boolean;
   onEdit: () => void;
   onDelete: () => void;
   onSave?: () => void;
   onTitleChange?: (newTitle: string) => void;
+  onCategoryChange?: (category: string) => void;
 }
 
 const PageHeader: React.FC<PageHeaderProps> = ({
   title,
   lastEdited,
   updatedAt,
+  category,
+  categories = ['Uncategorized'], // Default to just Uncategorized if no categories provided
   isEditing,
   onEdit,
   onDelete,
   onSave,
   onTitleChange,
+  onCategoryChange,
 }) => {
   // Format the date to be more readable
   const formatDate = (dateString?: string) => {
@@ -49,9 +57,35 @@ const PageHeader: React.FC<PageHeaderProps> = ({
         ) : (
           <h1 className="text-3xl font-bold text-gray-900">{title}</h1>
         )}
-        <div className="flex items-center text-sm text-muted-foreground mt-2">
-          <Calendar className="h-4 w-4 mr-1" />
-          <span>Last edited: {displayDate}</span>
+        <div className="space-y-2 mt-2">
+          <div className="flex items-center text-sm text-muted-foreground">
+            <Calendar className="h-4 w-4 mr-1" />
+            <span>Last edited: {displayDate}</span>
+          </div>
+          
+          {/* Category display or edit */}
+          <div className="flex items-center text-sm text-muted-foreground">
+            <FolderTree className="h-4 w-4 mr-1" />
+            {isEditing && onCategoryChange ? (
+              <div className="flex items-center space-x-2">
+                <Label htmlFor="category" className="text-xs font-medium">Category:</Label>
+                <select
+                  id="category"
+                  className="text-sm rounded-md border border-input bg-background px-2 py-1 text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  value={category || 'Uncategorized'}
+                  onChange={(e) => onCategoryChange && onCategoryChange(e.target.value)}
+                >
+                  {categories.map(cat => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <span>Category: {category || 'Uncategorized'}</span>
+            )}
+          </div>
         </div>
       </div>
       
