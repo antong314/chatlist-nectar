@@ -30,8 +30,12 @@ const WikiLayout: React.FC<WikiLayoutProps> = ({
     setNewPageDialogOpen, 
     newPageTitle, 
     setNewPageTitle, 
-    handleCreatePage 
+    handleCreatePage,
+    categories              // Get categories list from the hook 
   } = useWikiIndex();
+  
+  // Local state for selected category in this dialog
+  const [selectedCategory, setSelectedCategory] = useState<string>('Uncategorized');
 
   // Close sidebar on mobile by default
   useEffect(() => {
@@ -94,23 +98,49 @@ const WikiLayout: React.FC<WikiLayoutProps> = ({
           <DialogHeader>
             <DialogTitle>Create New Page</DialogTitle>
           </DialogHeader>
-          <div className="py-4">
-            <Label htmlFor="title" className="text-right">
-              Page Title
-            </Label>
-            <Input
-              id="title"
-              value={newPageTitle}
-              onChange={(e) => setNewPageTitle(e.target.value)}
-              placeholder="Enter page title"
-              className="mt-1"
-            />
+          <div className="py-4 space-y-4">
+            <div>
+              <Label htmlFor="title" className="text-right">
+                Page Title
+              </Label>
+              <Input
+                id="title"
+                value={newPageTitle}
+                onChange={(e) => setNewPageTitle(e.target.value)}
+                placeholder="Enter page title"
+                className="mt-1"
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="category" className="text-right">
+                Category
+              </Label>
+              <select
+                id="category"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 mt-1"
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+              >
+                {categories.map(category => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewPageDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleCreatePage}>Create</Button>
+            <Button onClick={() => {
+              // Create page with the selected category and pass the necessary data
+              handleCreatePage({
+                title: newPageTitle,
+                category: selectedCategory || 'Uncategorized'
+              });
+            }}>Create</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
