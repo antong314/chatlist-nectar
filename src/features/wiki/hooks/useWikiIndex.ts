@@ -73,7 +73,9 @@ export const useWikiIndex = () => {
           title,
           content: JSON.stringify([{ type: 'paragraph', content: [{ type: 'text', text: '' }] }]),
           excerpt: pageData?.excerpt || `A page about ${title}`,
-          category: pageData?.category || 'Uncategorized' // Default to Uncategorized category
+          category: pageData?.category || 'Uncategorized', // Default to Uncategorized category
+          version: 0, // Initial version for new pages
+          is_published: true // Default to published
         });
         
         toast({
@@ -87,9 +89,15 @@ export const useWikiIndex = () => {
         navigate(`/wiki/${newPage.slug}`, { state: { isNewPage: true } });
       } catch (err) {
         console.error('Error creating wiki page:', err);
+        
+        // Extract the specific error message if available
+        const errorMessage = err instanceof Error
+          ? err.message
+          : "There was a problem creating the page";
+        
         toast({
           title: "Error creating page",
-          description: "There was a problem creating the page",
+          description: errorMessage,
           variant: "destructive"
         });
       }

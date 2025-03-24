@@ -42,11 +42,11 @@ export const getWikiPages = async (): Promise<WikiPage[]> => {
   }
 
   try {
-    // First try with the category relationship
-    // Explicitly query for all columns including category
+    // Get only published pages and include all necessary fields
     const { data, error } = await supabase
       .from('wiki_pages')
-      .select('id, slug, title, content, excerpt, created_at, updated_at, created_by, is_published, category')
+      .select('id, slug, title, content, excerpt, created_at, updated_at, created_by, is_published, category, version')
+      .eq('is_published', true) // Only get published versions
       .order('updated_at', { ascending: false });
       
     console.log('Database query result:', data);
@@ -114,11 +114,12 @@ export const getWikiPage = async (slug: string): Promise<WikiPage> => {
   }
 
   try {
-    // First try to get the page without the category join
+    // Get only the published version of the page
     const { data, error } = await supabase
       .from('wiki_pages')
       .select('*')
       .eq('slug', slug)
+      .eq('is_published', true) // Only get the published version
       .single();
 
     if (error) {
@@ -159,7 +160,39 @@ export const createWikiPage = async (
   const slug = createSlug(page.title);
   const category = page.category || 'Uncategorized';
   
+  console.log(`Checking if page with slug '${slug}' exists...`);
+  
+  // First check if a page with this slug already exists
+  if (useSupabase) {
+    try {
+      // Use count instead to be more explicit and reliable
+      const { count, error } = await supabase
+        .from('wiki_pages')
+        .select('*', { count: 'exact', head: true })
+        .eq('slug', slug);
+
+      console.log(`Found ${count} existing pages with slug '${slug}'`);
+
+      if (count && count > 0) {
+        // Page with this slug already exists
+        console.error(`Duplicate page detected: '${page.title}' (slug: ${slug})`);
+        throw new Error(`A page with the title "${page.title}" already exists. Please choose a different title.`);
+      }
+    } catch (err) {
+      // If this is our custom error, rethrow it
+      if (err instanceof Error && err.message.includes('already exists')) {
+        throw err;
+      }
+      // Otherwise log it and continue (might be a different error)
+      console.error('Error checking for existing page:', err);
+    }
+  }
+  
   if (!useSupabase) {
+    // Also check mock data for existing page
+    if (mockPages[slug]) {
+      throw new Error(`A page with the title "${page.title}" already exists. Please choose a different title.`);
+    }
     // Mock implementation
     const newPage: WikiPage = {
       id: slug,
@@ -171,6 +204,7 @@ export const createWikiPage = async (
       updated_at: new Date().toISOString(),
       is_published: page.is_published ?? true,
       category: category,
+      version: 0, // Set initial version to 0
       lastEdited: formatLastEdited(new Date().toISOString())
     };
     return newPage;
@@ -185,7 +219,8 @@ export const createWikiPage = async (
         content: page.content,
         excerpt: page.excerpt,
         is_published: page.is_published ?? true,
-        category: category
+        category: category,
+        version: 0 // Start with version 0 for new pages
       })
       .select()
       .single();
@@ -199,7 +234,8 @@ export const createWikiPage = async (
     return {
       ...data,
       category: data.category || category,
-      lastEdited: formatLastEdited(data.updated_at)
+      lastEdited: formatLastEdited(data.updated_at),
+      version: data.version ?? 0 // Ensure version is included in returned data
     };
   } catch (err) {
     console.error('Unexpected error in createWikiPage:', err);
@@ -215,6 +251,7 @@ export const createWikiPage = async (
       updated_at: new Date().toISOString(),
       is_published: page.is_published ?? true,
       category: category,
+      version: 0, // Initial version
       lastEdited: formatLastEdited(new Date().toISOString())
     };
     return newPage;
@@ -244,24 +281,41 @@ export const updateWikiPage = async (
     
     console.log('Original mock page:', page);
     
+    // Create a new version with incremented version number
+    const currentVersion = page.version || 0;
+    const newVersion = currentVersion + 1;
+    
+    // First set the old version to is_published=false
+    const oldPage = {
+      ...mockPages[slug],
+      is_published: false
+    };
+    
+    // Create a new version with is_published=true
     const updatedPage: WikiPage = {
       ...page,
       ...updates,
       slug,
-      created_at: new Date().toISOString(),
+      created_at: page.created_at, // Preserve original creation date
       updated_at: new Date().toISOString(),
       category: category || page.category,
+      version: newVersion, // Increment version
+      is_published: true,  // Make new version published
       lastEdited: formatLastEdited(new Date().toISOString())
     };
     
-    console.log('Updated mock page:', updatedPage);
-    // Update the mock data so it persists during the session
+    console.log('Updated mock page (new version):', updatedPage);
+    
+    // In a real implementation, we'd keep both versions in the database
+    // For mock data, we'll just store the latest version
     mockPages[slug] = {
       ...mockPages[slug],
       ...updates,
       id: slug,
       content: updates.content || mockPages[slug].content,
       category: category || mockPages[slug].category,
+      version: newVersion,
+      is_published: true,
       updated_at: new Date().toISOString()
     };
     
@@ -271,36 +325,77 @@ export const updateWikiPage = async (
   }
 
   console.log('Using Supabase for updateWikiPage');
-  console.log('Supabase update payload:', {
-    ...updates,
-    category: category,
-    updated_at: new Date().toISOString()
-  });
   
   try {
-    const { data, error } = await supabase
+    // First, get the current page to retrieve its current version
+    const { data: currentPage, error: fetchError } = await supabase
       .from('wiki_pages')
-      .update({
-        ...updates,
-        category: category,
-        updated_at: new Date().toISOString()
-      })
+      .select('*')
       .eq('slug', slug)
+      .eq('is_published', true) // Get the current published version
+      .single();
+
+    if (fetchError) {
+      console.error(`Error fetching current wiki page ${slug}:`, fetchError);
+      throw new Error(`Failed to retrieve page with slug ${slug}`);
+    }
+
+    console.log('Current page before update:', currentPage);
+    const currentVersion = currentPage.version || 0;
+    const newVersion = currentVersion + 1;
+    
+    // Step 1: Set current version's is_published to false
+    const { error: unpublishError } = await supabase
+      .from('wiki_pages')
+      .update({ is_published: false })
+      .eq('id', currentPage.id)
+      .eq('version', currentVersion);
+
+    if (unpublishError) {
+      console.error(`Error unpublishing current version of ${slug}:`, unpublishError);
+      throw new Error(`Failed to unpublish current version of ${slug}`);
+    }
+
+    // Step 2: Create a new entry with incremented version number
+    const { data: newPage, error: insertError } = await supabase
+      .from('wiki_pages')
+      .insert({
+        id: currentPage.id, // Same ID as before
+        slug: slug,
+        title: updates.title || currentPage.title,
+        content: updates.content || currentPage.content,
+        excerpt: updates.excerpt || currentPage.excerpt,
+        created_at: currentPage.created_at, // Preserve original creation date
+        updated_at: new Date().toISOString(),
+        created_by: currentPage.created_by,
+        category: category,
+        version: newVersion, // Incremented version
+        is_published: true // Make this version published
+      })
       .select()
       .single();
 
-    if (error) {
-      console.error(`Error updating wiki page ${slug}:`, error);
-      throw new Error(`Failed to update page with slug ${slug}`);
+    if (insertError) {
+      console.error(`Error creating new version of ${slug}:`, insertError);
+      
+      // Try to roll back and re-publish the old version
+      await supabase
+        .from('wiki_pages')
+        .update({ is_published: true })
+        .eq('id', currentPage.id)
+        .eq('version', currentVersion);
+        
+      throw new Error(`Failed to create new version of ${slug}`);
     }
 
-    console.log('Supabase update response:', data);
+    console.log('New version created successfully:', newPage);
     
-    // Add computed properties
+    // Add computed properties to new page version
     return {
-      ...data,
-      category: data.category || category,
-      lastEdited: formatLastEdited(data.updated_at)
+      ...newPage,
+      category: newPage.category || category,
+      lastEdited: formatLastEdited(newPage.updated_at),
+      version: newVersion
     };
   } catch (err) {
     console.error('Unexpected error in updateWikiPage:', err);
