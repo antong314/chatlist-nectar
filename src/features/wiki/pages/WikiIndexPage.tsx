@@ -42,17 +42,10 @@ const PageTile: React.FC<{
       <CardHeader className="pb-2">
         <CardTitle className="text-xl font-medium">{page.title}</CardTitle>
       </CardHeader>
-      <CardContent className="flex-1 flex flex-col">
-        <p className="text-sm text-muted-foreground mb-4 flex-1">{excerpt}</p>
-        <div className="flex justify-between items-center text-xs text-muted-foreground">
-          <div className="flex items-center">
-            <Book className="h-3 w-3 mr-1" />
-            <span>Last edited: {lastEdited}</span>
-          </div>
-          <div className="flex items-center">
-            {React.createElement(getCategoryIcon(page.category || 'Uncategorized'), { className: "h-3 w-3 mr-1" })}
-            <span>{page.category || 'Uncategorized'}</span>
-          </div>
+      <CardContent className="flex-1 flex flex-col justify-end">
+        <div className="flex items-center text-xs text-muted-foreground">
+          <Book className="h-3 w-3 mr-1" />
+          <span>Last edited: {lastEdited}</span>
         </div>
       </CardContent>
     </Card>
