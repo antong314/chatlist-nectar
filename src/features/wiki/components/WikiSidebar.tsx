@@ -10,9 +10,9 @@ import {
   Loader2, 
   ChevronDown, 
   ChevronUp,
-  FolderTree,
   File
 } from "lucide-react";
+import { getCategoryIcon } from '@/features/wiki/utils/categoryIcons';
 import { useWikiIndex } from '@/features/wiki/hooks';
 import { WikiPage } from '@/features/wiki/types';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -208,7 +208,8 @@ const CategoryItem: React.FC<CategoryItemProps> = ({
             className="w-full flex items-center justify-between px-3 py-2 mb-1 text-left font-medium"
           >
             <span className="flex items-center">
-              <FolderTree className="h-4 w-4 mr-2" />
+              {/* Dynamic icon based on category */}
+              {React.createElement(getCategoryIcon(category), { className: "h-4 w-4 mr-2" })}
               {category}
             </span>
             {isOpen ? (

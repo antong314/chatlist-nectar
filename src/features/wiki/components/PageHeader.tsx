@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button } from "@/components/ui/button";
-import { Calendar, Edit, Trash2, Save, FolderTree } from "lucide-react";
+import { Calendar, Edit, Trash2, Save } from "lucide-react";
+import { getCategoryIcon } from '@/features/wiki/utils/categoryIcons';
 import { Label } from "@/components/ui/label";
 // Categories now come from props instead of a static constant
 
@@ -70,7 +71,7 @@ const PageHeader: React.FC<PageHeaderProps> = ({
             
             {/* Category display or edit */}
             <div className="flex items-center mt-2 sm:mt-0">
-              <FolderTree className="h-4 w-4 mr-1" />
+              {React.createElement(getCategoryIcon(category || 'Uncategorized'), { className: "h-4 w-4 mr-1" })}
               {isEditing && onCategoryChange ? (
                 <div className="flex items-center space-x-2">
                   <Label htmlFor="category" className="text-xs font-medium">Category:</Label>

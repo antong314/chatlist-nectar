@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Book, Plus, FolderTree, ChevronUp, ChevronDown } from "lucide-react";
+import { Book, Plus, ChevronUp, ChevronDown } from "lucide-react";
+import { getCategoryIcon } from '@/features/wiki/utils/categoryIcons';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import WikiLayout from '@/features/wiki/components/WikiLayout';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -10,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { useWikiIndex } from '@/features/wiki/hooks';
-import { WikiPage, WIKI_CATEGORIES } from '@/features/wiki/types';
+import { WikiPage } from '@/features/wiki/types';
 
 const PageTile: React.FC<{ 
   page: WikiPage, 
@@ -43,9 +44,15 @@ const PageTile: React.FC<{
       </CardHeader>
       <CardContent className="flex-1 flex flex-col">
         <p className="text-sm text-muted-foreground mb-4 flex-1">{excerpt}</p>
-        <div className="flex items-center text-xs text-muted-foreground">
-          <Book className="h-3 w-3 mr-1" />
-          <span>Last edited: {lastEdited}</span>
+        <div className="flex justify-between items-center text-xs text-muted-foreground">
+          <div className="flex items-center">
+            <Book className="h-3 w-3 mr-1" />
+            <span>Last edited: {lastEdited}</span>
+          </div>
+          <div className="flex items-center">
+            {React.createElement(getCategoryIcon(page.category || 'Uncategorized'), { className: "h-3 w-3 mr-1" })}
+            <span>{page.category || 'Uncategorized'}</span>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -244,7 +251,7 @@ const CategorySection: React.FC<CategorySectionProps> = ({
             className="w-full flex items-center justify-between p-4 bg-muted/30 hover:bg-muted/50 rounded-none border-b text-left h-auto"
           >
             <span className="flex items-center text-lg font-medium">
-              <FolderTree className="h-5 w-5 mr-2" />
+              {React.createElement(getCategoryIcon(category), { className: "h-5 w-5 mr-2" })}
               {category}
             </span>
             {isOpen ? (
