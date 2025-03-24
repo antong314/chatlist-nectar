@@ -24,6 +24,9 @@
 .bn-editor {
   background-color: white !important;
   border-radius: 0 0 8px 8px !important; /* Round bottom corners */
+  word-break: normal !important;
+  overflow-wrap: break-word !important;
+  hyphens: none !important;
 }
 
 /* Ensure the editor has proper padding */
@@ -40,6 +43,23 @@
 .bn-editor h3,
 .bn-editor li {
   font-family: inherit; /* Use the inherited font family */
+  overflow-wrap: break-word; /* Break words at arbitrary points if there's no otherwise acceptable break points */
+  word-wrap: break-word; /* Legacy name for overflow-wrap */
+  word-break: normal; /* Only break at normal word break points (spaces, hyphens) */
+  hyphens: none; /* Disable automatic hyphenation */
+}
+
+/* Hyperlink styling within the editor */
+.bn-editor a,
+.bn-editor a:visited {
+  color: #0000ee !important; /* Standard hyperlink blue color */
+  text-decoration: underline !important;
+  cursor: pointer !important;
+}
+
+.bn-editor a:hover {
+  color: #1a0dab !important; /* Darker blue on hover */
+  text-decoration: underline !important;
 }
 
 /* Make sure the formatting toolbar container has proper styling */

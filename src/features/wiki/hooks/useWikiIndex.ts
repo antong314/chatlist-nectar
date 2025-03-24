@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/components/ui/use-toast';
 import { WikiPage } from '@/features/wiki/types';
@@ -14,31 +14,46 @@ export const useWikiIndex = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Fetch all wiki pages and categories
+  // Function to fetch all wiki pages and categories
+  const refreshData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      // Fetch wiki pages and categories in parallel
+      const [wikiPages, wikiCategories] = await Promise.all([
+        getWikiPages(),
+        getWikiCategories()
+      ]);
+      
+      setPages(wikiPages);
+      setCategories(wikiCategories); // Set categories dynamically from DB
+      console.log('Dynamic categories refreshed:', wikiCategories);
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching wiki data:', err);
+      setError('Failed to load wiki data');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+  
+  // Listen for custom refresh events
   useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
-      try {
-        // Fetch wiki pages and categories in parallel
-        const [wikiPages, wikiCategories] = await Promise.all([
-          getWikiPages(),
-          getWikiCategories()
-        ]);
-        
-        setPages(wikiPages);
-        setCategories(wikiCategories); // Set categories dynamically from DB
-        console.log('Dynamic categories loaded:', wikiCategories);
-        setError(null);
-      } catch (err) {
-        console.error('Error fetching wiki data:', err);
-        setError('Failed to load wiki data');
-      } finally {
-        setIsLoading(false);
-      }
+    const handleWikiDataChanged = () => {
+      console.log('Wiki data change event received, refreshing data...');
+      refreshData();
     };
     
-    fetchData();
-  }, []);
+    // Add event listener for wiki data changes
+    document.addEventListener('wiki-data-changed', handleWikiDataChanged);
+    
+    // Initial data fetch
+    refreshData();
+    
+    // Clean up event listener on unmount
+    return () => {
+      document.removeEventListener('wiki-data-changed', handleWikiDataChanged);
+    };
+  }, [refreshData]);
   
   const handlePageClick = (slug: string) => {
     navigate(`/wiki/${slug}`);
@@ -92,6 +107,7 @@ export const useWikiIndex = () => {
     setNewPageTitle,
     handlePageClick,
     handleCreatePageClick,
-    handleCreatePage
+    handleCreatePage,
+    refreshData
   };
 };

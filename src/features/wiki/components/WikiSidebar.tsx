@@ -99,7 +99,6 @@ const WikiSidebar: React.FC<WikiSidebarProps> = ({
                       // Make comparison case-insensitive
                       const pageCategory = page.category || 'Uncategorized';
                       const result = pageCategory.toLowerCase() === category.toLowerCase();
-                      console.log(`Page "${page.title}" with category "${pageCategory}" matches "${category}": ${result}`);
                       return result;
                     });
                     

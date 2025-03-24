@@ -107,6 +107,11 @@ export const useWikiPage = (slug: string) => {
       setPage(updatedPage);
       setIsEditing(false);
       
+      // Dispatch custom event to notify other components that wiki data has changed
+      const wikiDataChangedEvent = new Event('wiki-data-changed');
+      document.dispatchEvent(wikiDataChangedEvent);
+      console.log('Dispatched wiki-data-changed event after updating page');
+      
       toast({
         title: "Page updated",
         description: "Your changes have been saved successfully"
@@ -130,6 +135,12 @@ export const useWikiPage = (slug: string) => {
     
     try {
       await deleteWikiPage(page.slug);
+      
+      // Dispatch custom event to notify other components that wiki data has changed
+      const wikiDataChangedEvent = new Event('wiki-data-changed');
+      document.dispatchEvent(wikiDataChangedEvent);
+      console.log('Dispatched wiki-data-changed event after deleting page');
+      
       toast({
         title: "Page deleted",
         description: "The page has been deleted successfully"

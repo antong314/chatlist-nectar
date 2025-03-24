@@ -45,7 +45,7 @@ const PageHeader: React.FC<PageHeaderProps> = ({
   // Use updatedAt if available, fallback to lastEdited for backward compatibility
   const displayDate = updatedAt ? formatDate(updatedAt) : (lastEdited || 'Not available');
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 pb-4 border-b">
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4">
       <div>
         {isEditing && onTitleChange ? (
           <input 
@@ -57,34 +57,40 @@ const PageHeader: React.FC<PageHeaderProps> = ({
         ) : (
           <h1 className="text-3xl font-bold text-gray-900">{title}</h1>
         )}
-        <div className="space-y-2 mt-2">
-          <div className="flex items-center text-sm text-muted-foreground">
-            <Calendar className="h-4 w-4 mr-1" />
-            <span>Last edited: {displayDate}</span>
-          </div>
-          
-          {/* Category display or edit */}
-          <div className="flex items-center text-sm text-muted-foreground">
-            <FolderTree className="h-4 w-4 mr-1" />
-            {isEditing && onCategoryChange ? (
-              <div className="flex items-center space-x-2">
-                <Label htmlFor="category" className="text-xs font-medium">Category:</Label>
-                <select
-                  id="category"
-                  className="text-sm rounded-md border border-input bg-background px-2 py-1 text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  value={category || 'Uncategorized'}
-                  onChange={(e) => onCategoryChange && onCategoryChange(e.target.value)}
-                >
-                  {categories.map(cat => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : (
-              <span>Category: {category || 'Uncategorized'}</span>
-            )}
+        <div className="mt-2">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-4 text-sm text-muted-foreground">
+            {/* Last edited info */}
+            <div className="flex items-center">
+              <Calendar className="h-4 w-4 mr-1" />
+              <span>Last edited: {displayDate}</span>
+            </div>
+            
+            {/* Divider for visual separation on desktop */}
+            <div className="hidden sm:block h-4 w-px bg-gray-200"></div>
+            
+            {/* Category display or edit */}
+            <div className="flex items-center mt-2 sm:mt-0">
+              <FolderTree className="h-4 w-4 mr-1" />
+              {isEditing && onCategoryChange ? (
+                <div className="flex items-center space-x-2">
+                  <Label htmlFor="category" className="text-xs font-medium">Category:</Label>
+                  <select
+                    id="category"
+                    className="text-sm rounded-md border border-input bg-background px-2 py-1 text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    value={category || 'Uncategorized'}
+                    onChange={(e) => onCategoryChange && onCategoryChange(e.target.value)}
+                  >
+                    {categories.map(cat => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <span>Category: {category || 'Uncategorized'}</span>
+              )}
+            </div>
           </div>
         </div>
       </div>
