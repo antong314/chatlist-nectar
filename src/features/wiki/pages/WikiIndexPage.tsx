@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Book, Plus, ChevronUp, ChevronDown } from "lucide-react";
 import { getCategoryIcon } from '@/features/wiki/utils/categoryIcons';
+import { trackPageView, trackEvent } from '@/utils/analytics';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import WikiLayout from '@/features/wiki/components/WikiLayout';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -53,6 +54,10 @@ const PageTile: React.FC<{
 };
 
 const WikiIndexPage: React.FC = () => {
+  // Track page view when component mounts
+  useEffect(() => {
+    trackPageView('/wiki', 'Wiki Index');
+  }, []);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('cat-4'); // Default to Uncategorized
   
   const {

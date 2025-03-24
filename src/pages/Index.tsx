@@ -13,10 +13,15 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Newspaper, Plus, Search, FileText } from 'lucide-react';
+import { trackPageView, trackContactView, trackEvent } from '@/utils/analytics';
 
 // Categories are now dynamically loaded from the data
 
 const Index = () => {
+  // Track page view when component mounts
+  useEffect(() => {
+    trackPageView('/directory', 'Contact Directory');
+  }, []);
   const {
     contacts,
     loading,
@@ -54,6 +59,13 @@ const Index = () => {
     setSelectedContact(contact);
     setIsDetailOpen(true);
     setIsFormOpen(false);
+    
+    // Track contact view in analytics
+    trackContactView(
+      contact.id.toString(), 
+      contact.name, 
+      contact.category
+    );
   };
 
   const handleCloseDetail = () => {
@@ -81,17 +93,36 @@ const Index = () => {
   const handleSaveContact = async (contact: Omit<Contact, 'id'> | Contact) => {
     if ('id' in contact) {
       const success = await updateContact(contact);
-      if (success) handleCloseForm();
+      if (success) {
+        handleCloseForm();
+        // Track update contact event
+        trackEvent('Directory', 'Update Contact', contact.name);
+      }
     } else {
       const success = await addContact(contact);
-      if (success) handleCloseForm();
+      if (success) {
+        handleCloseForm();
+        // Track add contact event
+        trackEvent('Directory', 'Add Contact', contact.name);
+      }
     }
   };
 
   // Handle contact delete
   const handleDeleteContact = async (id: string) => {
+    // Get the contact name before deleting (for tracking)
+    const contactToDelete = contacts.find(c => c.id.toString() === id);
     const success = await deleteContact(id);
-    if (success) handleCloseForm();
+    
+    if (success) {
+      handleCloseForm();
+      // Track delete event
+      if (contactToDelete) {
+        trackEvent('Directory', 'Delete Contact', contactToDelete.name);
+      } else {
+        trackEvent('Directory', 'Delete Contact', id);
+      }
+    }
   };
 
   // Close form and detail view on escape key

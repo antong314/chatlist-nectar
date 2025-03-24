@@ -5,6 +5,7 @@ import PageHeader from '@/features/wiki/components/PageHeader';
 import WikiEditor from '@/features/wiki/components/WikiEditor';
 import DeletePageDialog from '@/features/wiki/components/DeletePageDialog';
 import { useWikiPage } from '@/features/wiki/hooks';
+import { trackWikiPageView } from '@/utils/analytics';
 
 const WikiPage: React.FC = () => {
   const { pageId = 'welcome' } = useParams();
@@ -29,6 +30,17 @@ const WikiPage: React.FC = () => {
     handleDelete,
     confirmDelete
   } = useWikiPage(pageId);
+  
+  // Track page view when the page loads and data is available
+  useEffect(() => {
+    if (page && !isLoading && !error) {
+      trackWikiPageView(
+        pageId, 
+        page.title || 'Untitled Wiki Page', 
+        page.category || 'Uncategorized'
+      );
+    }
+  }, [pageId, page, isLoading, error]);
   
   // Function to focus the editor
   const focusEditor = () => {
