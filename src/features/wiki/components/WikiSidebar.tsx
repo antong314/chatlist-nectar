@@ -94,7 +94,7 @@ const WikiSidebar: React.FC<WikiSidebarProps> = ({
                   
                   {/* Now map through categories from our dynamic list */}
                   {categories.map((category) => {
-                    console.log(`Checking predefined category: "${category}"`);
+                    // Check predefined category
                     const categoryPages = pages.filter(page => {
                       // Make comparison case-insensitive
                       const pageCategory = page.category || 'Uncategorized';
@@ -102,7 +102,7 @@ const WikiSidebar: React.FC<WikiSidebarProps> = ({
                       return result;
                     });
                     
-                    console.log(`Category "${category}" has ${categoryPages.length} pages`);
+                    // Process category pages
                     if (categoryPages.length === 0) return null;
                     
                     return (

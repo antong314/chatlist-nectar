@@ -26,7 +26,7 @@ export const useWikiIndex = () => {
       
       setPages(wikiPages);
       setCategories(wikiCategories); // Set categories dynamically from DB
-      console.log('Dynamic categories refreshed:', wikiCategories);
+      // Dynamic categories refreshed
       setError(null);
     } catch (err) {
       console.error('Error fetching wiki data:', err);

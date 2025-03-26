@@ -118,7 +118,7 @@ const WikiIndexPage: React.FC = () => {
           <div className="space-y-8">
             {/* Standard categories from our predefined list */}
             {categories.map((category) => {
-              console.log(`IndexPage checking category: ${category}`);
+              // Check category for filtering
               const categoryPages = pages.filter(page => {
                 // Make comparison case-insensitive
                 const pageCategory = page.category || 'Uncategorized';

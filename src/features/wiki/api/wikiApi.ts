@@ -60,14 +60,14 @@ export const getWikiPages = async (): Promise<WikiPage[]> => {
     
     // Log each page's category specifically for debugging
     data.forEach(page => {
-      console.log(`DB Page [${page.title}] has raw category value: "${page.category}", type: ${typeof page.category}`);
+      // Process raw category value
     });
     
     // Simply use the category directly from the database with minimal normalization
     const processedPages = data.map((page: any) => {
       // Just use the category value directly, defaulting to 'Uncategorized' if not present
       const categoryValue = page.category || 'Uncategorized';
-      console.log(`Processing page ${page.title}: using category "${categoryValue}"`);      
+      // Use processed category value      
       
       return {
         ...page,
@@ -458,7 +458,7 @@ export const getWikiCategories = async (): Promise<string[]> => {
       categories.push('Uncategorized');
     }
     
-    console.log('Dynamic categories from database:', categories);
+    // Dynamic categories retrieved from database
     return categories;
   } catch (err) {
     console.error('Error in getWikiCategories:', err);

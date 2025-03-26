@@ -36,7 +36,7 @@ export const useWikiPage = (slug: string) => {
         
         // Update categories state with dynamically fetched categories
         setCategories(wikiCategories);
-        console.log('Dynamic categories loaded in useWikiPage:', wikiCategories);
+        // Dynamic categories loaded
         
         setPage(fetchedPage);
         setEditedContent(fetchedPage.content || '');
