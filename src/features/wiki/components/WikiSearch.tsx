@@ -8,7 +8,11 @@ import { Search as SearchIcon, X, BookOpen, Tag } from 'lucide-react';
 import { useWikiSearch } from '@/features/wiki/hooks/useWikiSearch';
 import { formatDistance } from 'date-fns';
 
-const WikiSearch: React.FC = () => {
+interface WikiSearchProps {
+  variant?: 'icon' | 'inline';
+}
+
+const WikiSearch: React.FC<WikiSearchProps> = ({ variant = 'icon' }) => {
   const navigate = useNavigate();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -84,15 +88,35 @@ const WikiSearch: React.FC = () => {
 
   return (
     <>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="ml-2"
-        onClick={toggleSearch}
-        aria-label={isSearchOpen ? "Close search" : "Open search"}
-      >
-        <SearchIcon className="h-4 w-4" />
-      </Button>
+      {variant === 'icon' ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="ml-2"
+          onClick={toggleSearch}
+          aria-label={isSearchOpen ? "Close search" : "Open search"}
+        >
+          <SearchIcon className="h-4 w-4" />
+        </Button>
+      ) : (
+        <div className="relative w-full max-w-sm">
+          <div className="flex h-9 items-center rounded-md border bg-background px-3 py-1 text-sm shadow-sm">
+            <SearchIcon className="h-4 w-4 mr-2 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search wiki..."
+              className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onClick={() => {
+                if (!isSearchOpen) {
+                  setIsSearchOpen(true);
+                }
+              }}
+            />
+          </div>
+        </div>
+      )}
       
       {isSearchOpen && (
         <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-start justify-center pt-16 px-4">

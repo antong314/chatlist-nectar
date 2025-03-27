@@ -49,9 +49,16 @@ const WikiHeader: React.FC<WikiHeaderProps> = ({
           </div>
         </div>
         
-        <div className="flex items-center">
-          {/* Add the search component */}
-          <WikiSearch />
+        <div className="flex items-center gap-3">
+          {/* Add the search component with inline variant for better visibility */}
+          <div className="hidden md:block">
+            <WikiSearch variant="inline" />
+          </div>
+          
+          {/* Keep icon version for mobile */}
+          <div className="md:hidden">
+            <WikiSearch variant="icon" />
+          </div>
         </div>
       </div>
     </header>
