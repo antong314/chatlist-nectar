@@ -1,6 +1,8 @@
 import React, { Component, useEffect, useRef, useCallback, ErrorInfo, ReactNode } from 'react';
 import { FormattingToolbar, useCreateBlockNote } from '@blocknote/react';
 import { BlockNoteView } from '@blocknote/mantine';
+import { Image as ImageIcon } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 // Import the styling
 import '@blocknote/core/fonts/inter.css';
@@ -49,7 +51,58 @@ const WikiEditor: React.FC<WikiEditorProps> = ({
   const contentVersion = useRef(initialContent);
   const contentInitialized = useRef(false);
 
-  // Creates a new editor instance
+  // Image upload handler for BlockNote
+  const handleImageUpload = async (file: File) => {
+    try {
+      // Create a unique filename with timestamp
+      const timestamp = new Date().getTime();
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${timestamp}-${Math.random().toString(36).substring(2, 10)}.${fileExt}`;
+      const filePath = `images/${fileName}`;
+      
+      // Show upload progress in console
+      console.log(`Uploading image ${file.name} to Supabase storage...`);
+      
+      // Upload the file to Supabase Storage
+      const { data, error } = await supabase.storage
+        .from('wikimedia')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+      
+      if (error) {
+        console.error('Error uploading image:', error);
+        
+        // Check for permission errors
+        if (error.message && error.message.includes('policy')) {
+          alert(
+            'Permission error: You need to configure Supabase Storage permissions.\n\n' +
+            'Please go to Supabase Dashboard > Storage > Policies and add a policy for the wikimedia bucket that allows uploads.\n\n' +
+            'Example policy: CREATE POLICY "Allow public uploads" ON storage.objects FOR INSERT WITH CHECK (bucket_id = \'wikimedia\');'
+          );
+        } else {
+          alert(`Failed to upload image: ${error.message || 'Unknown error'}`);
+        }
+        
+        return null;
+      }
+      
+      // Get the public URL for the uploaded image
+      const { data: urlData } = supabase.storage
+        .from('wikimedia')
+        .getPublicUrl(filePath);
+      
+      console.log('Image uploaded successfully:', urlData.publicUrl);
+      return urlData.publicUrl;
+    } catch (error) {
+      console.error('Image upload failed:', error);
+      alert('Image upload failed. Please try again later.');
+      return null;
+    }
+  };
+
+  // Creates a new editor instance with image upload capability
   const editor = useCreateBlockNote({
     domAttributes: {
       editor: {
@@ -57,6 +110,8 @@ const WikiEditor: React.FC<WikiEditorProps> = ({
         style: 'color: black;',
       },
     },
+    // Enable image uploads
+    uploadFile: handleImageUpload
   });
   
 
@@ -216,6 +271,78 @@ const WikiEditor: React.FC<WikiEditorProps> = ({
             {!readOnly && (
               <div className="formatting-toolbar-container p-2 bg-white">
                 <FormattingToolbar />
+                
+                {/* Add custom image upload button */}
+                <div className="flex items-center px-2 ml-2 h-8 rounded border border-gray-200 bg-white shadow-sm hover:bg-gray-50">
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 text-sm font-medium text-gray-700"
+                    title="Insert Image"
+                    onClick={() => {
+                      // Upload image using BlockNote's file picker
+                      // This will trigger our uploadFile handler
+                      const input = document.createElement('input');
+                      input.type = 'file';
+                      input.accept = 'image/*';
+                      input.onchange = async (e) => {
+                        const file = (e.target as HTMLInputElement).files?.[0];
+                        if (file) {
+                          // Our uploadFile handler will be called automatically
+                          try {
+                            // Directly upload the file using our handler
+                            const imageUrl = await handleImageUpload(file);
+                            
+                            if (imageUrl) {
+                              // Once we have the URL, create and insert an image block
+                              // BlockNote will handle the appropriate structure
+                              try {
+                                // Insert a paragraph first as a fallback in case image fails
+                                const currentPosition = editor.getTextCursorPosition();
+                                
+                                // Use standard BlockNote API to create an image block
+                                // Get cursor position
+                                const insertPosition = {
+                                  block: currentPosition.block,
+                                  placement: 'after' as const
+                                };
+                                
+                                // Create a temporary partial block
+                                // This uses the structure that BlockNote expects
+                                const imageBlock = {
+                                  type: 'image',
+                                  props: {
+                                    url: imageUrl,    // Use URL or src depending on version
+                                    alt: file.name,
+                                    caption: file.name
+                                  }
+                                };
+                                
+                                // Insert the block at cursor position
+                                editor.insertBlocks(
+                                  [imageBlock as any], // Type assertion to bypass TS checking
+                                  insertPosition.block,
+                                  insertPosition.placement
+                                );
+                                
+                                // If successful, focus the editor after insertion
+                                setTimeout(() => editor.focus(), 100);
+                              } catch (err) {
+                                console.error('Error inserting image block:', err);
+                                alert('Error inserting image. Please try again.');
+                              }
+                            }
+                          } catch (err) {
+                            console.error('Error handling image:', err);
+                          }
+                        }
+                      };
+                      input.click();
+                    }}
+                  >
+                    <ImageIcon size={16} />
+                    <span>Add Image</span>
+                  </button>
+                </div>
               </div>
             )}
           </BlockNoteView>
