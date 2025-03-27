@@ -1,4 +1,22 @@
 import { WikiPage, WikiPageVersion } from "../types";
+
+// Define search related types inline (duplicated from types.ts) to avoid import issues
+interface WikiSearchResult {
+  id: string;
+  slug: string;
+  title: string;
+  excerpt: string;
+  category?: string;
+  updated_at: string;
+  relevance: number;
+  matched_content?: string;
+}
+
+interface WikiSearchParams {
+  query: string;
+  category?: string;
+  limit?: number;
+}
 import { supabase } from "@/lib/supabase";
 import { mockPages } from "../data/mockWikiData";
 
@@ -614,6 +632,271 @@ export const restoreWikiPageVersion = async (slug: string, versionToRestore: num
   } catch (err) {
     console.error(`Error in restoreWikiPageVersion for ${slug}:`, err);
     throw err;
+  }
+};
+
+/**
+ * Retrieves all unique categories from wiki pages in the database
+ * @returns Array of unique category strings
+ */
+/**
+ * Search wiki pages based on query and optional filters
+ * @param params Search parameters including query string and optional filters
+ * @returns Array of search results sorted by relevance
+ */
+export const searchWikiPages = async (params: WikiSearchParams): Promise<WikiSearchResult[]> => {
+  const { query, category, limit = 20 } = params;
+  
+  if (!query || query.trim().length < 2) {
+    return [];
+  }
+  
+  const searchTerms = query.trim().toLowerCase();
+  
+  // Helper function for fallback search using mock data
+  const getFallbackSearchResults = (searchTerms: string, category?: string, limit = 20) => {
+    // Search through mock pages or local data
+    const results = Object.values(mockPages)
+      .filter(page => {
+        const titleMatch = page.title.toLowerCase().includes(searchTerms);
+        const contentMatch = (page.content || '').toLowerCase().includes(searchTerms);
+        
+        // Apply category filter if provided
+        const categoryMatch = !category || page.category === category;
+        
+        return (titleMatch || contentMatch) && categoryMatch;
+      })
+      .map(page => {
+        // Calculate simple relevance score (title matches are more important)
+        const titleRelevance = page.title.toLowerCase().includes(searchTerms) ? 10 : 0;
+        const contentRelevance = (page.content || '').toLowerCase().includes(searchTerms) ? 5 : 0;
+        
+        // Extract a snippet of matched content
+        let matchedContent = '';
+        if (page.content) {
+          const content = page.content.toLowerCase();
+          const matchIndex = content.indexOf(searchTerms);
+          if (matchIndex >= 0) {
+            // Extract some context around the match (50 chars before and after)
+            const start = Math.max(0, matchIndex - 50);
+            const end = Math.min(content.length, matchIndex + searchTerms.length + 50);
+            matchedContent = page.content.substring(start, end);
+            
+            // Add ellipsis for truncated content
+            if (start > 0) matchedContent = '...' + matchedContent;
+            if (end < content.length) matchedContent += '...';
+          }
+        }
+        
+        return {
+          id: page.id,
+          slug: page.id, // Use ID as slug for mock data
+          title: page.title,
+          excerpt: page.excerpt || page.content?.substring(0, 120) || '',
+          category: page.category,
+          updated_at: new Date().toISOString(),
+          relevance: titleRelevance + contentRelevance,
+          matched_content: matchedContent
+        };
+      })
+      .sort((a, b) => b.relevance - a.relevance)
+      .slice(0, limit);
+      
+    return results;
+  };
+  
+  if (!useSupabase) {
+    // For local development without Supabase, use the fallback search
+    return getFallbackSearchResults(searchTerms, category, limit);
+  }
+  
+  try {
+    // For real database, use full-text search capabilities
+    // First check if we can access the table at all
+    try {
+      // More robust approach for Supabase search
+      let query = supabase
+        .from('wiki_pages')
+        .select('id, slug, title, content, excerpt, category, updated_at, is_published')
+        .eq('is_published', true); // Only search published pages
+      
+      // Add title search
+      query = query.or(`title.ilike.%${searchTerms}%`);
+      
+      // Apply category filter if provided
+      if (category) {
+        query = query.eq('category', category);
+      }
+      
+      const { data: titleSearchData, error } = await query.limit(limit);
+      // Create a mutable array to collect results
+      let allResults: any[] = [];
+      
+      if (error) {
+        console.error('Error searching wiki pages by title:', error);
+        // Don't throw here - fall back to local search
+        return getFallbackSearchResults(searchTerms, category, limit);
+      }
+
+      // Add title search results to our collection
+      if (titleSearchData && titleSearchData.length > 0) {
+        allResults = [...titleSearchData];
+      }
+
+      // Try content search separately
+      try {
+        // Try using the tsvector column for full-text search
+        // The || operator is used to concatenate search terms with OR logic
+        const searchQuery = searchTerms.split(' ').join(' | ');
+        
+        const contentQuery = supabase
+          .from('wiki_pages')
+          .select('id, slug, title, content, excerpt, category, updated_at, is_published')
+          .eq('is_published', true);
+          
+        // Use proper Supabase textSearch API for tsvector columns
+        try {
+          // This is the correct way to use textSearch with Supabase
+          contentQuery.textSearch('content_tsv', searchQuery, {
+            config: 'english',  // Use English dictionary
+            type: 'plain'       // Use plain text search
+          });
+        } catch (e) {
+          // Fall back to basic search if tsvector isn't available
+          console.log('Falling back to title search only:', e);
+          contentQuery.ilike('title', `%${searchTerms}%`);
+        }
+          
+        if (category) {
+          contentQuery.eq('category', category);
+        }
+        
+        const { data: contentSearchData, error: contentError } = await contentQuery.limit(limit);
+        
+        if (contentError) {
+          console.error('Error searching wiki pages by content:', contentError);
+          // If we already have title results, continue with those
+          // Otherwise fall back to local search
+          if (allResults.length === 0) {
+            return getFallbackSearchResults(searchTerms, category, limit);
+          }
+        } else if (contentSearchData && contentSearchData.length > 0) {
+          // Add content search results to our collection
+          // Avoid duplicates by checking IDs
+          contentSearchData.forEach(item => {
+            if (!allResults.some(existing => existing.id === item.id)) {
+              allResults.push(item);
+            }
+          });
+        }
+      } catch (contentSearchError) {
+        console.error('Error in content search:', contentSearchError);
+        // Continue with title results if we have them
+      }
+      
+      // Process data normally if we have results
+      if (allResults.length === 0) {
+        // No results from either approach
+        return [];
+      }
+      
+      // Helper function to extract readable text from BlockNote JSON content
+      const extractTextFromBlockNoteContent = (contentStr: string): string => {
+        try {
+          // If content is already a string (likely JSON string)
+          let contentObj;
+          try {
+            contentObj = JSON.parse(contentStr);
+          } catch {
+            // If not valid JSON, return as-is
+            return contentStr;
+          }
+          
+          // Handle array-type content (BlockNote structure)
+          if (Array.isArray(contentObj)) {
+            return contentObj.map(block => {
+              // Process each block's content array to extract text
+              if (block.content && Array.isArray(block.content)) {
+                return block.content.map(contentItem => {
+                  // Extract text directly from text nodes
+                  if (contentItem.type === 'text' && contentItem.text) {
+                    return contentItem.text;
+                  }
+                  // Extract text from link content
+                  else if (contentItem.type === 'link' && contentItem.content && Array.isArray(contentItem.content)) {
+                    return contentItem.content
+                      .filter(item => item.type === 'text')
+                      .map(item => item.text || '')
+                      .join(' ');
+                  }
+                  return '';
+                }).join(' ');
+              }
+              return '';
+            }).join(' ');
+          }
+          
+          // Fallback for unexpected structures
+          return typeof contentObj === 'string' ? contentObj : JSON.stringify(contentObj);
+        } catch (e) {
+          console.error('Error extracting text from BlockNote content:', e);
+          return typeof contentStr === 'string' ? contentStr : JSON.stringify(contentStr);
+        }
+      };
+
+      // Process search results with our combined data
+      return allResults.map((page: any) => {
+        // Extract readable text from content
+        const plainTextContent = extractTextFromBlockNoteContent(page.content);
+        
+        // Calculate relevance score
+        const titleMatch = page.title.toLowerCase().includes(searchTerms.toLowerCase());
+        const contentMatch = plainTextContent.toLowerCase().includes(searchTerms.toLowerCase());
+        
+        const titleRelevance = titleMatch ? 10 : 0;
+        const contentRelevance = contentMatch ? 5 : 0;
+        
+        // Extract matched content snippet if found in content
+        let matchedContent = '';
+        if (contentMatch) {
+          const lowerContent = plainTextContent.toLowerCase();
+          const lowerSearchTerms = searchTerms.toLowerCase();
+          const matchIndex = lowerContent.indexOf(lowerSearchTerms);
+          
+          if (matchIndex >= 0) {
+            // Create a readable snippet with context around the match
+            const start = Math.max(0, matchIndex - 50);
+            const end = Math.min(plainTextContent.length, matchIndex + searchTerms.length + 50);
+            
+            // Extract the snippet
+            matchedContent = plainTextContent.substring(start, end).trim();
+            
+            // Add ellipsis for context
+            if (start > 0) matchedContent = '...' + matchedContent;
+            if (end < plainTextContent.length) matchedContent += '...';
+          }
+        }
+        
+        return {
+          id: page.id,
+          slug: page.slug,
+          title: page.title,
+          excerpt: page.excerpt || (page.content?.substring(0, 120) + '...') || '',
+          category: page.category || 'Uncategorized',
+          updated_at: page.updated_at,
+          relevance: titleRelevance + contentRelevance,
+          matched_content: matchedContent
+        };
+      }).sort((a, b) => b.relevance - a.relevance);
+    } catch (dbError) {
+      console.error('Database access error:', dbError);
+      // Fall back to local search if database cannot be accessed
+      return getFallbackSearchResults(searchTerms, category, limit);
+    }
+  } catch (err) {
+    console.error('Error in searchWikiPages:', err);
+    // Always fall back to local search on any error
+    return getFallbackSearchResults(searchTerms, category, limit);
   }
 };
 

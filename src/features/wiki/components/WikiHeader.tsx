@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Menu, Newspaper, BookOpen, FileText } from "lucide-react";
+import WikiSearch from "./WikiSearch";
 
 interface WikiHeaderProps {
   title: string;
@@ -49,7 +50,8 @@ const WikiHeader: React.FC<WikiHeaderProps> = ({
         </div>
         
         <div className="flex items-center">
-          {/* Save button moved to PageHeader */}
+          {/* Add the search component */}
+          <WikiSearch />
         </div>
       </div>
     </header>
