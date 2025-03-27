@@ -1,6 +1,6 @@
 import React from 'react';
 import { Button } from "@/components/ui/button";
-import { Calendar, Edit, Trash2, Save } from "lucide-react";
+import { Calendar, Edit, Trash2, Save, History } from "lucide-react";
 import { getCategoryIcon } from '@/features/wiki/utils/categoryIcons';
 import { Label } from "@/components/ui/label";
 // Categories now come from props instead of a static constant
@@ -17,6 +17,7 @@ interface PageHeaderProps {
   onSave?: () => void;
   onTitleChange?: (newTitle: string) => void;
   onCategoryChange?: (category: string) => void;
+  onViewHistory?: () => void; // New prop for viewing version history
 }
 
 const PageHeader: React.FC<PageHeaderProps> = ({
@@ -31,6 +32,7 @@ const PageHeader: React.FC<PageHeaderProps> = ({
   onSave,
   onTitleChange,
   onCategoryChange,
+  onViewHistory,
 }) => {
   // Format the date to be more readable
   const formatDate = (dateString?: string) => {
@@ -118,6 +120,19 @@ const PageHeader: React.FC<PageHeaderProps> = ({
               <Edit className="h-4 w-4 mr-1" />
               Edit
             </Button>
+            
+            {/* History button - only shown if callback is provided */}
+            {onViewHistory && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex items-center"
+                onClick={onViewHistory}
+              >
+                <History className="h-4 w-4 mr-1" />
+                History
+              </Button>
+            )}
             
             <Button
               variant="outline"

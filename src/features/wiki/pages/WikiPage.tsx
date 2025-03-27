@@ -4,31 +4,51 @@ import WikiLayout from '@/features/wiki/components/WikiLayout';
 import PageHeader from '@/features/wiki/components/PageHeader';
 import WikiEditor from '@/features/wiki/components/WikiEditor';
 import DeletePageDialog from '@/features/wiki/components/DeletePageDialog';
+import WikiHistoryDialog from '@/features/wiki/components/WikiHistoryDialog';
 import { useWikiPage } from '@/features/wiki/hooks';
 import { trackWikiPageView } from '@/utils/analytics';
+import { trackEvent } from '@/utils/analytics';
 
 const WikiPage: React.FC = () => {
   const { pageId = 'welcome' } = useParams();
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const prevEditingState = useRef<boolean>(false);
   const {
+    // Page data
     page,
     categories,
     isLoading,
     error,
+    
+    // Editing state
     isEditing,
     editedContent,
     editedTitle,
     editedCategory,
-    deleteDialogOpen,
+    
+    // Edit actions
     setEditedContent,
     setEditedTitle,
     setEditedCategory,
-    setDeleteDialogOpen,
     handleEdit,
     handleSave,
+    
+    // Delete actions
+    deleteDialogOpen,
+    setDeleteDialogOpen,
     handleDelete,
-    confirmDelete
+    confirmDelete,
+    
+    // Version history
+    versions,
+    loadingVersions,
+    versionHistoryOpen,
+    selectedVersion,
+    restoringVersion,
+    toggleVersionHistory,
+    selectVersion,
+    handleRestoreVersion,
+    fetchVersionHistory
   } = useWikiPage(pageId);
   
   // Track page view when the page loads and data is available
@@ -172,6 +192,10 @@ const WikiPage: React.FC = () => {
           onSave={handleSave}
           onTitleChange={setEditedTitle}
           onCategoryChange={setEditedCategory}
+          onViewHistory={() => {
+            toggleVersionHistory();
+            trackEvent('Wiki', 'View History', page.title);
+          }}
         />
         
         <div className="relative" ref={editorContainerRef}>
@@ -191,6 +215,19 @@ const WikiPage: React.FC = () => {
         open={deleteDialogOpen}
         onOpenChange={setDeleteDialogOpen}
         onConfirm={confirmDelete}
+      />
+      
+      {/* Version history dialog */}
+      <WikiHistoryDialog
+        open={versionHistoryOpen}
+        onClose={() => toggleVersionHistory()}
+        versions={versions}
+        selectedVersion={selectedVersion}
+        onSelectVersion={selectVersion}
+        onRestoreVersion={handleRestoreVersion}
+        isLoading={loadingVersions}
+        isRestoring={restoringVersion}
+        pageTitle={page.title}
       />
     </WikiLayout>
   );

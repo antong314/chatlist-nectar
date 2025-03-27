@@ -45,7 +45,8 @@ const WikiEditor: React.FC<WikiEditorProps> = ({
   className = "",
   autoFocus = false
 }) => {
-  // Keep track of content initialization
+  // Track the content version for refreshing on changes
+  const contentVersion = useRef(initialContent);
   const contentInitialized = useRef(false);
 
   // Creates a new editor instance
@@ -76,26 +77,35 @@ const WikiEditor: React.FC<WikiEditorProps> = ({
     }
   }, [editor, onChange]);
 
-  // Initialize editor with content
+  // Initialize editor with content and update when initialContent changes
   useEffect(() => {
-    if (editor && initialContent && !contentInitialized.current) {
-      try {
-        // Check if initialContent is valid JSON and not empty
-        if (initialContent && initialContent.trim() !== '') {
-          const parsedContent = JSON.parse(initialContent);
-          if (Array.isArray(parsedContent) && parsedContent.length > 0) {
-            console.log('Loading content into BlockNote editor:', parsedContent);
-            editor.replaceBlocks(editor.topLevelBlocks, parsedContent);
-            contentInitialized.current = true;
+    // Only proceed if we have an editor and content to load
+    if (editor && initialContent) {
+      // Check if the content has changed from what we previously loaded
+      const contentChanged = contentVersion.current !== initialContent;
+      
+      // Either we haven't initialized yet or the content has changed
+      if (!contentInitialized.current || contentChanged) {
+        try {
+          // Check if initialContent is valid JSON and not empty
+          if (initialContent && initialContent.trim() !== '') {
+            const parsedContent = JSON.parse(initialContent);
+            if (Array.isArray(parsedContent) && parsedContent.length > 0) {
+              console.log('Loading/refreshing content into BlockNote editor');
+              editor.replaceBlocks(editor.topLevelBlocks, parsedContent);
+              contentInitialized.current = true;
+              // Update our reference to the current content
+              contentVersion.current = initialContent;
+            } else {
+              console.warn('Content appears to be empty array, not loading:', parsedContent);
+            }
           } else {
-            console.warn('Content appears to be empty array, not loading:', parsedContent);
+            console.warn('No initial content to load');
           }
-        } else {
-          console.warn('No initial content to load');
+        } catch (error) {
+          console.error('Error parsing content for BlockNote editor:', error);
+          console.log('Invalid content:', initialContent);
         }
-      } catch (error) {
-        console.error('Error parsing initial content for BlockNote editor:', error);
-        console.log('Invalid content:', initialContent);
       }
     }
   }, [editor, initialContent]);

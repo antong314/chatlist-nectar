@@ -1,4 +1,4 @@
-import { WikiPage } from "../types";
+import { WikiPage, WikiPageVersion } from "../types";
 import { supabase } from "@/lib/supabase";
 import { mockPages } from "../data/mockWikiData";
 
@@ -422,6 +422,198 @@ export const deleteWikiPage = async (slug: string): Promise<void> => {
   if (error) {
     console.error(`Error deleting wiki page ${slug}:`, error);
     throw new Error(`Failed to delete page with slug ${slug}`);
+  }
+};
+
+/**
+ * Get all versions of a wiki page
+ * @param slug The page slug to get versions for
+ * @returns Array of page versions sorted by version number (descending)
+ */
+export const getWikiPageVersions = async (slug: string): Promise<WikiPageVersion[]> => {
+  if (!useSupabase) {
+    // Mock implementation - in mock data we only keep the latest version
+    // so we'll create a fake version history
+    const page = mockPages[slug];
+    if (!page) {
+      throw new Error(`Page with slug ${slug} not found`);
+    }
+    
+    // Create a simple version history with the current version and a fake previous version
+    const currentVersion = page.version || 0;
+    
+    // Only create history if we have at least version 1
+    if (currentVersion === 0) {
+      return [
+        {
+          ...page,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          is_current: true,
+          lastEdited: formatLastEdited(new Date().toISOString())
+        }
+      ];
+    }
+    
+    // Create a fake previous version
+    const previousVersion: WikiPageVersion = {
+      ...page,
+      version: currentVersion - 1,
+      updated_at: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
+      is_current: false,
+      lastEdited: formatLastEdited(new Date(Date.now() - 86400000).toISOString())
+    };
+    
+    const currentVersionData: WikiPageVersion = {
+      ...page,
+      is_current: true,
+      lastEdited: formatLastEdited(page.updated_at || new Date().toISOString())
+    };
+    
+    return [currentVersionData, previousVersion];
+  }
+  
+  try {
+    // Get all versions of the page, regardless of published status
+    const { data, error } = await supabase
+      .from('wiki_pages')
+      .select('*')
+      .eq('slug', slug)
+      .order('version', { ascending: false });
+      
+    if (error) {
+      console.error(`Error fetching versions for page ${slug}:`, error);
+      throw new Error(`Failed to fetch versions for page ${slug}`);
+    }
+    
+    if (!data || data.length === 0) {
+      throw new Error(`No versions found for page ${slug}`);
+    }
+    
+    // Process versions with additional UI metadata
+    return data.map((version: any) => ({
+      ...version,
+      is_current: version.is_published === true,
+      lastEdited: formatLastEdited(version.updated_at)
+    }));
+  } catch (err) {
+    console.error(`Error in getWikiPageVersions for ${slug}:`, err);
+    throw err;
+  }
+};
+
+/**
+ * Restore a specific version of a wiki page
+ * @param slug The page slug to restore a version for
+ * @param versionToRestore The version number to restore
+ * @returns The newly created version (based on the restored content)
+ */
+export const restoreWikiPageVersion = async (slug: string, versionToRestore: number): Promise<WikiPage> => {
+  if (!useSupabase) {
+    // Mock implementation
+    const page = mockPages[slug];
+    if (!page) {
+      throw new Error(`Page with slug ${slug} not found`);
+    }
+    
+    // For mock data, we'll just pretend we restored a version by creating a new one
+    const currentVersion = page.version || 0;
+    const newVersion = currentVersion + 1;
+    
+    const updatedPage: WikiPage = {
+      ...page,
+      version: newVersion,
+      updated_at: new Date().toISOString(),
+      lastEdited: formatLastEdited(new Date().toISOString())
+    };
+    
+    // Update mock data
+    mockPages[slug] = updatedPage;
+    
+    return updatedPage;
+  }
+  
+  try {
+    // Step 1: Get the version to restore
+    const { data: versionData, error: versionError } = await supabase
+      .from('wiki_pages')
+      .select('*')
+      .eq('slug', slug)
+      .eq('version', versionToRestore)
+      .single();
+      
+    if (versionError || !versionData) {
+      console.error(`Error fetching version ${versionToRestore} of page ${slug}:`, versionError);
+      throw new Error(`Failed to fetch version ${versionToRestore} of page ${slug}`);
+    }
+    
+    // Step 2: Get current published version to increment from
+    const { data: currentVersion, error: currentError } = await supabase
+      .from('wiki_pages')
+      .select('*')
+      .eq('slug', slug)
+      .eq('is_published', true)
+      .single();
+      
+    if (currentError || !currentVersion) {
+      console.error(`Error fetching current version of page ${slug}:`, currentError);
+      throw new Error(`Failed to fetch current version of page ${slug}`);
+    }
+    
+    // Step 3: Set current version to unpublished
+    const { error: unpublishError } = await supabase
+      .from('wiki_pages')
+      .update({ is_published: false })
+      .eq('id', currentVersion.id)
+      .eq('version', currentVersion.version);
+      
+    if (unpublishError) {
+      console.error(`Error unpublishing current version of ${slug}:`, unpublishError);
+      throw new Error(`Failed to unpublish current version of ${slug}`);
+    }
+    
+    // Step 4: Create a new version based on the one to restore
+    const newVersion = currentVersion.version + 1;
+    const { data: newVersionData, error: insertError } = await supabase
+      .from('wiki_pages')
+      .insert({
+        id: currentVersion.id,
+        slug: slug,
+        title: versionData.title,
+        content: versionData.content,
+        excerpt: versionData.excerpt,
+        created_at: currentVersion.created_at, // Preserve original creation date
+        updated_at: new Date().toISOString(),
+        created_by: currentVersion.created_by,
+        category: versionData.category || 'Uncategorized',
+        version: newVersion,
+        is_published: true
+      })
+      .select()
+      .single();
+      
+    if (insertError || !newVersionData) {
+      console.error(`Error creating restored version of ${slug}:`, insertError);
+      
+      // Try to rollback by re-publishing the current version
+      await supabase
+        .from('wiki_pages')
+        .update({ is_published: true })
+        .eq('id', currentVersion.id)
+        .eq('version', currentVersion.version);
+        
+      throw new Error(`Failed to restore version ${versionToRestore} of page ${slug}`);
+    }
+    
+    // Return the new version
+    return {
+      ...newVersionData,
+      lastEdited: formatLastEdited(newVersionData.updated_at),
+      category: newVersionData.category || 'Uncategorized'
+    };
+  } catch (err) {
+    console.error(`Error in restoreWikiPageVersion for ${slug}:`, err);
+    throw err;
   }
 };
 

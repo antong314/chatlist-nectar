@@ -1,8 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useToast } from '@/components/ui/use-toast';
-import { WikiPage } from '@/features/wiki/types';
-import { getWikiPage, updateWikiPage, deleteWikiPage, getWikiCategories } from '@/features/wiki/api';
+import { WikiPage, WikiPageVersion } from '@/features/wiki/types';
+import { 
+  getWikiPage, 
+  updateWikiPage, 
+  deleteWikiPage, 
+  getWikiCategories, 
+  getWikiPageVersions,
+  restoreWikiPageVersion
+} from '@/features/wiki/api';
 
 export const useWikiPage = (slug: string) => {
   const navigate = useNavigate();
@@ -23,10 +30,22 @@ export const useWikiPage = (slug: string) => {
   const [editedCategory, setEditedCategory] = useState<string>('');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   
+  // Version history state
+  const [versions, setVersions] = useState<WikiPageVersion[]>([]);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
+  const [selectedVersion, setSelectedVersion] = useState<WikiPageVersion | null>(null);
+  const [restoringVersion, setRestoringVersion] = useState(false);
+  
   // Fetch page when slug changes
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
+      // Reset version history when changing pages
+      setVersions([]);
+      setSelectedVersion(null);
+      setVersionHistoryOpen(false);
+      
       try {
         // Fetch page and categories in parallel for better performance
         const [fetchedPage, wikiCategories] = await Promise.all([
@@ -158,23 +177,125 @@ export const useWikiPage = (slug: string) => {
     }
   };
   
+  // Fetch version history
+  const fetchVersionHistory = async () => {
+    if (!slug) return;
+    
+    // Always use current slug when fetching version history
+    const currentSlug = slug;
+    console.log(`Fetching version history for page with slug: ${currentSlug}`);
+    
+    setLoadingVersions(true);
+    try {
+      const pageVersions = await getWikiPageVersions(currentSlug);
+      console.log(`Retrieved ${pageVersions.length} versions for slug: ${currentSlug}`);
+      setVersions(pageVersions);
+      
+      // Set the current version as the default selected version
+      const currentVersion = pageVersions.find(v => v.is_current);
+      if (currentVersion) {
+        setSelectedVersion(currentVersion);
+      }
+    } catch (err) {
+      console.error(`Failed to fetch version history for ${currentSlug}:`, err);
+      toast({
+        title: 'Error',
+        description: `Failed to load version history: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingVersions(false);
+    }
+  };
+  
+  // Toggle version history dialog
+  const toggleVersionHistory = () => {
+    const newState = !versionHistoryOpen;
+    setVersionHistoryOpen(newState);
+    
+    // If opening the dialog, fetch the version history
+    if (newState && versions.length === 0) {
+      fetchVersionHistory();
+    }
+  };
+  
+  // Select a version to view
+  const selectVersion = (version: WikiPageVersion) => {
+    setSelectedVersion(version);
+  };
+  
+  // Restore a specific version
+  const handleRestoreVersion = async (versionToRestore: number) => {
+    if (!slug) return;
+    
+    setRestoringVersion(true);
+    try {
+      const restoredPage = await restoreWikiPageVersion(slug, versionToRestore);
+      
+      // Update the current page with the restored content
+      setPage(restoredPage);
+      
+      // Refresh the version history
+      await fetchVersionHistory();
+      
+      // Dispatch custom event to notify other components that wiki data has changed
+      const wikiDataChangedEvent = new Event('wiki-data-changed');
+      document.dispatchEvent(wikiDataChangedEvent);
+      
+      toast({
+        title: 'Version restored',
+        description: `Page has been restored to version ${versionToRestore}.`,
+      });
+      
+      // Close the version history dialog
+      setVersionHistoryOpen(false);
+    } catch (err) {
+      console.error('Failed to restore version:', err);
+      toast({
+        title: 'Error',
+        description: `Failed to restore version: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        variant: 'destructive',
+      });
+    } finally {
+      setRestoringVersion(false);
+    }
+  };
+  
   return {
+    // Page data
     page,
     categories,
     isLoading,
     error,
+    
+    // Editing state
     isEditing,
     editedContent,
     editedTitle,
     editedCategory,
-    deleteDialogOpen,
+    
+    // Edit actions
     setEditedContent,
     setEditedTitle,
     setEditedCategory,
-    setDeleteDialogOpen,
     handleEdit,
     handleSave,
+    
+    // Delete actions
+    deleteDialogOpen,
+    setDeleteDialogOpen,
     handleDelete,
-    confirmDelete
+    confirmDelete,
+    
+    // Version history
+    versions,
+    loadingVersions,
+    versionHistoryOpen,
+    selectedVersion,
+    restoringVersion,
+    toggleVersionHistory,
+    selectVersion,
+    handleRestoreVersion,
+    fetchVersionHistory
   };
 };

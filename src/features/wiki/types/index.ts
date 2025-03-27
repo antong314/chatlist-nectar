@@ -23,4 +23,10 @@ export type WikiPage = {
 // 3. Only the latest version has is_published=true
 // 4. Previous versions have is_published=false
 
+// Extension of WikiPage with version-specific information
+export type WikiPageVersion = WikiPage & {
+  // Whether this is the current (published) version
+  is_current: boolean;
+};
+
 // Categories are now dynamically retrieved from the database via getWikiCategories()
