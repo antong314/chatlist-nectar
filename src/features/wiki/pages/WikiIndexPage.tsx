@@ -77,7 +77,7 @@ const WikiIndexPage: React.FC = () => {
   return (
     <WikiLayout title="Machuca Wiki">
       <div className="animate-fade-in">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Machuca Wiki</h1>
             <p className="text-muted-foreground mt-1">
@@ -85,7 +85,7 @@ const WikiIndexPage: React.FC = () => {
             </p>
           </div>
           
-          <Button onClick={handleCreatePageClick} className="flex items-center">
+          <Button onClick={handleCreatePageClick} className="flex items-center self-start sm:self-auto">
             <Plus className="h-4 w-4 mr-1" />
             New Page
           </Button>
