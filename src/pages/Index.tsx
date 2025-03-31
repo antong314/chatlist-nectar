@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -7,8 +6,8 @@ import {
   ContactForm,
   ContactDetail
 } from '@/features/directory/components';
-import { useContacts } from '@/features/directory/hooks';
-import { Contact, Category } from '@/features/directory/types';
+import { useContacts } from '@/hooks/useContacts';
+import { Contact, Category } from '@/types/contact'; // Corrected type import path
 import { useIsMobile } from '@/hooks/use-mobile';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';

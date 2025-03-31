@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Contact } from '@/features/directory/types/contact';
 import { Edit, Globe, Phone, Map } from 'lucide-react';
@@ -42,7 +41,7 @@ export function ContactItem({ contact, onEdit, onView }: ContactItemProps) {
         <div>
           <AvatarFallback 
             name={contact.name} 
-            logoUrl={contact.logoUrl || contact.avatarUrl} 
+            logoUrl={contact.image_url || contact.logoUrl || contact.avatarUrl} 
             className="w-12 h-12 shrink-0" 
           />
         </div>
@@ -128,7 +127,7 @@ export function ContactItem({ contact, onEdit, onView }: ContactItemProps) {
       <div className="col-span-3 pl-4 flex items-center gap-3">
         <AvatarFallback 
           name={contact.name} 
-          logoUrl={contact.logoUrl || contact.avatarUrl}
+          logoUrl={contact.image_url || contact.logoUrl || contact.avatarUrl} 
           className="w-10 h-10 shrink-0" 
         />
         <span className="font-medium text-gray-900 truncate">{contact.name}</span>

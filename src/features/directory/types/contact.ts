@@ -1,4 +1,3 @@
-
 // Reserved special filter category - not an actual data category
 export type SpecialCategory = 'All';
 
@@ -9,13 +8,16 @@ export type DataCategory = string;
 export type Category = SpecialCategory | DataCategory;
 
 export interface Contact {
-  id: string;
+  id: string; 
   name: string;
+  description?: string;
   category: Category;
-  description: string;
-  phone: string;
-  logoUrl?: string; // URL to the logo image in Airtable or Cloudinary
-  avatarUrl?: string; // URL for the avatar (fallback or alternative to logo)
+  phone?: string;
   website?: string;
-  mapUrl?: string; // URL to the map location
+  mapUrl?: string; 
+  avatarUrl?: string; 
+  logoUrl?: string; 
+  image_url?: string; 
+  created_at?: string; 
+  updated_at?: string; 
 }
