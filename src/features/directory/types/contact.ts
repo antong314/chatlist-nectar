@@ -16,8 +16,9 @@ export interface Contact {
   website?: string;
   mapUrl?: string; 
   avatarUrl?: string; 
-  logoUrl?: string; 
-  image_url?: string; 
-  created_at?: string; 
-  updated_at?: string; 
+  logoUrl?: string; // Kept for potential fallback/legacy
+  image_url?: string; // Add the new Supabase image URL field
+  created_at?: string; // Standard Supabase field
+  updated_at?: string; // Standard Supabase field
+  is_deleted?: boolean; // Flag for soft delete
 }

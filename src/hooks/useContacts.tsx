@@ -64,10 +64,11 @@ export const useContacts = () => {
         setLoading(true);
         setError(null);
 
-        // Fetch contacts from the Supabase 'contacts' table
+        // Fetch only contacts that are NOT marked as deleted
         const { data, error: fetchError } = await supabase
           .from('contacts')
           .select('*') // Select all columns
+          .eq('is_deleted', false) // Filter out soft-deleted contacts
           .order('title', { ascending: true }); // Order by title (name)
 
         if (fetchError) {
@@ -243,35 +244,34 @@ export const useContacts = () => {
     }
   }, []);
 
-  // Delete a contact from Supabase
-  const deleteContact = useCallback(async (contactId: string) => {
+  // Delete a contact
+  const deleteContact = async (id: string) => {
+    setLoading(true);
     try {
-      // ** Image handling deferred **
-      // We should also delete the associated image from Supabase Storage here.
-
-      // Delete the record from Supabase
-      const { error: deleteError } = await supabase
+      // Perform a soft delete by updating the is_deleted flag
+      const { error } = await supabase
         .from('contacts')
-        .delete()
-        .eq('id', contactId); // Match the contact by ID
+        .update({ is_deleted: true })
+        .match({ id });
 
-      if (deleteError) {
-        console.error('Supabase delete error:', deleteError);
-        throw new Error(deleteError.message || 'Error deleting contact from Supabase');
+      if (error) {
+        console.error('Error deleting contact:', error);
+        setError('Failed to mark contact as deleted.');
+        setLoading(false);
+        return false;
+      } else {
+        // Update local state to remove the contact from the visible list immediately
+        setContacts(prevContacts => prevContacts.filter(contact => contact.id !== id));
+        setError(null);
+        setLoading(false);
+        return true;
       }
-
-      // Remove the deleted contact from local state
-      setContacts(prev => prev.filter(contact => contact.id !== contactId));
-
-      toast.success("Contact deleted successfully");
-      return true;
-
     } catch (err: any) {
       console.error('Error deleting contact:', err);
       toast.error(`Error deleting contact: ${err.message}`);
       return false;
     }
-  }, []);
+  };
 
   // Apply search query and category filters (logic remains mostly the same)
   const filteredContacts = useMemo(() => {
