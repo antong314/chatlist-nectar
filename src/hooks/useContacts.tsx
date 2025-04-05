@@ -4,6 +4,9 @@ import { toast } from 'sonner';
 import { Contact, Category } from '@/types/contact';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase'; // Corrected import path
+import { v4 as uuidv4 } from 'uuid'; // Import uuid
+
+const CONTACT_LOGOS_BUCKET = 'contact-images'; // Use the existing bucket name
 
 /**
  * Custom hook for managing contacts using Supabase
@@ -112,21 +115,72 @@ export const useContacts = () => {
     setRefreshTrigger(prev => prev + 1);
   }, []);
 
-  // Add a new contact to Supabase
-  const addContact = useCallback(async (newContactData: Omit<Contact, "id" | "logoUrl" | "avatarUrl"> & { logoFile?: File | null }) => {
+  // Helper function to extract storage path from public URL
+  const getPathFromUrl = (url: string | null | undefined): string | null => {
+    if (!url) return null;
     try {
-      // ** Image handling deferred **
-      // We will add image upload logic here later.
-      // For now, we insert without image_url.
+      const urlParts = new URL(url);
+      // Example path: /storage/v1/object/public/contact-logos/public/image.png
+      // We need the part after the bucket name: public/image.png
+      const pathSegments = urlParts.pathname.split('/');
+      const bucketNameIndex = pathSegments.indexOf(CONTACT_LOGOS_BUCKET);
+      if (bucketNameIndex === -1 || bucketNameIndex + 1 >= pathSegments.length) {
+        console.warn('Could not extract path from URL:', url);
+        return null;
+      }
+      return pathSegments.slice(bucketNameIndex + 1).join('/');
+    } catch (e) {
+      console.warn('Error parsing URL for path extraction:', url, e);
+      return null;
+    }
+  };
+
+  // Add a new contact to Supabase
+  const addContact = useCallback(async (newContactData: Omit<Contact, "id"> & { imageFile?: File | null }) => {
+    try {
+      let imageUrl: string | null = null;
+
+      // 1. Handle image upload if imageFile is provided
+      if (newContactData.imageFile) {
+        const file = newContactData.imageFile;
+        const fileExt = file.name.split('.').pop();
+        const uniqueFileName = `${uuidv4()}.${fileExt}`;
+        const filePath = `public/${uniqueFileName}`; // Store in a 'public' folder within the bucket
+
+        console.log(`Uploading new image to: ${filePath}`);
+        const { error: uploadError } = await supabase.storage
+          .from(CONTACT_LOGOS_BUCKET)
+          .upload(filePath, file);
+
+        if (uploadError) {
+          console.error('Error uploading image:', uploadError);
+          throw new Error(`Failed to upload image: ${uploadError.message}`);
+        }
+
+        // Get the public URL
+        const { data: urlData } = supabase.storage
+          .from(CONTACT_LOGOS_BUCKET)
+          .getPublicUrl(filePath);
+
+        if (!urlData || !urlData.publicUrl) {
+          console.error('Error getting public URL for image:', filePath);
+          // Continue without image URL, or throw error depending on requirements
+          // throw new Error('Failed to get public URL for uploaded image.'); 
+          imageUrl = null; // Or handle as critical error
+        } else {
+          imageUrl = urlData.publicUrl;
+          console.log(`Image uploaded successfully. URL: ${imageUrl}`);
+        }
+      }
 
       const contactToInsert = {
         title: newContactData.name.trim(),
         category: newContactData.category,
         subtitle: newContactData.description.trim(),
         phone_number: newContactData.phone.trim(),
-        website_url: newContactData.website?.trim() || null, // Use null for empty optional fields
+        website_url: newContactData.website?.trim() || null,
         map_url: newContactData.mapUrl?.trim() || null,
-        image_url: null // Explicitly set image_url to null for now
+        image_url: imageUrl // Use the determined image URL
       };
 
       // Insert into Supabase 'contacts' table
@@ -172,28 +226,84 @@ export const useContacts = () => {
   }, []);
 
   // Update an existing contact in Supabase
-  const updateContact = useCallback(async (updatedContactData: Contact & { logoFile?: File | null, removeLogo?: boolean }) => {
+  const updateContact = useCallback(async (updatedContactData: Contact & { imageFile?: File | null, removeLogo?: boolean }) => {
     try {
       // Validate that we have an ID
       if (!updatedContactData.id) {
         throw new Error('Contact ID is required for updates');
       }
 
-      // ** Image handling deferred **
-      // We will add logic here later to:
-      // 1. Upload new logoFile if present.
-      // 2. Delete existing image if removeLogo is true.
-      // 3. Update image_url in the contact record.
-      // For now, we update text fields only and keep existing image_url.
+      let newImageUrl: string | null = updatedContactData.image_url || null;
+      const currentImagePath = getPathFromUrl(updatedContactData.image_url);
+
+      // 1. Handle new image upload
+      if (updatedContactData.imageFile) {
+        const file = updatedContactData.imageFile;
+        const fileExt = file.name.split('.').pop();
+        const uniqueFileName = `${uuidv4()}.${fileExt}`;
+        const newFilePath = `public/${uniqueFileName}`;
+
+        // Delete old image first if it exists
+        if (currentImagePath) {
+          console.log(`Removing old image: ${currentImagePath}`);
+          const { error: deleteError } = await supabase.storage
+            .from(CONTACT_LOGOS_BUCKET)
+            .remove([currentImagePath]);
+          if (deleteError) {
+            // Log warning but continue, maybe the file was already deleted
+            console.warn(`Could not delete old image (${currentImagePath}):`, deleteError.message);
+          }
+        }
+
+        // Upload new image
+        console.log(`Uploading new image to: ${newFilePath}`);
+        const { error: uploadError } = await supabase.storage
+          .from(CONTACT_LOGOS_BUCKET)
+          .upload(newFilePath, file);
+
+        if (uploadError) {
+          console.error('Error uploading new image:', uploadError);
+          throw new Error(`Failed to upload new image: ${uploadError.message}`);
+        }
+
+        // Get the public URL for the new image
+        const { data: urlData } = supabase.storage
+          .from(CONTACT_LOGOS_BUCKET)
+          .getPublicUrl(newFilePath);
+
+        if (!urlData || !urlData.publicUrl) {
+          console.error('Error getting public URL for new image:', newFilePath);
+          newImageUrl = null; // Or handle as critical error
+        } else {
+          newImageUrl = urlData.publicUrl;
+          console.log(`New image uploaded successfully. URL: ${newImageUrl}`);
+        }
+      }
+      // 2. Handle image removal if no new image was uploaded
+      else if (updatedContactData.removeLogo && currentImagePath) {
+        console.log(`Removing image: ${currentImagePath}`);
+        const { error: deleteError } = await supabase.storage
+          .from(CONTACT_LOGOS_BUCKET)
+          .remove([currentImagePath]);
+
+        if (deleteError) {
+          console.warn(`Could not remove image (${currentImagePath}):`, deleteError.message);
+          // Don't clear newImageUrl yet, maybe removal failed
+        } else {
+          console.log(`Image removed successfully.`);
+          newImageUrl = null; // Set URL to null after successful removal
+        }
+      }
+      // 3. If neither upload nor remove, newImageUrl remains the original image_url
 
       const contactToUpdate = {
         title: updatedContactData.name.trim(),
         category: updatedContactData.category,
         subtitle: updatedContactData.description.trim(),
         phone_number: updatedContactData.phone.trim(),
-        website_url: updatedContactData.website?.trim() || null,
+        website_url: updatedContactData.website?.trim() || null, // Keep existing field mappings
         map_url: updatedContactData.mapUrl?.trim() || null,
-        // image_url: updatedImageUrl // This will be set after image handling
+        image_url: newImageUrl // Set the determined image URL
       };
 
       // Update the record in Supabase

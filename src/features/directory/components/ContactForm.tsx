@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { countryCodes, extractCountryCode } from '@/features/directory/data/countryCodes';
@@ -137,26 +136,38 @@ export function ContactForm({
     // Show a loading toast notification
     const toastId = toast.loading(contact ? 'Saving contact...' : 'Adding new contact...');
     
-    const contactData: Omit<Contact, 'id'> = {
+    // Base contact data excluding ID and image-related fields handled separately
+    const baseContactData: Omit<Contact, 'id' | 'image_url' | 'imageFile'> = {
       name: name.trim(),
       category,
       description: description.trim(),
       phone: phone.trim(),
       website: website.trim() || undefined,
       mapUrl: mapUrl.trim() || undefined,
-      logoUrl: logoRemoved ? undefined : (logoUrl || undefined),
+      // Include other non-image fields if necessary from the Contact type
+      // e.g., logoUrl and avatarUrl might still be relevant depending on full requirements
+      logoUrl: contact?.logoUrl, // Keep original logoUrl for now? Or clear if new one added? Let's stick to image_url logic primarily.
+      avatarUrl: contact?.avatarUrl, // Keep original avatarUrl?
     };
 
-    // Store logo information for later handling by the API
-    // We'll handle this in the useContacts hook by accessing DOM elements
-    
     // Prepare the contact data to be saved
     const finalContactData = contact?.id 
-      ? { ...contactData, id: contact.id }
-      : contactData;
+      ? { 
+          ...baseContactData, 
+          id: contact.id, 
+          image_url: contact.image_url, // Pass existing image_url for update logic
+          imageFile: logoFile, // Pass the selected file (or null)
+          removeLogo: logoRemoved // Pass the removal flag
+        }
+      : { 
+          ...baseContactData, 
+          imageFile: logoFile // Only pass file for adding new contact
+          // removeLogo is not relevant for adding
+        };
     
     try {
       // Pass the data to the parent component
+      // The type assertion might be needed if TS complains, but `onSave` in useContacts expects this shape now.
       await onSave(finalContactData);
       // Dismiss the loading toast and show success
       toast.dismiss(toastId);
