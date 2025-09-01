@@ -102,7 +102,7 @@ const WikiEditor: React.FC<WikiEditorProps> = ({
     }
   };
 
-  // Creates a new editor instance with image upload capability
+  // Creates a new editor instance with image upload capability and custom paste handler
   const editor = useCreateBlockNote({
     domAttributes: {
       editor: {
@@ -111,7 +111,30 @@ const WikiEditor: React.FC<WikiEditorProps> = ({
       },
     },
     // Enable image uploads
-    uploadFile: handleImageUpload
+    uploadFile: handleImageUpload,
+    // Custom paste handler for markdown support
+    pasteHandler: ({ event, editor, defaultPasteHandler }) => {
+      // Only handle text/plain content
+      if (event.clipboardData?.types.includes("text/plain")) {
+        const text = event.clipboardData.getData("text/plain");
+
+        // Simple heuristic to detect markdown
+        const containsMarkdown = /[\*#\-\>\`\|\[\]]/.test(text) ||
+                                /^\d+\.\s/.test(text) ||
+                                text.includes('http') ||
+                                text.includes('__') ||
+                                text.includes('> ');
+
+        if (containsMarkdown) {
+          // Use BlockNote's built-in pasteMarkdown method which handles cursor positioning correctly
+          editor.pasteMarkdown(text);
+          return true; // Prevent default paste behavior
+        }
+      }
+
+      // For non-markdown content, use the default paste handler
+      return defaultPasteHandler();
+    }
   });
   
 
@@ -172,66 +195,8 @@ const WikiEditor: React.FC<WikiEditorProps> = ({
     }
   }, [editor, readOnly]);
 
-  // Set up custom paste handler for markdown support
-  useEffect(() => {
-    if (editor && !readOnly) {
-      // Function to process pasted markdown text
-      const handlePastedMarkdown = async (text: string) => {
-        try {
-          // Use the markdown parser from editor
-          const blocks = await editor.tryParseMarkdownToBlocks(text);
-          
-          if (blocks && blocks.length > 0) {
-            // Replace the current document with markdown content
-            // This simple approach ensures compatibility
-            const previousContent = editor.document;
-            editor.replaceBlocks(previousContent, blocks);
-            console.log('Processed markdown paste successfully');
-            return true;
-          }
-        } catch (error) {
-          console.error('Failed to process markdown:', error);
-        }
-        return false;
-      };
-      
-      // Add a command listener to the editor for markdown paste processing
-      const processIfMarkdown = async (text: string) => {
-        // Simple heuristic to detect markdown
-        const containsMarkdown = /[\*#\-\>\`\|\[\]]/.test(text) || 
-                                /^\d+\.\s/.test(text) || 
-                                text.includes('http') ||
-                                text.includes('__') ||
-                                text.includes('> ');
-        
-        if (containsMarkdown) {
-          return await handlePastedMarkdown(text);
-        }
-        return false;
-      };
-      
-      // Add a paste event handler to the document
-      const handlePaste = async (e: ClipboardEvent) => {
-        const text = e.clipboardData?.getData('text/plain');
-        if (!text) return;
-        
-        // Try to process as markdown
-        const processed = await processIfMarkdown(text);
-        if (processed) {
-          e.preventDefault(); // Prevent default paste if we handled it
-        }
-      };
-      
-      // Get the editor DOM element
-      const editorElement = document.querySelector('.blocknote-editor');
-      if (editorElement) {
-        editorElement.addEventListener('paste', handlePaste as EventListener);
-        return () => {
-          editorElement.removeEventListener('paste', handlePaste as EventListener);
-        };
-      }
-    }
-  }, [editor, readOnly]);
+  // Note: Custom paste handling is now done through the pasteHandler option in useCreateBlockNote
+  // This ensures proper integration with BlockNote's paste system and prevents double pasting
 
   // Auto-focus the editor when it's ready and not in read-only mode
   useEffect(() => {
