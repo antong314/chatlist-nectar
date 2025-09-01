@@ -5,24 +5,25 @@
   display: flex !important;
   flex-direction: column-reverse !important; /* This puts the toolbar above the editor */
   gap: 0 !important; /* Remove gap between toolbar and editor */
-  background-color: white !important;
+  background: linear-gradient(to bottom, #ffffff, #FAF9F6) !important; /* Eco-friendly gradient */
   border-radius: 8px !important;
   overflow: hidden !important; /* Ensure content doesn't overflow rounded corners */
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important; /* Add subtle shadow like in image 2 */
+  box-shadow: 0 2px 8px rgba(46, 125, 50, 0.15) !important; /* Jungle green shadow */
+  border: 1px solid rgba(46, 125, 50, 0.1) !important; /* Subtle jungle green border */
 }
 
 /* Center the formatting toolbar and set background color */
 .bn-formatting-toolbar {
   margin-inline: auto !important;
-  background-color: white !important;
+  background-color: #FAF9F6 !important; /* Machuca off-white */
   border-radius: 8px !important;
   padding: 4px 8px !important;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1) !important;
+  box-shadow: 0 2px 5px rgba(46, 125, 50, 0.1) !important; /* Jungle green shadow */
 }
 
 /* Fix editor background color */
 .bn-editor {
-  background-color: white !important;
+  background: linear-gradient(to bottom, #ffffff, #FAF9F6) !important; /* Eco-friendly gradient */
   border-radius: 0 0 8px 8px !important; /* Round bottom corners */
   word-break: normal !important;
   overflow-wrap: break-word !important;
@@ -64,30 +65,33 @@
 
 /* Make sure the formatting toolbar container has proper styling */
 .formatting-toolbar-container {
-  background-color: white !important;
-  border-bottom: none !important; /* Remove border between toolbar and editor */
+  background-color: #FAF9F6 !important; /* Machuca off-white */
+  border-bottom: 1px solid rgba(46, 125, 50, 0.1) !important; /* Subtle jungle green border */
   padding: 8px !important;
   display: flex !important;
   justify-content: center !important;
   border-radius: 8px 8px 0 0 !important; /* Round top corners */
 }
 
-/* Style the toolbar buttons to have white background */
+/* Style the toolbar buttons to have eco-friendly background */
 .bn-formatting-toolbar button {
-  background-color: white !important;
-  color: #333 !important;
+  background-color: #ffffff !important;
+  color: #2E7D32 !important; /* Jungle green text */
   border-radius: 4px !important;
   margin: 0 2px !important;
+  border: 1px solid rgba(46, 125, 50, 0.1) !important; /* Subtle jungle green border */
 }
 
 /* Style the toolbar button hover state */
 .bn-formatting-toolbar button:hover {
-  background-color: #f5f5f5 !important;
+  background-color: #F1F8E9 !important; /* Light green hover */
+  color: #1B5E20 !important; /* Darker green on hover */
 }
 
-/* Style the wiki editor container to match image 2 */
+/* Style the wiki editor container to match eco theme */
 .wiki-editor-container {
   border-radius: 8px !important;
   overflow: hidden !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+  box-shadow: 0 2px 8px rgba(46, 125, 50, 0.15) !important; /* Jungle green shadow */
+  border: 1px solid rgba(46, 125, 50, 0.1) !important; /* Subtle jungle green border */
 }

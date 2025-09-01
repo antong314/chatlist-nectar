@@ -1,5 +1,7 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -16,7 +18,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
 
-    --primary: 210 100% 50%;
+    --primary: 122 39% 33%; /* Jungle Green #2E7D32 */
     --primary-foreground: 210 40% 98%;
 
     --secondary: 210 40% 96.1%;
@@ -33,9 +35,29 @@
 
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --ring: 122 39% 33%; /* Jungle Green for focus rings */
 
-    --radius: 0.5rem;
+    --radius: 0.625rem; /* 10px for medium border radius */
+
+    /* Machuca Theme Variables */
+    --machuca-jungle-green: #2E7D32;
+    --machuca-earth-brown: #6D4C41;
+    --machuca-sky-blue: #81D4FA;
+    --machuca-off-white: #FAF9F6;
+    --machuca-neutral-gray: #9E9E9E;
+
+    /* Category background tints */
+    --machuca-shopping-bg: #FFF9C4;
+    --machuca-local-know-how-bg: #DCEDC8;
+    --machuca-nature-bg: #B2EBF2;
+
+    /* Sidebar colors */
+    --machuca-sidebar-bg: #F1F8E9;
+    --machuca-sidebar-active: #A5D6A7;
+
+    /* Shadows */
+    --machuca-card-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    --machuca-hover-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 
     --sidebar-background: 0 0% 98%;
 
@@ -157,6 +179,69 @@
   
   .category-btn-inactive {
     @apply bg-blue-100 text-blue-700 hover:bg-blue-200;
+  }
+
+  /* Machuca Theme Utility Classes */
+  .machuca-card {
+    @apply rounded-xl shadow-md transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5;
+    box-shadow: var(--machuca-card-shadow);
+  }
+
+  .machuca-card:hover {
+    box-shadow: var(--machuca-hover-shadow);
+    border: 1px solid var(--machuca-jungle-green);
+  }
+
+  .machuca-card-shopping {
+    background-color: var(--machuca-shopping-bg);
+  }
+
+  .machuca-card-local-know-how {
+    background-color: var(--machuca-local-know-how-bg);
+  }
+
+  .machuca-card-nature {
+    background-color: var(--machuca-nature-bg);
+  }
+
+  .machuca-sidebar-section {
+    background-color: var(--machuca-sidebar-bg);
+    @apply rounded-lg p-3 mb-2;
+  }
+
+  .machuca-sidebar-active {
+    background-color: var(--machuca-sidebar-active);
+    @apply font-medium;
+  }
+
+  .machuca-header-text {
+    @apply font-header text-machuca-jungle-green;
+  }
+
+  .machuca-body-text {
+    @apply font-body text-gray-700;
+  }
+
+  .machuca-divider {
+    @apply border-t border-machuca-jungle-green opacity-30 my-2 relative;
+  }
+
+  .machuca-divider::after {
+    content: '🌿';
+    position: absolute;
+    left: 50%;
+    top: 0;
+    transform: translate(-50%, -50%);
+    background-color: white;
+    padding: 0 8px;
+    font-size: 14px;
+  }
+
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
   
   .add-entry-btn {

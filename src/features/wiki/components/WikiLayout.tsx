@@ -82,8 +82,8 @@ const WikiLayout: React.FC<WikiLayoutProps> = ({
           onCreatePage={openNewPageDialog} 
         />
         
-        <main 
-          className={`flex-1 transition-all duration-300 ease-in-out ${
+        <main
+          className={`flex-1 transition-all duration-300 ease-in-out bg-gradient-to-b from-machuca-off-white via-machuca-off-white to-machuca-sidebar-bg ${
             sidebarOpen ? 'md:ml-64' : 'ml-0'
           }`}
         >

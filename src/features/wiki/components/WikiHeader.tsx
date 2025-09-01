@@ -32,21 +32,24 @@ const WikiHeader: React.FC<WikiHeaderProps> = ({
           </Button>
           
           <div className="flex items-center">
-            <div className="bg-gray-100 p-1.5 md:p-2 rounded-md mr-2">
-              <FileText className="h-4 w-4 md:h-5 md:w-5 text-gray-700" />
+            <div className="bg-machuca-jungle-green/10 p-1.5 md:p-2 rounded-md mr-2">
+              <FileText className="h-4 w-4 md:h-5 md:w-5 text-machuca-jungle-green" />
             </div>
             <div className="flex items-center">
-              <Link to="/wiki" className="text-xl md:text-2xl font-bold">Machuca Wiki</Link>
-              
+              <Link to="/wiki" className="text-xl md:text-2xl font-header font-bold text-machuca-jungle-green">
+                Machuca Wiki
+              </Link>
+            </div>
+            <div className="flex items-center ml-4">
               {/* Desktop navigation links - visible on all screen sizes */}
-              <div className="hidden md:flex items-center ml-4">
-                <div className="h-6 w-px bg-gray-300"></div>
-                <Link to="/" className="ml-4 text-gray-500 hover:text-gray-800 transition-colors flex items-center">
+              <div className="hidden md:flex items-center">
+                <div className="h-6 w-px bg-machuca-earth-brown/30"></div>
+                <Link to="/" className="ml-4 text-machuca-neutral-gray hover:text-machuca-jungle-green transition-colors flex items-center font-body">
                   <BookOpen className="h-5 w-5 mr-1" />
                   <span className="text-lg">MV Directory</span>
                 </Link>
-                <div className="ml-4 h-6 w-px bg-gray-300"></div>
-                <Link to="/elements" className="ml-4 text-gray-500 hover:text-gray-800 transition-colors flex items-center">
+                <div className="ml-4 h-6 w-px bg-machuca-earth-brown/30"></div>
+                <Link to="/elements" className="ml-4 text-machuca-neutral-gray hover:text-machuca-jungle-green transition-colors flex items-center font-body">
                   <Newspaper className="h-5 w-5 mr-1" />
                   <span className="text-lg">Elements</span>
                 </Link>

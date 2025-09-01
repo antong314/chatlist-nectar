@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Book, Plus, ChevronUp, ChevronDown } from "lucide-react";
-import { getCategoryIcon } from '@/features/wiki/utils/categoryIcons';
+import { getCategoryIcon, getCategoryEmoji } from '@/features/wiki/utils/categoryIcons';
+import { getCategoryStyle } from '@/styles/machuca-theme';
 import { trackPageView, trackEvent } from '@/utils/analytics';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import WikiLayout from '@/features/wiki/components/WikiLayout';
@@ -14,38 +15,71 @@ import { useToast } from '@/components/ui/use-toast';
 import { useWikiIndex } from '@/features/wiki/hooks';
 import { WikiPage } from '@/features/wiki/types';
 
-const PageTile: React.FC<{ 
-  page: WikiPage, 
-  onClick: () => void 
+const PageTile: React.FC<{
+  page: WikiPage,
+  onClick: () => void
 }> = ({ page, onClick }) => {
   // Extract an excerpt from the content if not provided directly
   const excerpt = page.excerpt || 'Click to view this wiki page';
-  
+
   // Format the date to be more readable
   const formatDate = (dateString: string) => {
     if (!dateString) return 'Not available';
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      month: 'long', 
-      day: 'numeric', 
-      year: 'numeric' 
+    return date.toLocaleDateString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric'
     });
   };
-  
+
   // Use updated_at if available, fallback to lastEdited for backward compatibility
   const lastEdited = page.updated_at ? formatDate(page.updated_at) : (page.lastEdited || 'Not available');
-  
+
+  // Get category-specific styling
+  const categoryStyle = getCategoryStyle(page.category || 'default');
+
+  // Determine background class based on category
+  const getBackgroundClass = (category: string) => {
+    const normalizedCategory = category?.toLowerCase() || 'default';
+    switch (normalizedCategory) {
+      case 'shopping':
+        return 'machuca-card-shopping';
+      case 'local know-how':
+        return 'machuca-card-local-know-how';
+      case 'nature':
+        return 'machuca-card-nature';
+      default:
+        return 'bg-white';
+    }
+  };
+
   return (
-    <Card 
-      className="h-full cursor-pointer hover:shadow-md transition-all duration-200 hover:border-primary/30 flex flex-col"
+    <Card
+      className={`
+        h-full cursor-pointer machuca-card flex flex-col
+        ${getBackgroundClass(page.category || 'default')}
+        hover:border-machuca-jungle-green
+      `}
       onClick={onClick}
+      style={{
+        backgroundColor: categoryStyle.color,
+      }}
     >
       <CardHeader className="pb-2">
-        <CardTitle className="text-xl font-medium">{page.title}</CardTitle>
+        <CardTitle className="text-xl font-header font-semibold text-machuca-jungle-green flex items-center">
+          <span className="mr-2 text-lg">{getCategoryEmoji(page.category || 'default')}</span>
+          {page.title}
+        </CardTitle>
+        {excerpt && excerpt !== 'Click to view this wiki page' && (
+          <p className="text-sm text-machuca-neutral-gray font-body mt-1 line-clamp-2">
+            {excerpt}
+          </p>
+        )}
       </CardHeader>
       <CardContent className="flex-1 flex flex-col justify-end">
-        <div className="flex items-center text-xs text-muted-foreground">
-          <Book className="h-3 w-3 mr-1" />
+        <div className="flex items-center text-xs text-machuca-neutral-gray font-body">
+          <Book className="h-3 w-3 mr-1 text-machuca-earth-brown" />
           <span>Last edited: {lastEdited}</span>
         </div>
       </CardContent>
@@ -77,15 +111,18 @@ const WikiIndexPage: React.FC = () => {
   return (
     <WikiLayout title="Machuca Wiki">
       <div className="animate-fade-in">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Machuca Wiki</h1>
-            <p className="text-muted-foreground mt-1">
+            <h1 className="text-3xl font-header font-bold text-machuca-jungle-green">Machuca Wiki</h1>
+            <p className="text-machuca-neutral-gray mt-1 font-body">
               Browse and edit pages for our community
             </p>
           </div>
-          
-          <Button onClick={handleCreatePageClick} className="flex items-center self-start sm:self-auto">
+
+          <Button
+            onClick={handleCreatePageClick}
+            className="flex items-center self-start sm:self-auto bg-machuca-jungle-green hover:bg-machuca-earth-brown transition-colors duration-200"
+          >
             <Plus className="h-4 w-4 mr-1" />
             New Page
           </Button>
@@ -233,41 +270,45 @@ interface CategorySectionProps {
   onPageClick: (slug: string) => void;
 }
 
-const CategorySection: React.FC<CategorySectionProps> = ({ 
-  category, 
-  pages, 
-  onPageClick 
+const CategorySection: React.FC<CategorySectionProps> = ({
+  category,
+  pages,
+  onPageClick
 }) => {
   const [isOpen, setIsOpen] = useState(true);
-  
+
   return (
-    <div className="border rounded-lg overflow-hidden bg-white">
+    <div className="border border-machuca-jungle-green/20 rounded-xl overflow-hidden bg-white shadow-sm">
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
         <CollapsibleTrigger asChild>
-          <Button 
-            variant="ghost" 
-            className="w-full flex items-center justify-between p-4 bg-muted/30 hover:bg-muted/50 rounded-none border-b text-left h-auto"
+          <Button
+            variant="ghost"
+            className="w-full flex items-center justify-between p-4 bg-machuca-sidebar-bg hover:bg-machuca-jungle-green/10 rounded-none border-b border-machuca-jungle-green/20 text-left h-auto transition-colors duration-200"
           >
-            <span className="flex items-center text-lg font-medium">
-              {React.createElement(getCategoryIcon(category), { className: "h-5 w-5 mr-2" })}
+            <span className="flex items-center text-lg font-header font-semibold text-machuca-jungle-green">
+              <span className="mr-3 text-xl">{getCategoryEmoji(category)}</span>
+              {React.createElement(getCategoryIcon(category), { className: "h-5 w-5 mr-2 text-machuca-earth-brown" })}
               {category}
             </span>
             {isOpen ? (
-              <ChevronUp className="h-5 w-5" />
+              <ChevronUp className="h-5 w-5 text-machuca-earth-brown" />
             ) : (
-              <ChevronDown className="h-5 w-5" />
+              <ChevronDown className="h-5 w-5 text-machuca-earth-brown" />
             )}
           </Button>
         </CollapsibleTrigger>
-        
+
+        {/* Decorative divider with leaf motif */}
+        <div className="machuca-divider mx-4"></div>
+
         <CollapsibleContent>
-          <div className="p-4">
+          <div className="p-4 bg-gradient-to-b from-white to-machuca-off-white">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {pages.map((page) => (
-                <PageTile 
-                  key={page.id} 
-                  page={page} 
-                  onClick={() => onPageClick(page.slug)} 
+                <PageTile
+                  key={page.id}
+                  page={page}
+                  onClick={() => onPageClick(page.slug)}
                 />
               ))}
             </div>

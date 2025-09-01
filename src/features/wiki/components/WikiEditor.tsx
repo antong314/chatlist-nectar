@@ -215,9 +215,9 @@ const WikiEditor: React.FC<WikiEditorProps> = ({
 
   // Fallback UI when editor fails to render
   const fallbackEditor = (
-    <div className="p-6 bg-gray-50 rounded border border-gray-200">
+    <div className="p-6 bg-machuca-off-white rounded border border-machuca-jungle-green/20">
       <h3 className="text-lg font-medium text-red-600">Editor could not be loaded</h3>
-      <p className="mt-2 text-gray-600">
+      <p className="mt-2 text-machuca-neutral-gray">
         There was a problem loading the editor. Please refresh the page to try again.
       </p>
     </div>
@@ -228,13 +228,13 @@ const WikiEditor: React.FC<WikiEditorProps> = ({
     <div className={`rounded-lg shadow ${className}`}>
       <EditorErrorBoundary fallback={fallbackEditor}>
         <div className="wiki-editor-container">
-          <BlockNoteView 
-            editor={editor} 
+          <BlockNoteView
+            editor={editor}
             formattingToolbar={false}
-            className="min-h-[200px] bg-white text-black rounded-lg overflow-hidden"
+            className="min-h-[200px] bg-gradient-to-b from-white to-machuca-off-white text-black rounded-lg overflow-hidden border border-machuca-jungle-green/10"
           >
             {!readOnly && (
-              <div className="formatting-toolbar-container p-2 bg-white">
+              <div className="formatting-toolbar-container p-2 bg-machuca-off-white border-b border-machuca-jungle-green/10">
                 <FormattingToolbar />
                 
                 {/* Add custom image upload button */}

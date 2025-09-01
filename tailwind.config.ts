@@ -21,6 +21,10 @@ export default {
 		extend: {
 			fontFamily: {
 				inter: ['Inter', 'sans-serif'],
+				lora: ['Lora', 'serif'],
+				merriweather: ['Merriweather', 'serif'],
+				header: ['Lora', 'Merriweather', 'serif'],
+				body: ['Inter', 'Nunito', 'sans-serif'],
 			},
 			colors: {
 				border: 'hsl(var(--border))',
@@ -72,6 +76,19 @@ export default {
 					'success': '#10b981',
 					'muted': '#f3f4f6',
 					'border': '#e5e7eb',
+				},
+				// Machuca Theme Colors
+				'machuca': {
+					'jungle-green': '#2E7D32',
+					'earth-brown': '#6D4C41',
+					'sky-blue': '#81D4FA',
+					'off-white': '#FAF9F6',
+					'neutral-gray': '#9E9E9E',
+					'shopping': '#FFF9C4',
+					'local-know-how': '#DCEDC8',
+					'nature': '#B2EBF2',
+					'sidebar-bg': '#F1F8E9',
+					'sidebar-active': '#A5D6A7',
 				}
 			},
 			borderRadius: {

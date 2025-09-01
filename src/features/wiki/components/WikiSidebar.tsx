@@ -12,7 +12,7 @@ import {
   ChevronUp,
   File
 } from "lucide-react";
-import { getCategoryIcon } from '@/features/wiki/utils/categoryIcons';
+import { getCategoryIcon, getCategoryEmoji } from '@/features/wiki/utils/categoryIcons';
 import { useWikiIndex } from '@/features/wiki/hooks';
 import { WikiPage } from '@/features/wiki/types';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -45,26 +45,26 @@ const WikiSidebar: React.FC<WikiSidebarProps> = ({
       )}
       
       {/* Sidebar */}
-      <aside 
+      <aside
         className={`
-          fixed top-16 left-0 z-40 h-[calc(100vh-4rem)] bg-white border-r
+          fixed top-16 left-0 z-40 h-[calc(100vh-4rem)] bg-machuca-off-white border-r border-machuca-jungle-green/20
           transform transition-all duration-300 ease-in-out overflow-hidden
           ${isOpen ? 'translate-x-0 w-64' : '-translate-x-full w-0 md:w-0 opacity-0'}
         `}
       >
         <div className="flex flex-col h-full">
           {/* Header */}
-          <div className="p-4 border-b flex items-center justify-between">
-            <h2 className="font-semibold text-lg flex items-center">
-              <Newspaper className="h-5 w-5 mr-2" />
+          <div className="p-4 border-b border-machuca-jungle-green/20 flex items-center justify-between bg-machuca-sidebar-bg">
+            <h2 className="font-header font-semibold text-lg flex items-center text-machuca-jungle-green">
+              <span className="mr-2 text-xl">🌿</span>
+              <Newspaper className="h-5 w-5 mr-2 text-machuca-earth-brown" />
               Pages
             </h2>
-            
+
             <Button
               onClick={onCreatePage}
               size="sm"
-              className="px-2"
-              variant="ghost"
+              className="px-2 bg-machuca-jungle-green hover:bg-machuca-earth-brown text-white"
               title="Create new page"
             >
               <FilePlus className="h-5 w-5" />
@@ -191,50 +191,53 @@ interface CategoryItemProps {
   currentPath: string;
 }
 
-const CategoryItem: React.FC<CategoryItemProps> = ({ 
-  category, 
-  pages, 
-  currentPath 
+const CategoryItem: React.FC<CategoryItemProps> = ({
+  category,
+  pages,
+  currentPath
 }) => {
   const [isOpen, setIsOpen] = useState(true);
-  
+
   return (
-    <div className="mb-2">
+    <div className="mb-3">
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
         <CollapsibleTrigger asChild>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="w-full flex items-center justify-between px-3 py-2 mb-1 text-left font-medium"
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full flex items-center justify-between px-3 py-2 mb-2 text-left font-header font-medium machuca-sidebar-section hover:bg-machuca-sidebar-active transition-colors duration-200"
           >
-            <span className="flex items-center">
-              {/* Dynamic icon based on category */}
-              {React.createElement(getCategoryIcon(category), { className: "h-4 w-4 mr-2" })}
+            <span className="flex items-center text-machuca-jungle-green">
+              <span className="mr-2 text-base">{getCategoryEmoji(category)}</span>
+              {React.createElement(getCategoryIcon(category), { className: "h-4 w-4 mr-2 text-machuca-earth-brown" })}
               {category}
             </span>
             {isOpen ? (
-              <ChevronUp className="h-4 w-4" />
+              <ChevronUp className="h-4 w-4 text-machuca-earth-brown" />
             ) : (
-              <ChevronDown className="h-4 w-4" />
+              <ChevronDown className="h-4 w-4 text-machuca-earth-brown" />
             )}
           </Button>
         </CollapsibleTrigger>
-        
+
+        {/* Decorative divider with leaf motif */}
+        <div className="machuca-divider mx-3 mb-2"></div>
+
         <CollapsibleContent>
-          <div className="pl-2 border-l ml-4 mt-1">
+          <div className="pl-2 border-l border-machuca-jungle-green/30 ml-4 mt-1">
             {pages.map((page) => (
-              <Link 
+              <Link
                 key={page.id}
                 to={`/wiki/${page.slug || page.id}`}
                 className={`
-                  flex items-center px-3 py-2 mb-1 rounded-md text-sm
-                  ${currentPath === `/wiki/${page.slug || page.id}` 
-                    ? 'bg-primary/10 text-primary font-medium' 
-                    : 'hover:bg-gray-100'
+                  flex items-center px-3 py-2 mb-1 rounded-md text-sm font-body transition-colors duration-200
+                  ${currentPath === `/wiki/${page.slug || page.id}`
+                    ? 'machuca-sidebar-active text-machuca-jungle-green font-medium border border-machuca-jungle-green/30'
+                    : 'hover:bg-machuca-sidebar-bg text-machuca-neutral-gray hover:text-machuca-jungle-green'
                   }
                 `}
               >
-                <File className="h-3.5 w-3.5 mr-2 flex-shrink-0" />
+                <File className="h-3.5 w-3.5 mr-2 flex-shrink-0 text-machuca-earth-brown" />
                 {page.title}
               </Link>
             ))}
