@@ -1,4 +1,4 @@
-import { normalizeWebsiteUrl } from '@/lib/urls';
+import { getSafeExternalUrl, normalizeWebsiteUrl } from '@/lib/urls';
 
 describe('normalizeWebsiteUrl', () => {
   test.each([
@@ -11,5 +11,17 @@ describe('normalizeWebsiteUrl', () => {
     ['', ''],
   ])('normalizes %s', (input, expected) => {
     expect(normalizeWebsiteUrl(input)).toBe(expected);
+  });
+});
+
+describe('getSafeExternalUrl', () => {
+  test.each([
+    ['www.sophiehardy.org', 'https://www.sophiehardy.org'],
+    ['https://maps.google.com/place/foo', 'https://maps.google.com/place/foo'],
+    ['javascript:alert(1)', ''],
+    ['https://', ''],
+    ['   ', ''],
+  ])('accepts only usable web links for %s', (input, expected) => {
+    expect(getSafeExternalUrl(input)).toBe(expected);
   });
 });

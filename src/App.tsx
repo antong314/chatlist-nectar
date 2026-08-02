@@ -3,13 +3,24 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useLocation, useNavigationType } from "react-router-dom";
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { initializeGA, trackPageView } from "@/utils/analytics";
 import Index from "./pages/Index";
-import { DirectoryPage } from "./features/directory/pages";
-import { WikiIndexPage, WikiPage } from "./features/wiki/pages";
 import NotFound from "./pages/NotFound";
-import Elements from "./pages/Elements";
+
+const DirectoryPage = lazy(() =>
+  import("./features/directory/pages/DirectoryPage").then(({ DirectoryPage }) => ({
+    default: DirectoryPage,
+  })),
+);
+const ProviderPage = lazy(() =>
+  import("./features/directory/pages/ProviderPage").then(({ ProviderPage }) => ({
+    default: ProviderPage,
+  })),
+);
+const WikiIndexPage = lazy(() => import("./features/wiki/pages/WikiIndexPage"));
+const WikiPage = lazy(() => import("./features/wiki/pages/WikiPage"));
+const Elements = lazy(() => import("./pages/Elements"));
 
 const queryClient = new QueryClient();
 
@@ -34,6 +45,16 @@ const RouteTracker = () => {
   return null;
 };
 
+const RouteLoadingFallback = () => (
+  <main
+    className="flex min-h-screen items-center justify-center bg-[#f8f5ed] px-4 text-[#24573a]"
+    aria-busy="true"
+    aria-live="polite"
+  >
+    <p className="text-sm font-medium">Loading San Mateo Love…</p>
+  </main>
+);
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -41,19 +62,22 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <RouteTracker />
-        <Routes>
-          {/* Legacy route kept for now - will be removed once transition is complete */}
-          <Route path="/" element={<Index />} />
-          
-          {/* Feature-based routes */}
-          <Route path="/directory" element={<DirectoryPage />} />
-          <Route path="/wiki" element={<WikiIndexPage />} />
-          <Route path="/wiki/:pageId" element={<WikiPage />} />
-          <Route path="/elements" element={<Elements />} />
-          
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <Suspense fallback={<RouteLoadingFallback />}>
+          <Routes>
+            {/* Legacy route kept for now - will be removed once transition is complete */}
+            <Route path="/" element={<Index />} />
+
+            {/* Feature-based routes */}
+            <Route path="/directory" element={<DirectoryPage />} />
+            <Route path="/provider/:providerId" element={<ProviderPage />} />
+            <Route path="/wiki" element={<WikiIndexPage />} />
+            <Route path="/wiki/:pageId" element={<WikiPage />} />
+            <Route path="/elements" element={<Elements />} />
+
+            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

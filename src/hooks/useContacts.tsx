@@ -5,8 +5,36 @@ import { Contact, Category } from '@/types/contact';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase'; // Corrected import path
 import { v4 as uuidv4 } from 'uuid'; // Import uuid
+import { searchDirectoryContacts } from '@/features/directory/search/directorySearch';
 
 const CONTACT_LOGOS_BUCKET = 'contact-images'; // Use the existing bucket name
+
+interface DatabaseContactRow {
+  id: string;
+  title?: string | null;
+  subtitle?: string | null;
+  category?: string | null;
+  phone_number?: string | null;
+  website_url?: string | null;
+  map_url?: string | null;
+  image_url?: string | null;
+}
+
+const mapDatabaseContact = (dbContact: DatabaseContactRow): Contact => ({
+  id: dbContact.id,
+  name: dbContact.title || '',
+  description: dbContact.subtitle || '',
+  category: dbContact.category || 'Service',
+  phone: dbContact.phone_number || '',
+  website: dbContact.website_url || '',
+  mapUrl: dbContact.map_url || '',
+  image_url: dbContact.image_url || null,
+  logoUrl: dbContact.image_url || '',
+  avatarUrl: dbContact.image_url || '',
+});
+
+const getErrorMessage = (error: unknown, fallback: string): string =>
+  error instanceof Error && error.message ? error.message : fallback;
 
 /**
  * Custom hook for managing contacts using Supabase
@@ -30,28 +58,39 @@ export const useContacts = () => {
   const [searchQuery, setSearchQueryState] = useState<string>(initialSearch);
   const [selectedCategory, setSelectedCategoryState] = useState<Category>(initialCategory);
 
+  // Keep controls in sync with browser Back/Forward navigation.
+  useEffect(() => {
+    const nextSearch = searchParams.get('q') || '';
+    const nextCategory = (searchParams.get('category') || 'All') as Category;
+
+    setSearchQueryState((current) => current === nextSearch ? current : nextSearch);
+    setSelectedCategoryState((current) => current === nextCategory ? current : nextCategory);
+  }, [searchParams]);
+
   // Custom setters that update both state and URL params
   const setSearchQuery = useCallback((query: string) => {
     setSearchQueryState(query);
-    setSearchParams(params => {
-      if (query) {
-        params.set('q', query);
+    setSearchParams((currentParams) => {
+      const nextParams = new URLSearchParams(currentParams);
+      if (query.trim()) {
+        nextParams.set('q', query);
       } else {
-        params.delete('q');
+        nextParams.delete('q');
       }
-      return params;
+      return nextParams;
     }, { replace: true });
   }, [setSearchParams]);
 
   const setSelectedCategory = useCallback((category: Category) => {
     setSelectedCategoryState(category);
-    setSearchParams(params => {
+    setSearchParams((currentParams) => {
+      const nextParams = new URLSearchParams(currentParams);
       if (category && category !== 'All') {
-        params.set('category', category);
+        nextParams.set('category', category);
       } else {
-        params.delete('category');
+        nextParams.delete('category');
       }
-      return params;
+      return nextParams;
     }, { replace: true });
   }, [setSearchParams]);
 
@@ -81,17 +120,7 @@ export const useContacts = () => {
 
         if (data) {
           // Map Supabase data to our Contact type
-          const fetchedContacts: Contact[] = data.map((dbContact: any) => ({ // Use 'any' for now, ideally generate types
-            id: dbContact.id,
-            name: dbContact.title || '', // Map title -> name
-            description: dbContact.subtitle || '', // Map subtitle -> description
-            category: dbContact.category || 'General', // Use category directly
-            phone: dbContact.phone_number || '', // Map phone_number -> phone
-            website: dbContact.website_url || '', // Map website_url -> website
-            mapUrl: dbContact.map_url || '', // Map map_url -> mapUrl
-            logoUrl: dbContact.image_url || '', // Will be empty for now
-            avatarUrl: dbContact.image_url || '', // Will be empty for now
-          }));
+          const fetchedContacts = (data as DatabaseContactRow[]).map(mapDatabaseContact);
 
           // Update state (sorting is handled by the query or can be done client-side if needed)
           setContacts(fetchedContacts);
@@ -99,8 +128,8 @@ export const useContacts = () => {
           setContacts([]); // Set to empty array if no data
         }
 
-      } catch (err: any) { // Catch any error type
-        setError(err.message || 'An unexpected error occurred while fetching contacts');
+      } catch (err: unknown) {
+        setError(getErrorMessage(err, 'An unexpected error occurred while fetching contacts'));
         console.error('Error fetching contacts:', err);
       } finally {
         setLoading(false);
@@ -197,17 +226,7 @@ export const useContacts = () => {
 
       if (data) {
         // Map the newly inserted data back to the Contact type
-        const addedContact: Contact = {
-          id: data.id,
-          name: data.title || '',
-          description: data.subtitle || '',
-          category: data.category || 'General',
-          phone: data.phone_number || '',
-          website: data.website_url || '',
-          mapUrl: data.map_url || '',
-          logoUrl: data.image_url || '', // Will be empty for now
-          avatarUrl: data.image_url || '', // Will be empty for now
-        };
+        const addedContact = mapDatabaseContact(data as DatabaseContactRow);
 
         // Add new contact immediately to local state and maintain alphabetical sorting
         setContacts(prev => sortContactsAlphabetically([...prev, addedContact]));
@@ -218,9 +237,9 @@ export const useContacts = () => {
         throw new Error('Failed to retrieve added contact data from Supabase');
       }
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error adding contact:', err);
-      toast.error(`Error adding contact: ${err.message}`);
+      toast.error(`Error adding contact: ${getErrorMessage(err, 'Please try again.')}`);
       return false;
     }
   }, []);
@@ -233,8 +252,12 @@ export const useContacts = () => {
         throw new Error('Contact ID is required for updates');
       }
 
-      let newImageUrl: string | null = updatedContactData.image_url || null;
-      const currentImagePath = getPathFromUrl(updatedContactData.image_url);
+      const existingImageUrl = updatedContactData.image_url
+        || updatedContactData.logoUrl
+        || updatedContactData.avatarUrl
+        || null;
+      let newImageUrl: string | null = existingImageUrl;
+      const currentImagePath = getPathFromUrl(existingImageUrl);
 
       // 1. Handle new image upload
       if (updatedContactData.imageFile) {
@@ -321,17 +344,7 @@ export const useContacts = () => {
 
       if (data) {
         // Map the updated data back to the Contact type
-        const updatedContact: Contact = {
-          id: data.id,
-          name: data.title || '',
-          description: data.subtitle || '',
-          category: data.category || 'General',
-          phone: data.phone_number || '',
-          website: data.website_url || '',
-          mapUrl: data.map_url || '',
-          logoUrl: data.image_url || '', // Reflect potentially updated image_url later
-          avatarUrl: data.image_url || '', // Reflect potentially updated image_url later
-        };
+        const updatedContact = mapDatabaseContact(data as DatabaseContactRow);
 
         // Update the contacts state with the updated contact and maintain sorting
         setContacts(prev => {
@@ -347,9 +360,9 @@ export const useContacts = () => {
         throw new Error('Failed to retrieve updated contact data from Supabase');
       }
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error updating contact:', err);
-      toast.error(`Error updating contact: ${err.message}`);
+      toast.error(`Error updating contact: ${getErrorMessage(err, 'Please try again.')}`);
       return false;
     }
   }, []);
@@ -367,37 +380,29 @@ export const useContacts = () => {
       if (error) {
         console.error('Error deleting contact:', error);
         setError('Failed to mark contact as deleted.');
-        setLoading(false);
         return false;
       } else {
         // Update local state to remove the contact from the visible list immediately
         setContacts(prevContacts => prevContacts.filter(contact => contact.id !== id));
         setError(null);
-        setLoading(false);
         return true;
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error deleting contact:', err);
-      toast.error(`Error deleting contact: ${err.message}`);
+      toast.error(`Error deleting contact: ${getErrorMessage(err, 'Please try again.')}`);
       return false;
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Apply search query and category filters (logic remains mostly the same)
+  // Apply bilingual, typo-tolerant search and the existing category filter.
   const filteredContacts = useMemo(() => {
-    return contacts.filter(contact => {
-      // Filter by search query (checking name, description, category)
-      const lowerSearchQuery = searchQuery.toLowerCase().trim();
-      const matchesSearch = lowerSearchQuery === '' ||
-        contact.name.toLowerCase().includes(lowerSearchQuery) ||
-        contact.description.toLowerCase().includes(lowerSearchQuery) ||
-        (contact.category && contact.category.toLowerCase().includes(lowerSearchQuery));
+    const contactsInCategory = selectedCategory === 'All'
+      ? contacts
+      : contacts.filter((contact) => contact.category === selectedCategory);
 
-      // Filter by category
-      const matchesCategory = selectedCategory === 'All' || contact.category === selectedCategory;
-
-      return matchesSearch && matchesCategory;
-    });
+    return searchDirectoryContacts(contactsInCategory, searchQuery);
   }, [contacts, searchQuery, selectedCategory]);
 
   // Extract unique categories from the contacts data (logic remains the same)

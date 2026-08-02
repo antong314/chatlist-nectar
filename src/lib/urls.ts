@@ -12,3 +12,18 @@ export const normalizeWebsiteUrl = (value: string): string => {
 
   return `https://${trimmedValue}`;
 };
+
+/** Returns an absolute HTTP(S) URL or an empty string for unsafe/malformed values. */
+export const getSafeExternalUrl = (value: string | null | undefined): string => {
+  if (!value?.trim()) return '';
+
+  const normalizedUrl = normalizeWebsiteUrl(value);
+  try {
+    const parsedUrl = new URL(normalizedUrl);
+    return parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:'
+      ? normalizedUrl
+      : '';
+  } catch {
+    return '';
+  }
+};

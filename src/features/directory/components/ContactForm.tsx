@@ -8,9 +8,10 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { X, Upload, Trash2 } from 'lucide-react';
+import { Shapes, X, Upload, Trash2 } from 'lucide-react';
 import { AvatarFallback } from '@/components/ui/avatar-fallback';
 import { normalizeWebsiteUrl } from '@/lib/urls';
+import { getDirectoryCategoryLabel } from '@/features/directory/data/categories';
 
 interface ContactFormProps {
   contact?: Contact;
@@ -55,7 +56,7 @@ export function ContactForm({
     // This ensures the effect only runs once per contact change and helps avoid state conflicts
     if (!effectRan.current && contact) {
       // Try to use either logo URL or avatar URL
-      const imageUrl = contact.logoUrl || contact.avatarUrl;
+      const imageUrl = contact.image_url || contact.logoUrl || contact.avatarUrl;
       if (imageUrl) {
         setLogoPreview(imageUrl);
         setLogoUrl(imageUrl);
@@ -144,7 +145,7 @@ export function ContactForm({
       description: description.trim(),
       phone: phone.trim(),
       website: website.trim() ? normalizeWebsiteUrl(website) : undefined,
-      mapUrl: mapUrl.trim() || undefined,
+      mapUrl: mapUrl.trim() ? normalizeWebsiteUrl(mapUrl) : undefined,
       // Include other non-image fields if necessary from the Contact type
       // e.g., logoUrl and avatarUrl might still be relevant depending on full requirements
       logoUrl: contact?.logoUrl, // Keep original logoUrl for now? Or clear if new one added? Let's stick to image_url logic primarily.
@@ -207,14 +208,22 @@ export function ContactForm({
 
   return (
     <div className="form-container">
-      <div className="form-panel" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="form-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="provider-form-title"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold">
-            {contact ? 'Edit Contact' : 'Add New Contact'}
+          <h2 id="provider-form-title" className="font-header text-xl font-semibold text-[var(--directory-ink)]">
+            {contact ? 'Edit provider' : 'Recommend a provider'}
           </h2>
-          <button 
+          <button
+            type="button"
             onClick={onCancel}
             className="p-1 rounded-full hover:bg-gray-100 transition-colors"
+            aria-label="Close provider form"
           >
             <X className="w-5 h-5 text-gray-500" />
           </button>
@@ -222,7 +231,7 @@ export function ContactForm({
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label htmlFor="name">Name</Label>
+            <Label htmlFor="name">Provider or business name</Label>
             <Input
               id="name"
               value={name}
@@ -242,11 +251,11 @@ export function ContactForm({
                 <SelectValue placeholder="Select a category">
                   {category && (
                     <div className="flex items-center gap-2">
-                      {React.createElement(categoryIconMap[category], { 
-                        size: 18, 
-                        className: "inline-block text-blue-600" 
+                      {React.createElement(categoryIconMap[category] ?? Shapes, {
+                        size: 18,
+                        className: 'inline-block text-[var(--directory-green)]',
                       })}
-                      <span className="font-medium">{category}</span>
+                      <span className="font-medium">{getDirectoryCategoryLabel(category)}</span>
                     </div>
                   )}
                 </SelectValue>
@@ -255,11 +264,11 @@ export function ContactForm({
                 {dropdownCategories.map((cat) => (
                   <SelectItem key={cat} value={cat}>
                     <div className="flex items-center gap-2">
-                      {React.createElement(categoryIconMap[cat], { 
-                        size: 18, 
-                        className: "inline-block text-gray-600" 
+                      {React.createElement(categoryIconMap[cat] ?? Shapes, {
+                        size: 18,
+                        className: 'inline-block text-gray-600',
                       })}
-                      <span>{cat}</span>
+                      <span>{getDirectoryCategoryLabel(cat)}</span>
                     </div>
                   </SelectItem>
                 ))}
@@ -268,7 +277,7 @@ export function ContactForm({
           </div>
           
           <div>
-            <Label htmlFor="description">Description</Label>
+            <Label htmlFor="description">What do they help with?</Label>
             <Textarea
               id="description"
               value={description}
@@ -279,7 +288,7 @@ export function ContactForm({
           </div>
           
           <div>
-            <Label htmlFor="phone">Phone Number</Label>
+            <Label htmlFor="phone">WhatsApp number</Label>
             <div className="flex space-x-2">
               <Select
                 value={countryCode}
@@ -302,6 +311,7 @@ export function ContactForm({
                 onChange={(e) => setLocalPhoneNumber(e.target.value)}
                 className={errors.phone ? 'border-red-500' : ''}
                 placeholder="Local number"
+                inputMode="tel"
               />
             </div>
             <input type="hidden" id="phone" value={phone} />
@@ -318,7 +328,7 @@ export function ContactForm({
           </div>
           
           <div>
-            <Label htmlFor="mapUrl">Map URL (optional)</Label>
+            <Label htmlFor="mapUrl">Map link (optional)</Label>
             <Input
               id="mapUrl"
               value={mapUrl}
@@ -418,7 +428,7 @@ export function ContactForm({
                     {contact ? 'Saving...' : 'Adding...'}
                   </>
                 ) : (
-                  contact ? 'Save Changes' : 'Add Contact'
+                  contact ? 'Save changes' : 'Add provider'
                 )}
               </Button>
             </div>

@@ -46,6 +46,19 @@
     --machuca-off-white: #FAF9F6;
     --machuca-neutral-gray: #9E9E9E;
 
+    /* San Mateo Love directory palette */
+    --directory-green: #24573a;
+    --directory-green-hover: #19452d;
+    --directory-leaf: #63844c;
+    --directory-river: #2e6f7e;
+    --directory-papaya: #df7d35;
+    --directory-sun: #dba52f;
+    --directory-cream: #f5ecd8;
+    --directory-paper: #fffdf8;
+    --directory-ink: #243027;
+    --directory-muted: #667068;
+    --directory-whatsapp: #167c3a;
+
     /* Category background tints */
     --machuca-shopping-bg: #FFF9C4;
     --machuca-local-know-how-bg: #DCEDC8;
@@ -168,17 +181,66 @@
   .directory-container {
     @apply max-w-6xl mx-auto px-4 sm:px-6 w-full;
   }
+
+  .directory-page {
+    color: var(--directory-ink);
+    background:
+      radial-gradient(circle at 92% 4%, rgba(219, 165, 47, 0.13), transparent 25rem),
+      radial-gradient(circle at 5% 24%, rgba(46, 111, 126, 0.08), transparent 28rem),
+      #f8f5ed;
+  }
+
+  .directory-nav {
+    @apply flex min-h-14 items-center justify-between gap-3 rounded-2xl border border-white/70 bg-white/80 px-2.5 py-2 shadow-sm backdrop-blur sm:px-4;
+  }
+
+  .directory-wordmark {
+    @apply flex min-w-0 items-center gap-2.5 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--directory-green)] focus-visible:ring-offset-2;
+  }
+
+  .directory-nav-link {
+    @apply inline-flex min-h-10 items-center gap-1.5 rounded-full px-2.5 text-sm font-medium text-stone-500 transition-colors hover:bg-[var(--directory-cream)] hover:text-[var(--directory-green)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--directory-green)] sm:px-3;
+  }
+
+  .directory-hero {
+    @apply relative mt-3 overflow-hidden rounded-[1.75rem] border border-white/80 px-5 py-8 shadow-sm sm:px-10 sm:py-12;
+    background:
+      linear-gradient(112deg, rgba(255, 253, 248, 0.98), rgba(245, 236, 216, 0.9)),
+      url('./assets/jungle-silhouette.svg') right bottom / auto 85% no-repeat;
+  }
+
+  .directory-hero::after {
+    content: '';
+    @apply pointer-events-none absolute -bottom-16 -right-12 h-52 w-52 rounded-full;
+    background: rgba(99, 132, 76, 0.08);
+  }
+
+  .directory-hero-title {
+    @apply max-w-2xl font-header text-[2rem] font-semibold leading-[1.08] tracking-[-0.025em] text-[var(--directory-ink)] sm:text-5xl;
+  }
+
+  .directory-search-shell {
+    @apply mt-6 flex min-h-14 items-center gap-3 rounded-2xl border border-stone-200 bg-white px-4 shadow-[0_8px_30px_rgba(54,67,52,0.08)] transition focus-within:border-[var(--directory-green)] focus-within:ring-4 focus-within:ring-green-900/10 sm:max-w-2xl;
+  }
   
   .category-btn {
-    @apply px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200 hover:shadow-md;
+    @apply flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--directory-green)] focus-visible:ring-offset-2;
   }
   
   .category-btn-active {
-    @apply bg-directory-primary text-white;
+    @apply border-transparent text-white shadow-sm;
   }
   
   .category-btn-inactive {
-    @apply bg-blue-100 text-blue-700 hover:bg-blue-200;
+    @apply border-stone-200 bg-white/85 text-stone-600 hover:-translate-y-0.5 hover:border-green-800/20 hover:text-[var(--directory-green)] hover:shadow-sm;
+  }
+
+  .category-scroll {
+    scrollbar-width: none;
+  }
+
+  .category-scroll::-webkit-scrollbar {
+    display: none;
   }
 
   /* Machuca Theme Utility Classes */
@@ -245,7 +307,27 @@
   }
   
   .add-entry-btn {
-    @apply bg-directory-success text-white px-4 py-2 rounded-full font-medium text-sm shadow-sm hover:shadow-md transition-all duration-200 flex items-center gap-2;
+    @apply flex min-h-10 items-center gap-1.5 whitespace-nowrap rounded-full bg-[var(--directory-papaya)] px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-orange-700 hover:shadow-md focus-visible:ring-2 focus-visible:ring-orange-700 focus-visible:ring-offset-2;
+  }
+
+  .provider-card {
+    @apply overflow-hidden rounded-2xl border border-stone-200/80 bg-[var(--directory-paper)] shadow-[0_2px_12px_rgba(46,57,44,0.06)] transition duration-200 hover:-translate-y-0.5 hover:border-green-900/20 hover:shadow-[0_10px_28px_rgba(46,57,44,0.1)];
+  }
+
+  .directory-category-badge {
+    @apply inline-flex items-center gap-1 rounded-full bg-[var(--directory-cream)] px-2.5 py-1 text-xs font-semibold text-[var(--directory-green)];
+  }
+
+  .whatsapp-primary-btn {
+    @apply flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[var(--directory-whatsapp)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-green-800 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-800 focus-visible:ring-offset-2;
+  }
+
+  .provider-secondary-btn {
+    @apply inline-flex min-h-10 items-center rounded-lg px-2 text-sm font-semibold text-[var(--directory-green)] transition hover:bg-[var(--directory-cream)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--directory-green)];
+  }
+
+  .provider-icon-btn {
+    @apply inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-stone-500 transition hover:bg-[var(--directory-cream)] hover:text-[var(--directory-green)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--directory-green)];
   }
   
   .contact-row {
@@ -257,10 +339,10 @@
   }
   
   .form-container {
-    @apply fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4;
+    @apply fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm sm:items-center;
   }
   
   .form-panel {
-    @apply bg-white rounded-2xl shadow-xl max-w-md w-full p-6 animate-slide-in;
+    @apply my-2 max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-xl animate-slide-in sm:my-0 sm:p-6;
   }
 }

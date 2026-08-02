@@ -1,8 +1,8 @@
-
 import React from 'react';
-import { Contact } from '@/features/directory/types/contact';
+import { SearchX } from 'lucide-react';
+import { Contact } from '@/types/contact';
+import { useProviderReviewSummaries } from '@/features/reviews/hooks/useProviderReviewSummaries';
 import { ContactItem } from './ContactItem';
-import { useIsMobile } from '@/hooks/use-mobile';
 
 interface ContactsListProps {
   contacts: Contact[];
@@ -10,69 +10,49 @@ interface ContactsListProps {
   onViewContact: (contact: Contact) => void;
   isLoading: boolean;
 }
-
-export function ContactsList({ 
-  contacts, 
+export function ContactsList({
+  contacts,
   onEditContact,
   onViewContact,
-  isLoading 
+  isLoading,
 }: ContactsListProps) {
-  const isMobile = useIsMobile();
-  
+  const providerIds = React.useMemo(
+    () => contacts.map((contact) => contact.id),
+    [contacts],
+  );
+  const reviewSummaries = useProviderReviewSummaries(providerIds);
+
   if (isLoading) {
     return (
-      <div className="py-10 text-center">
-        <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-        <p className="mt-4 text-gray-600">Loading contacts...</p>
+      <div className="grid gap-4 md:grid-cols-2" aria-label="Loading providers" aria-busy="true">
+        {Array.from({ length: 4 }, (_, index) => (
+          <div key={index} className="h-64 animate-pulse rounded-2xl border border-stone-200 bg-white/75" />
+        ))}
       </div>
     );
   }
-  
+
   if (contacts.length === 0) {
     return (
-      <div className="py-10 text-center bg-gray-50 rounded-lg">
-        <svg 
-          className="w-12 h-12 mx-auto text-gray-400" 
-          fill="none" 
-          stroke="currentColor" 
-          viewBox="0 0 24 24" 
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path 
-            strokeLinecap="round" 
-            strokeLinejoin="round" 
-            strokeWidth={1.5} 
-            d="M12 6v6m0 0v6m0-6h6m-6 0H6" 
-          />
-        </svg>
-        <p className="mt-4 text-gray-600">No contacts found</p>
-        <p className="text-sm text-gray-500">Try a different search or category</p>
+      <div className="rounded-2xl border border-dashed border-stone-300 bg-white/70 px-6 py-14 text-center">
+        <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[var(--directory-cream)] text-[var(--directory-green)]">
+          <SearchX className="h-6 w-6" aria-hidden="true" />
+        </span>
+        <h2 className="mt-4 font-header text-xl font-semibold text-[var(--directory-ink)]">No providers found</h2>
+        <p className="mx-auto mt-2 max-w-sm text-sm text-[var(--directory-muted)]">
+          Try a broader service, switch categories, or recommend someone the community should know.
+        </p>
       </div>
     );
   }
-  
-  // Table header (only for desktop)
-  const TableHeader = () => {
-    if (isMobile) return null;
-    
-    return (
-      <div className="grid grid-cols-12 py-2 border-b border-gray-200 text-sm font-medium text-gray-500">
-        <div className="col-span-3 pl-4">Name</div>
-        <div className="col-span-2">Category</div>
-        <div className="col-span-4 px-2">Description</div>
-        <div className="col-span-2">Phone</div>
-        <div className="col-span-1 text-right pr-4">Actions</div>
-      </div>
-    );
-  };
-  
+
   return (
-    <div className={`bg-white ${isMobile ? 'rounded-lg shadow-sm overflow-hidden' : 'border border-gray-200 rounded-lg shadow-sm'}`}>
-      <TableHeader />
-      {contacts.map(contact => (
+    <div className="grid gap-4 md:grid-cols-2">
+      {contacts.map((contact) => (
         <ContactItem
           key={contact.id}
           contact={contact}
+          reviewSummary={reviewSummaries[contact.id]}
           onEdit={onEditContact}
           onView={onViewContact}
         />

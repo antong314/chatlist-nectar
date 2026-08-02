@@ -1,207 +1,187 @@
-import React, { useState } from 'react';
-import { Contact } from '@/features/directory/types/contact';
-import { Edit, Globe, Phone, Map } from 'lucide-react';
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Edit3, ExternalLink, Globe2, Map, Share2, Star } from 'lucide-react';
+import { toast } from 'sonner';
+import { Contact } from '@/types/contact';
 import { categoryIconMap } from '@/features/directory/data/categoryIcons';
+import { getDirectoryCategoryLabel } from '@/features/directory/data/categories';
 import { AvatarFallback } from '@/components/ui/avatar-fallback';
-import { useIsMobile } from '@/hooks/use-mobile';
-import { normalizeWebsiteUrl } from '@/lib/urls';
+import { getSafeExternalUrl } from '@/lib/urls';
+import type { ProviderReviewSummary } from '@/features/reviews/types';
 
 interface ContactItemProps {
   contact: Contact;
+  reviewSummary?: ProviderReviewSummary;
   onEdit: (contact: Contact) => void;
   onView: (contact: Contact) => void;
 }
 
-export function ContactItem({ contact, onEdit, onView }: ContactItemProps) {
-  const isMobile = useIsMobile();
-  const websiteUrl = contact.website ? normalizeWebsiteUrl(contact.website) : '';
-  
-  const openWhatsApp = (phoneNumber: string) => {
-    // Remove any non-numeric characters
-    const formattedNumber = phoneNumber.replace(/\D/g, '');
-    window.open(`https://wa.me/${formattedNumber}`, '_blank');
+export function ContactItem({ contact, reviewSummary, onEdit, onView }: ContactItemProps) {
+  const navigate = useNavigate();
+  const websiteUrl = getSafeExternalUrl(contact.website);
+  const mapUrl = getSafeExternalUrl(contact.mapUrl);
+  const reviewCount = reviewSummary?.reviewCount ?? 0;
+  const averageRating = reviewSummary?.averageRating ?? 0;
+  const CategoryIcon = categoryIconMap[contact.category];
+  const providerPath = `/provider/${encodeURIComponent(contact.id)}`;
+  const whatsappNumber = contact.phone?.replace(/\D/g, '') ?? '';
+  const canMessageOnWhatsApp = whatsappNumber.length >= 8;
+
+  const openWhatsApp = () => {
+    if (!canMessageOnWhatsApp) return;
+    const message = encodeURIComponent(`Hi ${contact.name}, I found you through San Mateo Love. Are you available?`);
+    window.open(`https://wa.me/${whatsappNumber}?text=${message}`, '_blank', 'noopener,noreferrer');
   };
-  
-  // Track highlight state for mobile view
-  const [isHighlighted, setIsHighlighted] = useState(false);
-  
-  // Function to toggle highlight
-  const toggleHighlight = () => {
-    setIsHighlighted(!isHighlighted);
+
+  const copyProviderUrl = async (providerUrl: string) => {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(providerUrl);
+      return;
+    }
+
+    const temporaryInput = document.createElement('textarea');
+    temporaryInput.value = providerUrl;
+    temporaryInput.setAttribute('readonly', '');
+    temporaryInput.style.position = 'fixed';
+    temporaryInput.style.opacity = '0';
+    document.body.appendChild(temporaryInput);
+    temporaryInput.select();
+    const copied = document.execCommand('copy');
+    temporaryInput.remove();
+
+    if (!copied) throw new Error('Copy is not supported');
   };
-  
-  // WhatsApp-like view for mobile
-  if (isMobile) {
-    return (
-      <div 
-        className={`whatsapp-contact-item ${isHighlighted ? 'bg-blue-50' : ''}`}
-        onClick={(e) => {
-          toggleHighlight();
-          onView(contact);
-        }}
+
+  const shareProvider = async () => {
+    const providerUrl = new URL(providerPath, window.location.origin).toString();
+    const shareData = {
+      title: `${contact.name} · San Mateo Love`,
+      text: `${contact.name} — shared from the San Mateo community directory.`,
+      url: providerUrl,
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+        return;
+      }
+
+      await copyProviderUrl(providerUrl);
+      toast.success('Provider link copied');
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      toast.error('Could not share this provider');
+    }
+  };
+
+  return (
+    <article className="provider-card">
+      <button
+        type="button"
+        onClick={() => onView(contact)}
+        className="w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--directory-green)]"
+        aria-label={`Quick view for ${contact.name}`}
       >
-        <div>
-          <AvatarFallback 
-            name={contact.name} 
-            logoUrl={contact.image_url || contact.logoUrl || contact.avatarUrl} 
-            className="w-12 h-12 shrink-0" 
+        <div className="flex items-start gap-3 p-4 pb-3 sm:p-5 sm:pb-3">
+          <AvatarFallback
+            name={contact.name}
+            logoUrl={contact.image_url || contact.logoUrl || contact.avatarUrl}
+            className="h-14 w-14 shrink-0 border-2 border-white shadow-sm sm:h-16 sm:w-16"
           />
-        </div>
-        
-        <div className="flex-1 min-w-0 px-3 py-1">
-          <h3 className="font-semibold text-gray-900 truncate max-w-[160px] sm:max-w-full">{contact.name}</h3>
-          <p className="text-sm text-gray-500 line-clamp-1">{contact.description}</p>
-        </div>
-        
-        <div className="flex flex-col items-end justify-between h-full min-w-[100px]">
-          {contact.category && (
-            <div className="mb-1.5 mr-0.5">
-              <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full flex items-center gap-1">
-                {React.createElement(categoryIconMap[contact.category], { size: 12, className: "inline-block" })}
-                <span>{contact.category}</span>
-              </span>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-3">
+              <h2 className="truncate font-header text-lg font-semibold text-[var(--directory-ink)] sm:text-xl">
+                {contact.name}
+              </h2>
+              <ExternalLink className="mt-1 h-4 w-4 shrink-0 text-stone-300" aria-hidden="true" />
             </div>
-          )}
-          
-          <div className="flex items-center justify-end">
+
+            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              <span className="directory-category-badge">
+                {CategoryIcon && <CategoryIcon className="h-3.5 w-3.5" aria-hidden="true" />}
+                {getDirectoryCategoryLabel(contact.category)}
+              </span>
+              {reviewCount > 0 ? (
+                <span className="inline-flex items-center gap-1 text-sm font-semibold text-[var(--directory-ink)]">
+                  <Star className="h-4 w-4 fill-[var(--directory-sun)] text-[var(--directory-sun)]" aria-hidden="true" />
+                  {Math.max(0, Math.min(5, averageRating)).toFixed(1)}
+                  <span className="font-normal text-[var(--directory-muted)]">
+                    · {reviewCount} {reviewCount === 1 ? 'review' : 'reviews'}
+                  </span>
+                </span>
+              ) : (
+                <span className="text-xs font-medium text-[var(--directory-muted)]">No reviews yet</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <p className="line-clamp-2 min-h-[2.5rem] px-4 text-sm leading-5 text-[var(--directory-muted)] sm:px-5">
+          {contact.description || 'A local provider shared by the community.'}
+        </p>
+      </button>
+
+      <div className="mt-4 border-t border-stone-100 px-4 pb-4 pt-3 sm:px-5 sm:pb-5">
+        {canMessageOnWhatsApp ? (
+          <button type="button" onClick={openWhatsApp} className="whatsapp-primary-btn">
+            <img src="/icons8-whatsapp.svg" alt="" className="h-5 w-5" />
+            Message on WhatsApp
+          </button>
+        ) : (
+          <div className="flex min-h-11 items-center justify-center rounded-xl bg-stone-100 text-sm font-medium text-stone-500">
+            No WhatsApp number listed
+          </div>
+        )}
+
+        <div className="mt-2 flex items-center gap-1">
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onEdit(contact);
-            }}
-            className="p-2 text-gray-600 rounded-full hover:bg-gray-100 transition-colors ml-1"
-            aria-label="Edit contact"
+            type="button"
+            onClick={() => navigate(providerPath)}
+            className="provider-secondary-btn mr-auto"
           >
-            <Edit className="w-5 h-5" />
+            View details
           </button>
 
-          {contact.website && (
-            <a 
+          <button type="button" onClick={shareProvider} className="provider-icon-btn" aria-label={`Share ${contact.name}`}>
+            <Share2 className="h-4 w-4" aria-hidden="true" />
+          </button>
+
+          {websiteUrl && (
+            <a
               href={websiteUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-2 text-blue-600 rounded-full hover:bg-blue-50 transition-colors ml-1" 
-              aria-label="Visit website"
-              onClick={(e) => e.stopPropagation()}
+              className="provider-icon-btn"
+              aria-label={`Visit ${contact.name} website`}
             >
-              <Globe className="w-5 h-5" />
+              <Globe2 className="h-4 w-4" aria-hidden="true" />
             </a>
           )}
-          
-          {contact.mapUrl && (
-            <a 
-              href={contact.mapUrl}
+
+          {mapUrl && (
+            <a
+              href={mapUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-2 text-amber-600 rounded-full hover:bg-amber-50 transition-colors ml-1" 
-              aria-label="View on map"
-              onClick={(e) => e.stopPropagation()}
+              className="provider-icon-btn"
+              aria-label={`Open map for ${contact.name}`}
             >
-              <Map className="w-5 h-5" />
+              <Map className="h-4 w-4" aria-hidden="true" />
             </a>
           )}
-          
-          {contact.phone && (
-            <button 
-              className="p-2 text-green-600 rounded-full hover:bg-green-50 transition-colors ml-1" 
-              onClick={(e) => {
-                e.stopPropagation();
-                openWhatsApp(contact.phone);
-              }}
-              aria-label="Chat on WhatsApp"
-            >
-              <img 
-                src="/icons8-whatsapp.svg" 
-                alt="WhatsApp" 
-                className="w-5 h-5" 
-              />
-            </button>
-          )}
-          </div>
+
+          <button
+            type="button"
+            onClick={() => onEdit(contact)}
+            className="provider-icon-btn"
+            aria-label={`Edit ${contact.name}`}
+            title="Edit listing"
+          >
+            <Edit3 className="h-4 w-4" aria-hidden="true" />
+          </button>
         </div>
       </div>
-    );
-  }
-  
-  // Desktop table view
-  return (
-    <div className="contact-row grid grid-cols-12 items-center py-4 hover:bg-gray-50 cursor-pointer" onClick={() => onView(contact)}>
-      <div className="col-span-3 pl-4 flex items-center gap-3">
-        <AvatarFallback 
-          name={contact.name} 
-          logoUrl={contact.image_url || contact.logoUrl || contact.avatarUrl} 
-          className="w-10 h-10 shrink-0" 
-        />
-        <span className="font-medium text-gray-900 truncate">{contact.name}</span>
-      </div>
-      
-      <div className="col-span-2">
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-          {React.createElement(categoryIconMap[contact.category], { size: 14, className: "inline-block" })}
-          <span>{contact.category}</span>
-        </span>
-      </div>
-      
-      <div className="col-span-4 px-2">
-        <p className="text-sm text-gray-600 line-clamp-2">{contact.description}</p>
-      </div>
-      
-      <div className="col-span-2 text-sm flex items-center text-gray-600">
-        {contact.phone && (
-          <button 
-            onClick={(e) => {
-              e.stopPropagation();
-              openWhatsApp(contact.phone);
-            }}
-            className="flex items-center text-green-600 hover:text-green-700 transition-colors"
-            aria-label="Chat on WhatsApp"
-          >
-            <img 
-              src="/icons8-whatsapp.svg" 
-              alt="WhatsApp" 
-              className="w-4 h-4 mr-2" 
-            />
-            {contact.phone}
-          </button>
-        )}
-      </div>
-      
-      <div className="col-span-1 flex items-center justify-end pr-4">
-        <button 
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit(contact);
-          }} 
-          className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
-        >
-          <Edit className="w-4 h-4" />
-        </button>
-        
-        {contact.website && (
-          <a 
-            href={websiteUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors ml-1"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <Globe className="w-4 h-4" />
-          </a>
-        )}
-        
-        {contact.mapUrl && (
-          <a 
-            href={contact.mapUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="p-1.5 text-gray-500 hover:text-amber-600 hover:bg-amber-50 rounded-full transition-colors ml-1"
-            aria-label="View on map"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <Map className="w-4 h-4" />
-          </a>
-        )}
-      </div>
-    </div>
+    </article>
   );
 }

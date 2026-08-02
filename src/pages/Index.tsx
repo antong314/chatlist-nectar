@@ -1,26 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { AlertCircle } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   CategoryFilter,
-  ContactsList,
+  ContactDetail,
   ContactForm,
-  ContactDetail
+  ContactsHeader,
+  ContactsList,
 } from '@/features/directory/components';
 import { useContacts } from '@/hooks/useContacts';
-import { Contact, Category } from '@/types/contact'; // Corrected type import path
-import { useIsMobile } from '@/hooks/use-mobile';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Button } from '@/components/ui/button';
-import { Newspaper, Plus, Search, FileText } from 'lucide-react';
-import { trackPageView, trackContactView, trackEvent } from '@/utils/analytics';
-
-// Categories are now dynamically loaded from the data
+import { Contact } from '@/types/contact';
+import { trackContactView, trackEvent, trackPageView } from '@/utils/analytics';
 
 const Index = () => {
-  // Track page view when component mounts
-  useEffect(() => {
-    trackPageView('/directory', 'Contact Directory');
-  }, []);
   const {
     contacts,
     loading,
@@ -32,16 +24,22 @@ const Index = () => {
     uniqueCategories,
     addContact,
     updateContact,
-    deleteContact
+    deleteContact,
   } = useContacts();
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
-  const [selectedContact, setSelectedContact] = useState<Contact | undefined>(undefined);
-  const [editingContact, setEditingContact] = useState<Contact | undefined>(undefined);
-  const isMobile = useIsMobile();
+  const [selectedContact, setSelectedContact] = useState<Contact>();
+  const [editingContact, setEditingContact] = useState<Contact>();
+  const categories = uniqueCategories ?? [
+    'All',
+    ...Array.from(new Set(contacts.map((contact) => contact.category))),
+  ];
 
-  // Handle form open/close
+  useEffect(() => {
+    trackPageView('/directory', 'San Mateo Love Directory');
+  }, []);
+
   const handleOpenForm = () => {
     setEditingContact(undefined);
     setIsFormOpen(true);
@@ -52,19 +50,12 @@ const Index = () => {
     setIsFormOpen(false);
     setEditingContact(undefined);
   };
-  
-  // Handle detail view open/close
+
   const handleViewContact = (contact: Contact) => {
     setSelectedContact(contact);
     setIsDetailOpen(true);
     setIsFormOpen(false);
-    
-    // Track contact view in analytics
-    trackContactView(
-      contact.id.toString(), 
-      contact.name, 
-      contact.category
-    );
+    trackContactView(contact.id.toString(), contact.name, contact.category);
   };
 
   const handleCloseDetail = () => {
@@ -72,182 +63,126 @@ const Index = () => {
     setSelectedContact(undefined);
   };
 
-  // Handle contact edit from detail view
   const handleEditFromDetail = () => {
-    if (selectedContact) {
-      setEditingContact(selectedContact);
-      setIsFormOpen(true);
-      setIsDetailOpen(false);
-    }
+    if (!selectedContact) return;
+    setEditingContact(selectedContact);
+    setIsFormOpen(true);
+    setIsDetailOpen(false);
   };
 
-  // Handle contact edit (direct from list)
   const handleEditContact = (contact: Contact) => {
     setEditingContact(contact);
     setIsFormOpen(true);
     setIsDetailOpen(false);
   };
 
-  // Handle form submit
   const handleSaveContact = async (contact: Omit<Contact, 'id'> | Contact) => {
     if ('id' in contact) {
       const success = await updateContact(contact);
       if (success) {
         handleCloseForm();
-        // Track update contact event
         trackEvent('Directory', 'Update Contact', contact.name);
       }
-    } else {
-      const success = await addContact(contact);
-      if (success) {
-        handleCloseForm();
-        // Track add contact event
-        trackEvent('Directory', 'Add Contact', contact.name);
-      }
+      return;
     }
-  };
 
-  // Handle contact delete
-  const handleDeleteContact = async (id: string) => {
-    // Get the contact name before deleting (for tracking)
-    const contactToDelete = contacts.find(c => c.id.toString() === id);
-    const success = await deleteContact(id);
-    
+    const success = await addContact(contact);
     if (success) {
       handleCloseForm();
-      // Track delete event
-      if (contactToDelete) {
-        trackEvent('Directory', 'Delete Contact', contactToDelete.name);
-      } else {
-        trackEvent('Directory', 'Delete Contact', id);
-      }
+      trackEvent('Directory', 'Add Contact', contact.name);
     }
   };
 
-  // Close form and detail view on escape key
+  const handleDeleteContact = async (id: string) => {
+    const contactToDelete = contacts.find((contact) => contact.id.toString() === id);
+    const success = await deleteContact(id);
+
+    if (success) {
+      handleCloseForm();
+      trackEvent('Directory', 'Delete Contact', contactToDelete?.name ?? id);
+    }
+  };
+
   useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (isFormOpen) handleCloseForm();
-        if (isDetailOpen) handleCloseDetail();
-      }
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      if (isFormOpen) handleCloseForm();
+      if (isDetailOpen) handleCloseDetail();
     };
-    
+
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
   }, [isFormOpen, isDetailOpen]);
 
-  // Update page title based on search/filter state
   useEffect(() => {
-    let title = 'MV Directory';
-    
-    if (searchQuery && selectedCategory !== 'All') {
-      title = `${searchQuery} in ${selectedCategory} - MV Directory`;
-    } else if (searchQuery) {
-      title = `${searchQuery} - MV Directory`;
-    } else if (selectedCategory !== 'All') {
-      title = `${selectedCategory} - MV Directory`;
-    }
-    
-    document.title = title;
+    const context = [
+      searchQuery || null,
+      selectedCategory !== 'All' ? selectedCategory : null,
+    ].filter(Boolean).join(' · ');
+    document.title = context ? `${context} | San Mateo Love` : 'San Mateo Love | Community Directory';
   }, [searchQuery, selectedCategory]);
 
+  const resultLabel = loading
+    ? 'Finding local providers…'
+    : `${contacts.length} ${contacts.length === 1 ? 'provider' : 'providers'}`;
+
   return (
-    <div className="min-h-screen bg-gray-50 pb-10">
-      <div className="directory-container py-6">
-        {/* Feature Navigation Tabs */}
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-        >
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-            <div className="flex items-center space-x-2">
-              <div className="bg-gray-100 p-1.5 md:p-2 rounded-md">
-                <svg 
-                  className="w-5 h-5 md:w-6 md:h-6 text-gray-700" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  viewBox="0 0 24 24" 
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round" 
-                    strokeWidth={2} 
-                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                  />
-                </svg>
-              </div>
-              <div className="flex items-center space-x-2 md:space-x-4 overflow-hidden">
-                <h1 className="text-xl md:text-2xl font-bold">MV Directory</h1>
-                <div className="h-6 w-px bg-gray-300 hidden sm:block"></div>
-                <Link to="/wiki" className="text-gray-500 hover:text-gray-800 transition-colors flex items-center">
-                  <FileText className="h-4 w-4 md:h-5 md:w-5 mr-1" />
-                  <span className="text-sm md:text-lg">Machuca Wiki</span>
-                </Link>
-                <div className="h-6 w-px bg-gray-300 hidden sm:block"></div>
-                <Link to="/elements" className="text-gray-500 hover:text-gray-800 transition-colors flex items-center">
-                  <Newspaper className="h-4 w-4 md:h-5 md:w-5 mr-1" />
-                  <span className="text-sm md:text-lg">Elements</span>
-                </Link>
-              </div>
-            </div>
-            <Button onClick={handleOpenForm} className="add-entry-btn text-sm md:text-base whitespace-nowrap px-3 py-1.5 sm:px-4 sm:py-2">
-              <Plus className="w-4 h-4 mr-1" />
-              Add Entry
-            </Button>
-          </div>
-          
-          <div className="relative mb-4">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-            <input
-              type="text"
-              placeholder="Search by name, category, or description..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 py-3 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all duration-200"
-              autoFocus
+    <div className="directory-page min-h-screen pb-12">
+      <div className="directory-container py-3 sm:py-5">
+        <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+          <ContactsHeader
+            title="San Mateo Love"
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            onAddClick={handleOpenForm}
+          />
+        </motion.div>
+
+        <section aria-label="Provider directory">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.08, duration: 0.25 }}>
+            <CategoryFilter
+              categories={categories}
+              selectedCategory={selectedCategory}
+              onCategoryChange={setSelectedCategory}
             />
+          </motion.div>
+
+          <div className="mb-4 flex items-end justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.13em] text-[var(--directory-green)]">Community recommendations</p>
+              <h2 className="mt-1 font-header text-2xl font-semibold text-[var(--directory-ink)]">Local providers</h2>
+            </div>
+            <p className="pb-1 text-sm text-[var(--directory-muted)]" aria-live="polite">{resultLabel}</p>
           </div>
-        </motion.div>
 
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.1, duration: 0.3 }}
-        >
-          <CategoryFilter
-            categories={uniqueCategories}
-            selectedCategory={selectedCategory}
-            onCategoryChange={setSelectedCategory}
-          />
-        </motion.div>
+          {error && (
+            <div className="mb-4 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800" role="alert">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>We couldn’t load the directory. Please refresh and try again.</span>
+            </div>
+          )}
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2, duration: 0.4 }}
-        >
-          <ContactsList
-            contacts={contacts}
-            onEditContact={handleEditContact}
-            onViewContact={handleViewContact}
-            isLoading={loading}
-          />
-        </motion.div>
+          <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.14, duration: 0.3 }}>
+            <ContactsList
+              contacts={contacts}
+              onEditContact={handleEditContact}
+              onViewContact={handleViewContact}
+              isLoading={loading}
+            />
+          </motion.div>
+        </section>
 
         <AnimatePresence>
           {isFormOpen && (
             <ContactForm
               contact={editingContact}
-              categories={uniqueCategories.filter(cat => cat !== 'All')}
+              categories={categories.filter((category) => category !== 'All')}
               onSave={handleSaveContact}
               onCancel={handleCloseForm}
               onDelete={handleDeleteContact}
             />
           )}
-          
+
           {isDetailOpen && selectedContact && (
             <ContactDetail
               contact={selectedContact}

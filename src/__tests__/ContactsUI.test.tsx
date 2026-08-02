@@ -131,4 +131,21 @@ describe('Contacts UI', () => {
       console.warn('Could not find Food Ordering category button');
     }
   });
+
+  test('keeps the directory WhatsApp-first without hiding public edits or details', () => {
+    const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null);
+    setup();
+
+    expect(screen.getAllByRole('button', { name: 'View details' })).toHaveLength(mockContacts.length);
+    expect(screen.getAllByRole('button', { name: /^Edit / })).toHaveLength(mockContacts.length);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Message on WhatsApp' })[0]);
+    expect(openSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/^https:\/\/wa\.me\/1234567890\?text=/),
+      '_blank',
+      'noopener,noreferrer',
+    );
+
+    openSpy.mockRestore();
+  });
 });
