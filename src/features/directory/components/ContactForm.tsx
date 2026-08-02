@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { X, Upload, Trash2 } from 'lucide-react';
 import { AvatarFallback } from '@/components/ui/avatar-fallback';
+import { normalizeWebsiteUrl } from '@/lib/urls';
 
 interface ContactFormProps {
   contact?: Contact;
@@ -142,7 +143,7 @@ export function ContactForm({
       category,
       description: description.trim(),
       phone: phone.trim(),
-      website: website.trim() || undefined,
+      website: website.trim() ? normalizeWebsiteUrl(website) : undefined,
       mapUrl: mapUrl.trim() || undefined,
       // Include other non-image fields if necessary from the Contact type
       // e.g., logoUrl and avatarUrl might still be relevant depending on full requirements

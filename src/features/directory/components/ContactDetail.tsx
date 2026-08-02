@@ -5,6 +5,7 @@ import { Globe, Map, Edit, X } from 'lucide-react';
 import { categoryIconMap } from '@/features/directory/data/categoryIcons';
 import { AvatarFallback } from '@/components/ui/avatar-fallback';
 import { useEffect } from 'react';
+import { normalizeWebsiteUrl } from '@/lib/urls';
 
 interface ContactDetailProps {
   contact: Contact;
@@ -13,6 +14,8 @@ interface ContactDetailProps {
 }
 
 export function ContactDetail({ contact, onEdit, onClose }: ContactDetailProps) {
+  const websiteUrl = contact.website ? normalizeWebsiteUrl(contact.website) : '';
+
   // Function to open WhatsApp
   const openWhatsApp = (phoneNumber: string) => {
     // Remove any non-numeric characters
@@ -112,7 +115,7 @@ export function ContactDetail({ contact, onEdit, onClose }: ContactDetailProps) 
             <div>
               <h4 className="text-sm font-medium text-gray-500 mb-1">Website</h4>
               <a 
-                href={contact.website}
+                href={websiteUrl}
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="text-blue-600 hover:underline break-all"
@@ -121,7 +124,7 @@ export function ContactDetail({ contact, onEdit, onClose }: ContactDetailProps) 
               </a>
             </div>
             <a
-              href={contact.website}
+              href={websiteUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="p-2 text-blue-600 rounded-full hover:bg-blue-50 transition-colors"

@@ -4,6 +4,7 @@ import { Contact } from '@/types/contact';
 import { Edit, Globe, Phone, Map } from 'lucide-react';
 import { AvatarFallback } from './ui/avatar-fallback';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { normalizeWebsiteUrl } from '@/lib/urls';
 
 interface ContactItemProps {
   contact: Contact;
@@ -13,6 +14,7 @@ interface ContactItemProps {
 
 export function ContactItem({ contact, onEdit, onView }: ContactItemProps) {
   const isMobile = useIsMobile();
+  const websiteUrl = contact.website ? normalizeWebsiteUrl(contact.website) : '';
   
   const openWhatsApp = (phoneNumber: string) => {
     // Remove any non-numeric characters
@@ -73,7 +75,7 @@ export function ContactItem({ contact, onEdit, onView }: ContactItemProps) {
 
           {contact.website && (
             <a 
-              href={contact.website}
+              href={websiteUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="p-2 text-blue-600 rounded-full hover:bg-blue-50 transition-colors mr-1" 
@@ -173,7 +175,7 @@ export function ContactItem({ contact, onEdit, onView }: ContactItemProps) {
         
         {contact.website && (
           <a 
-            href={contact.website}
+            href={websiteUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors ml-1"
