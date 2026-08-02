@@ -51,7 +51,7 @@ export const trackWikiPageView = (pageId: string, pageTitle: string, category?: 
 
 // Track contact views
 export const trackContactView = (contactId: string, contactName: string, category?: string) => {
-  trackPageView(`/directory/${contactId}`, contactName);
+  trackPageView(`/provider/${contactId}`, contactName);
   
   // Also track as an event with additional data
   trackEvent('Directory', 'View Contact', contactName, undefined);

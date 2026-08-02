@@ -1,16 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useSearchParams } from 'react-router-dom';
 import {
   CategoryFilter,
-  ContactDetail,
   ContactForm,
   ContactsHeader,
   ContactsList,
 } from '@/features/directory/components';
 import { useContacts } from '@/hooks/useContacts';
 import { Contact } from '@/types/contact';
-import { trackContactView, trackEvent, trackPageView } from '@/utils/analytics';
+import { trackEvent, trackPageView } from '@/utils/analytics';
 
 const Index = () => {
   const {
@@ -26,11 +26,11 @@ const Index = () => {
     updateContact,
     deleteContact,
   } = useContacts();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [isDetailOpen, setIsDetailOpen] = useState(false);
-  const [selectedContact, setSelectedContact] = useState<Contact>();
   const [editingContact, setEditingContact] = useState<Contact>();
+  const editProviderId = searchParams.get('edit');
   const categories = uniqueCategories ?? [
     'All',
     ...Array.from(new Set(contacts.map((contact) => contact.category))),
@@ -40,41 +40,45 @@ const Index = () => {
     trackPageView('/directory', 'San Mateo Love Directory');
   }, []);
 
+  const setEditProviderParam = useCallback((providerId?: string) => {
+    setSearchParams((currentParams) => {
+      const nextParams = new URLSearchParams(currentParams);
+      if (providerId) nextParams.set('edit', providerId);
+      else nextParams.delete('edit');
+      return nextParams;
+    }, { replace: true });
+  }, [setSearchParams]);
+
   const handleOpenForm = () => {
+    setEditProviderParam();
     setEditingContact(undefined);
     setIsFormOpen(true);
-    setIsDetailOpen(false);
   };
 
-  const handleCloseForm = () => {
+  const handleCloseForm = useCallback(() => {
+    setEditProviderParam();
     setIsFormOpen(false);
     setEditingContact(undefined);
-  };
-
-  const handleViewContact = (contact: Contact) => {
-    setSelectedContact(contact);
-    setIsDetailOpen(true);
-    setIsFormOpen(false);
-    trackContactView(contact.id.toString(), contact.name, contact.category);
-  };
-
-  const handleCloseDetail = () => {
-    setIsDetailOpen(false);
-    setSelectedContact(undefined);
-  };
-
-  const handleEditFromDetail = () => {
-    if (!selectedContact) return;
-    setEditingContact(selectedContact);
-    setIsFormOpen(true);
-    setIsDetailOpen(false);
-  };
+  }, [setEditProviderParam]);
 
   const handleEditContact = (contact: Contact) => {
+    setEditProviderParam(contact.id);
     setEditingContact(contact);
     setIsFormOpen(true);
-    setIsDetailOpen(false);
   };
+
+  useEffect(() => {
+    if (!editProviderId || loading) return;
+
+    const providerToEdit = contacts.find((contact) => contact.id === editProviderId);
+    if (!providerToEdit) {
+      setEditProviderParam();
+      return;
+    }
+
+    setEditingContact(providerToEdit);
+    setIsFormOpen(true);
+  }, [contacts, editProviderId, loading, setEditProviderParam]);
 
   const handleSaveContact = async (contact: Omit<Contact, 'id'> | Contact) => {
     if ('id' in contact) {
@@ -107,12 +111,11 @@ const Index = () => {
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       if (isFormOpen) handleCloseForm();
-      if (isDetailOpen) handleCloseDetail();
     };
 
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, [isFormOpen, isDetailOpen]);
+  }, [handleCloseForm, isFormOpen]);
 
   useEffect(() => {
     const context = [
@@ -166,7 +169,6 @@ const Index = () => {
             <ContactsList
               contacts={contacts}
               onEditContact={handleEditContact}
-              onViewContact={handleViewContact}
               isLoading={loading}
             />
           </motion.div>
@@ -183,13 +185,6 @@ const Index = () => {
             />
           )}
 
-          {isDetailOpen && selectedContact && (
-            <ContactDetail
-              contact={selectedContact}
-              onEdit={handleEditFromDetail}
-              onClose={handleCloseDetail}
-            />
-          )}
         </AnimatePresence>
       </div>
     </div>

@@ -32,7 +32,6 @@ const renderDirectory = () => render(
       contacts={contacts}
       isLoading={false}
       onEditContact={jest.fn()}
-      onViewContact={jest.fn()}
     />
   </MemoryRouter>,
 );

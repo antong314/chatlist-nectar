@@ -5,7 +5,6 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ProviderHero } from '@/features/directory/components/provider/ProviderHero';
 import { ProviderReviews } from '@/features/directory/components/provider/ProviderReviews';
 import { ReviewForm } from '@/features/directory/components/provider/ReviewForm';
-import { ContactDetail } from '@/features/directory/components/ContactDetail';
 import { ContactForm } from '@/features/directory/components/ContactForm';
 import { ProviderPage } from '@/features/directory/pages/ProviderPage';
 import { Contact } from '@/features/directory/types/contact';
@@ -55,6 +54,10 @@ describe('Provider experience', () => {
     expect(screen.getByRole('link', { name: /visit website/i })).toHaveAttribute('href', 'https://www.example.com');
     expect(screen.getByText('4.8')).toBeInTheDocument();
     expect(screen.getByText('12 reviews')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /edit listing/i })).toHaveAttribute(
+      'href',
+      '/?edit=provider-1',
+    );
 
     fireEvent.click(screen.getByRole('button', { name: /share/i }));
     expect(onShare).toHaveBeenCalledTimes(1);
@@ -89,33 +92,6 @@ describe('Provider experience', () => {
     );
 
     expect(screen.queryByRole('link', { name: /view map/i })).not.toBeInTheDocument();
-  });
-
-  test('keeps quick view safe, branded, and WhatsApp-first', () => {
-    const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null);
-
-    render(
-      <ContactDetail
-        contact={{ ...contact, mapUrl: 'maps.google.com/example' }}
-        onClose={jest.fn()}
-        onEdit={jest.fn()}
-      />,
-    );
-
-    expect(screen.getByText('Mechanics')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /view on map/i })).toHaveAttribute(
-      'href',
-      'https://maps.google.com/example',
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /message on whatsapp/i }));
-    expect(openSpy).toHaveBeenCalledWith(
-      expect.stringMatching(/^https:\/\/wa\.me\/50688881212\?text=.*San%20Mateo%20Love/),
-      '_blank',
-      'noopener,noreferrer',
-    );
-
-    openSpy.mockRestore();
   });
 
   test('submits the intentionally short review form', async () => {
@@ -237,5 +213,9 @@ describe('Provider experience', () => {
     );
     expect(query.eq).toHaveBeenCalledWith('id', 'provider-1');
     expect(screen.getByText(/be the first neighbor to share an experience/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /edit listing/i })).toHaveAttribute(
+      'href',
+      '/?edit=provider-1',
+    );
   });
 });

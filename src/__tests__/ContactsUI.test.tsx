@@ -47,9 +47,10 @@ const mockContacts: Contact[] = [
 ];
 
 // Helper function to setup the component for testing
-const setup = (mockImplementation = {}) => {
+const setup = (mockImplementation = {}, initialUrl = '/') => {
   const setSearchQuery = jest.fn();
   const setSelectedCategory = jest.fn();
+  window.history.replaceState({}, '', initialUrl);
   
   const defaultImplementation = {
     contacts: mockContacts,
@@ -85,6 +86,7 @@ const setup = (mockImplementation = {}) => {
 describe('Contacts UI', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    window.history.replaceState({}, '', '/');
   });
 
   test('should render contacts list', () => {
@@ -147,5 +149,36 @@ describe('Contacts UI', () => {
     );
 
     openSpy.mockRestore();
+  });
+
+  test('opens the permanent provider URL from card content without a detail popup', () => {
+    setup();
+
+    fireEvent.click(screen.getByRole('button', { name: 'View details for Apple Inc' }));
+
+    expect(window.location.pathname).toBe('/provider/1');
+    expect(screen.queryByText('Contact Details')).not.toBeInTheDocument();
+  });
+
+  test('keeps the card edit action on the directory and opens the public form', () => {
+    setup();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Apple Inc' }));
+
+    expect(window.location.pathname).toBe('/');
+    expect(window.location.search).toBe('?edit=1');
+    expect(screen.getByRole('dialog', { name: 'Edit provider' })).toBeInTheDocument();
+  });
+
+  test('opens public editing from a provider URL and clears the edit parameter on close', () => {
+    setup({}, '/?edit=2');
+
+    expect(screen.getByRole('dialog', { name: 'Edit provider' })).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Google')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close provider form' }));
+
+    expect(window.location.search).toBe('');
+    expect(screen.queryByRole('dialog', { name: 'Edit provider' })).not.toBeInTheDocument();
   });
 });

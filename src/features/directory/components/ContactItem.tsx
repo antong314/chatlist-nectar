@@ -8,15 +8,15 @@ import { getDirectoryCategoryLabel } from '@/features/directory/data/categories'
 import { AvatarFallback } from '@/components/ui/avatar-fallback';
 import { getSafeExternalUrl } from '@/lib/urls';
 import type { ProviderReviewSummary } from '@/features/reviews/types';
+import { trackContactView } from '@/utils/analytics';
 
 interface ContactItemProps {
   contact: Contact;
   reviewSummary?: ProviderReviewSummary;
   onEdit: (contact: Contact) => void;
-  onView: (contact: Contact) => void;
 }
 
-export function ContactItem({ contact, reviewSummary, onEdit, onView }: ContactItemProps) {
+export function ContactItem({ contact, reviewSummary, onEdit }: ContactItemProps) {
   const navigate = useNavigate();
   const websiteUrl = getSafeExternalUrl(contact.website);
   const mapUrl = getSafeExternalUrl(contact.mapUrl);
@@ -26,6 +26,11 @@ export function ContactItem({ contact, reviewSummary, onEdit, onView }: ContactI
   const providerPath = `/provider/${encodeURIComponent(contact.id)}`;
   const whatsappNumber = contact.phone?.replace(/\D/g, '') ?? '';
   const canMessageOnWhatsApp = whatsappNumber.length >= 8;
+
+  const openProviderPage = () => {
+    trackContactView(contact.id, contact.name, contact.category);
+    navigate(providerPath);
+  };
 
   const openWhatsApp = () => {
     if (!canMessageOnWhatsApp) return;
@@ -78,9 +83,9 @@ export function ContactItem({ contact, reviewSummary, onEdit, onView }: ContactI
     <article className="provider-card">
       <button
         type="button"
-        onClick={() => onView(contact)}
+        onClick={openProviderPage}
         className="w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--directory-green)]"
-        aria-label={`Quick view for ${contact.name}`}
+        aria-label={`View details for ${contact.name}`}
       >
         <div className="flex items-start gap-3 p-4 pb-3 sm:p-5 sm:pb-3">
           <AvatarFallback
@@ -137,7 +142,7 @@ export function ContactItem({ contact, reviewSummary, onEdit, onView }: ContactI
         <div className="mt-2 flex items-center gap-1">
           <button
             type="button"
-            onClick={() => navigate(providerPath)}
+            onClick={openProviderPage}
             className="provider-secondary-btn mr-auto"
           >
             View details

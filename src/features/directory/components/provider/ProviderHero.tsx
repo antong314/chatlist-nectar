@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, ExternalLink, Map, Share2 } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Map, PencilLine, Share2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Contact } from '@/features/directory/types/contact';
 import { AvatarFallback } from '@/components/ui/avatar-fallback';
@@ -93,8 +93,8 @@ export function ProviderHero({
           </div>
           {shareStatus && <p aria-live="polite" className="mt-2 text-center text-sm text-gray-600 sm:text-right">{shareStatus}</p>}
 
-          {(websiteUrl || mapUrl) && (
-            <div className="mt-4 flex flex-wrap gap-4 border-t pt-4 text-sm font-semibold">
+          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t pt-4 text-sm font-semibold">
+            <div className="flex flex-1 flex-wrap items-center gap-x-4 gap-y-2">
               {websiteUrl && (
                 <a className="inline-flex min-h-11 items-center gap-2 text-primary hover:underline" href={websiteUrl} rel="noopener noreferrer" target="_blank">
                   <ExternalLink aria-hidden="true" className="h-4 w-4" />
@@ -108,7 +108,13 @@ export function ProviderHero({
                 </a>
               )}
             </div>
-          )}
+            <Button asChild className="min-h-11 text-gray-500 hover:text-gray-900" size="sm" variant="ghost">
+              <Link to={`/?edit=${encodeURIComponent(contact.id)}`}>
+                <PencilLine aria-hidden="true" className="h-4 w-4" />
+                Edit listing
+              </Link>
+            </Button>
+          </div>
         </div>
       </section>
     </>

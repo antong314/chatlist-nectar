@@ -7,13 +7,11 @@ import { ContactItem } from './ContactItem';
 interface ContactsListProps {
   contacts: Contact[];
   onEditContact: (contact: Contact) => void;
-  onViewContact: (contact: Contact) => void;
   isLoading: boolean;
 }
 export function ContactsList({
   contacts,
   onEditContact,
-  onViewContact,
   isLoading,
 }: ContactsListProps) {
   const providerIds = React.useMemo(
@@ -54,7 +52,6 @@ export function ContactsList({
           contact={contact}
           reviewSummary={reviewSummaries[contact.id]}
           onEdit={onEditContact}
-          onView={onViewContact}
         />
       ))}
     </div>
