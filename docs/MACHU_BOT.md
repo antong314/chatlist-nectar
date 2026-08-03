@@ -19,6 +19,9 @@ Node process serves the existing Vite build and the bot webhook at `POST /bot`.
   Machu expands the intent into English/Spanish professional terms, ranks name
   and description matches across the directory, and does not return unrelated
   providers merely because they share a broad category.
+- Every search result pairs its native WhatsApp contact card with a visible
+  summary containing the description, category, community rating, available
+  website/map links, and the full directory listing.
 
 There is no publish or confirmation step. Once Machu has a valid name and phone
 number, the contact is in the directory.

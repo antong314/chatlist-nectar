@@ -98,6 +98,18 @@ export class DirectoryStore {
     return data ?? [];
   }
 
+  async getReviewSummaries(contactIds) {
+    const uniqueIds = Array.from(new Set((contactIds ?? []).filter(Boolean)));
+    if (uniqueIds.length === 0) return {};
+
+    const { data, error } = await this.client.rpc('get_provider_review_summaries', {
+      p_contact_ids: uniqueIds,
+    });
+    if (error) throw databaseError('load review summaries', error);
+
+    return Object.fromEntries((data ?? []).map((summary) => [summary.contact_id, summary]));
+  }
+
   async getConversation(conversationKey) {
     const { data, error } = await this.client.rpc('get_bot_conversation', {
       p_conversation_key: conversationKey,

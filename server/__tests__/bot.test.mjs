@@ -7,6 +7,7 @@ class MemoryStore {
     this.contacts = [];
     this.conversations = new Map();
     this.reviews = [];
+    this.reviewSummaries = new Map();
   }
 
   async getConversation(key) { return this.conversations.get(key) ?? null; }
@@ -41,6 +42,13 @@ class MemoryStore {
     return this.contacts.filter((contact) => contact.category === category);
   }
   async findSearchCandidates() { return this.contacts; }
+  async getReviewSummaries(contactIds) {
+    return Object.fromEntries(
+      contactIds
+        .filter((contactId) => this.reviewSummaries.has(contactId))
+        .map((contactId) => [contactId, this.reviewSummaries.get(contactId)]),
+    );
+  }
   async submitReview(review) { this.reviews.push(review); return review; }
 }
 
@@ -125,6 +133,10 @@ test('returns native contact-card media for category searches', async () => {
   const messages = await bot.handle(inbound({ Body: 'Can you send me all taxi contacts?' }));
   assert.match(messages[0].body, /1 taxis & drivers contact/);
   assert.match(messages[1].mediaUrl, /\/bot\/contact\/taxi-1\.vcf\?token=/);
+  assert.match(messages[1].body, /Airport rides/);
+  assert.match(messages[1].body, /Taxis & drivers/);
+  assert.match(messages[1].body, /No community reviews yet/);
+  assert.match(messages[1].body, /\/provider\/taxi-1/);
 });
 
 test('returns only massage-related providers instead of the whole wellness category', async () => {
@@ -136,6 +148,7 @@ test('returns only massage-related providers instead of the whole wellness categ
       subtitle: 'Physiotherapist offering dry needling and massage',
       category: 'Healer',
       phone_number: '+50670001111',
+      website_url: 'example.com/jocsan',
     },
     {
       id: 'physio-1',
@@ -152,6 +165,10 @@ test('returns only massage-related providers instead of the whole wellness categ
       phone_number: '+50670003333',
     },
   );
+  store.reviewSummaries.set('massage-1', {
+    average_rating: 4.75,
+    review_count: 4,
+  });
 
   const messages = await bot.handle(inbound({ Body: 'Do you know anyone who does massages?' }));
   assert.match(messages[0].body, /2 massage and bodywork matches/);
@@ -159,6 +176,10 @@ test('returns only massage-related providers instead of the whole wellness categ
   assert.ok(messages.some((message) => message.mediaUrl?.includes('massage-1')));
   assert.ok(messages.some((message) => message.mediaUrl?.includes('physio-1')));
   assert.ok(!messages.some((message) => message.mediaUrl?.includes('astrology-1')));
+  const jocsanMessage = messages.find((message) => message.mediaUrl?.includes('massage-1'));
+  assert.match(jocsanMessage.body, /Physiotherapist offering dry needling and massage/);
+  assert.match(jocsanMessage.body, /4\.8\/5 · 4 community reviews/);
+  assert.match(jocsanMessage.body, /Website: https:\/\/example\.com\/jocsan/);
 });
 
 test('searches descriptions for chefs without returning every food listing', async () => {

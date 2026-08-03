@@ -15,6 +15,7 @@ import {
 } from './domain.mjs';
 
 const DESCRIPTION_MAX_LENGTH = 1000;
+const SEARCH_SUMMARY_DESCRIPTION_MAX_LENGTH = 900;
 const HELP_MESSAGE = [
   '🌿 I’m Machu, the San Mateo community directory helper.',
   '',
@@ -25,6 +26,23 @@ const HELP_MESSAGE = [
 ].join('\n');
 
 const stripWhatsappPrefix = (value) => String(value ?? '').replace(/^whatsapp:/i, '');
+
+const ensureAbsoluteUrl = (value) => {
+  const url = String(value ?? '').trim();
+  if (!url) return '';
+  return /^https?:\/\//i.test(url) ? url : `https://${url}`;
+};
+
+const truncateDescription = (value) => {
+  const description = String(value ?? '').trim();
+  if (description.length <= SEARCH_SUMMARY_DESCRIPTION_MAX_LENGTH) return description;
+  return `${description.slice(0, SEARCH_SUMMARY_DESCRIPTION_MAX_LENGTH - 1).trimEnd()}…`;
+};
+
+const standaloneCategoryLabel = (category) => {
+  const label = String(CATEGORY_LABELS[category] || category || 'General services');
+  return `${label.charAt(0).toUpperCase()}${label.slice(1)}`;
+};
 
 export const createConversationKey = (sender, secret) => createHmac('sha256', secret)
   .update(normalizePhone(stripWhatsappPrefix(sender), '') || stripWhatsappPrefix(sender))
@@ -85,6 +103,42 @@ export class MachuBot {
     return `${this.publicBaseUrl}/bot/contact/${encodeURIComponent(contactId)}.vcf?token=${token}`;
   }
 
+  providerSummary(contact, reviewSummary) {
+    const description = truncateDescription(contact.subtitle) || 'No description has been added yet.';
+    const reviewCount = Math.max(0, Number(reviewSummary?.review_count ?? 0) || 0);
+    const averageRating = Number(reviewSummary?.average_rating ?? 0) || 0;
+    const ratingLine = reviewCount > 0
+      ? `⭐ ${averageRating.toFixed(1)}/5 · ${reviewCount} community review${reviewCount === 1 ? '' : 's'}`
+      : '⭐ No community reviews yet';
+    const lines = [
+      `*${contact.title}*`,
+      description,
+      `🌿 ${standaloneCategoryLabel(contact.category)}`,
+      ratingLine,
+    ];
+
+    const website = ensureAbsoluteUrl(contact.website_url);
+    const map = ensureAbsoluteUrl(contact.map_url);
+    if (website) lines.push(`Website: ${website}`);
+    if (map) lines.push(`Map: ${map}`);
+    lines.push(`Directory: ${this.publicBaseUrl}/provider/${encodeURIComponent(contact.id)}`);
+    return lines.join('\n');
+  }
+
+  async contactResultMessages(contacts, intro) {
+    const reviewSummaries = await this.store.getReviewSummaries?.(
+      contacts.map((contact) => contact.id),
+    ) ?? {};
+    const messages = [{ body: intro }];
+    for (const contact of contacts) {
+      messages.push({
+        body: this.providerSummary(contact, reviewSummaries[contact.id]),
+        mediaUrl: this.mediaUrl(contact.id),
+      });
+    }
+    return messages;
+  }
+
   async addContacts(cards, conversationKey) {
     const results = [];
     for (const card of cards.slice(0, 10)) {
@@ -115,11 +169,10 @@ export class MachuBot {
       return [{ body: `I couldn’t find any ${CATEGORY_LABELS[category] || category} contacts yet.` }];
     }
 
-    const messages = [{
-      body: `🌿 I found ${contacts.length} ${CATEGORY_LABELS[category] || category} contact${contacts.length === 1 ? '' : 's'} in sanmateo.love:`,
-    }];
-    for (const contact of contacts) messages.push({ mediaUrl: this.mediaUrl(contact.id) });
-    return messages;
+    return this.contactResultMessages(
+      contacts,
+      `🌿 I found ${contacts.length} ${CATEGORY_LABELS[category] || category} contact${contacts.length === 1 ? '' : 's'} in sanmateo.love:`,
+    );
   }
 
   async searchSpecific(plan) {
@@ -133,11 +186,10 @@ export class MachuBot {
       return [{ body: `I couldn’t find an exact ${serviceLabel} match in the directory yet.${categoryNote}` }];
     }
 
-    const messages = [{
-      body: `🌿 I found ${contacts.length} ${serviceLabel} match${contacts.length === 1 ? '' : 'es'} in sanmateo.love:`,
-    }];
-    for (const contact of contacts) messages.push({ mediaUrl: this.mediaUrl(contact.id) });
-    return messages;
+    return this.contactResultMessages(
+      contacts,
+      `🌿 I found ${contacts.length} ${serviceLabel} match${contacts.length === 1 ? '' : 'es'} in sanmateo.love:`,
+    );
   }
 
   async planAndRunSearch(body, heuristicPlan = null) {
