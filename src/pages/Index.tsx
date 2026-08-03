@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import {
   CategoryFilter,
   ContactForm,
@@ -11,6 +12,19 @@ import {
 import { useContacts } from '@/hooks/useContacts';
 import { Contact } from '@/types/contact';
 import { trackEvent, trackPageView } from '@/utils/analytics';
+import type { ProviderDeletionRequest } from '@/features/directory/components/ProviderDeletionDialog';
+
+const getUndoToastDuration = (undoExpiresAt: string) => {
+  const remainingMilliseconds = new Date(undoExpiresAt).getTime() - Date.now();
+  return Number.isFinite(remainingMilliseconds) && remainingMilliseconds > 0
+    ? remainingMilliseconds
+    : 10_000;
+};
+
+const getUndoErrorMessage = (error: unknown) =>
+  error instanceof Error && error.message
+    ? error.message
+    : 'This Undo link has expired or was already used. Refresh the directory to check the listing.';
 
 const Index = () => {
   const {
@@ -22,9 +36,11 @@ const Index = () => {
     selectedCategory,
     setSelectedCategory,
     uniqueCategories,
+    refreshContacts,
     addContact,
     updateContact,
     deleteContact,
+    undoDelete,
   } = useContacts();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -97,14 +113,41 @@ const Index = () => {
     }
   };
 
-  const handleDeleteContact = async (id: string) => {
-    const contactToDelete = contacts.find((contact) => contact.id.toString() === id);
-    const success = await deleteContact(id);
+  const handleDeleteContact = async (request: ProviderDeletionRequest) => {
+    const contactToDelete = contacts.find((contact) => contact.id === request.providerId);
+    const deletionReceipt = await deleteContact(request);
+    handleCloseForm();
+    trackEvent('Directory', 'Delete Contact', contactToDelete?.name ?? request.providerId);
 
-    if (success) {
-      handleCloseForm();
-      trackEvent('Directory', 'Delete Contact', contactToDelete?.name ?? id);
-    }
+    let undoRequested = false;
+    const removalToastId = toast.success('Listing removed', {
+      description: 'The provider is hidden and can be restored for a short time.',
+      duration: getUndoToastDuration(deletionReceipt.undoExpiresAt),
+      action: {
+        label: 'Undo',
+        onClick: (event) => {
+          event.preventDefault();
+          if (undoRequested) return;
+          undoRequested = true;
+
+          void undoDelete({
+            eventId: deletionReceipt.eventId,
+            undoToken: deletionReceipt.undoToken,
+          }).then(() => {
+            toast.dismiss(removalToastId);
+            refreshContacts();
+            toast.success('Listing restored', {
+              description: 'The provider is visible in the community directory again.',
+            });
+          }).catch((error: unknown) => {
+            undoRequested = false;
+            toast.error('Could not restore listing', {
+              description: getUndoErrorMessage(error),
+            });
+          });
+        },
+      },
+    });
   };
 
   useEffect(() => {

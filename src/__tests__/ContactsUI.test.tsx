@@ -12,6 +12,10 @@ jest.mock('../hooks/useContacts', () => {
   };
 });
 
+jest.mock('@/lib/supabase', () => ({
+  supabase: { functions: { invoke: jest.fn() } },
+}));
+
 // Sample contact data for testing
 const mockContacts: Contact[] = [
   { 
@@ -64,6 +68,7 @@ const setup = (mockImplementation = {}, initialUrl = '/') => {
     addContact: jest.fn(),
     updateContact: jest.fn(),
     deleteContact: jest.fn(),
+    undoDelete: jest.fn(),
   };
 
   // Mock the useContacts hook with our test implementation

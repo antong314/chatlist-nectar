@@ -12,13 +12,17 @@ import { Shapes, X, Upload, Trash2 } from 'lucide-react';
 import { AvatarFallback } from '@/components/ui/avatar-fallback';
 import { normalizeWebsiteUrl } from '@/lib/urls';
 import { getDirectoryCategoryLabel } from '@/features/directory/data/categories';
+import {
+  ProviderDeletionDialog,
+  ProviderDeletionRequest,
+} from './ProviderDeletionDialog';
 
 interface ContactFormProps {
   contact?: Contact;
   categories: Category[];
   onSave: (contact: Omit<Contact, 'id'> | Contact) => void;
   onCancel: () => void;
-  onDelete?: (id: string) => void;
+  onDelete?: (request: ProviderDeletionRequest) => Promise<void>;
 }
 
 export function ContactForm({
@@ -182,14 +186,6 @@ export function ContactForm({
     } finally {
       // Reset loading state regardless of success or failure
       setIsSubmitting(false);
-    }
-  };
-
-  const handleDelete = () => {
-    if (contact?.id && onDelete) {
-      if (window.confirm('Are you sure you want to delete this contact?')) {
-        onDelete(contact.id);
-      }
     }
   };
 
@@ -397,13 +393,11 @@ export function ContactForm({
           
           <div className="flex justify-between pt-4">
             {contact && onDelete ? (
-              <Button
-                type="button"
-                variant="destructive"
-                onClick={handleDelete}
-              >
-                Delete
-              </Button>
+              <ProviderDeletionDialog
+                onDelete={onDelete}
+                providerId={contact.id}
+                providerName={contact.name}
+              />
             ) : (
               <div></div>
             )}

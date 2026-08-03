@@ -6,6 +6,10 @@ import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase'; // Corrected import path
 import { v4 as uuidv4 } from 'uuid'; // Import uuid
 import { searchDirectoryContacts } from '@/features/directory/search/directorySearch';
+import {
+  requestProviderDeletion,
+  undoProviderDeletion,
+} from '@/features/provider-deletion';
 
 const CONTACT_LOGOS_BUCKET = 'contact-images'; // Use the existing bucket name
 
@@ -367,34 +371,25 @@ export const useContacts = () => {
     }
   }, []);
 
-  // Delete a contact
-  const deleteContact = async (id: string) => {
-    setLoading(true);
-    try {
-      // Perform a soft delete by updating the is_deleted flag
-      const { error } = await supabase
-        .from('contacts')
-        .update({ is_deleted: true })
-        .match({ id });
+  // Request a recoverable deletion through the community-code protected endpoint.
+  const deleteContact = useCallback(async (
+    request: Parameters<typeof requestProviderDeletion>[0],
+  ) => {
+    const receipt = await requestProviderDeletion(request);
 
-      if (error) {
-        console.error('Error deleting contact:', error);
-        setError('Failed to mark contact as deleted.');
-        return false;
-      } else {
-        // Update local state to remove the contact from the visible list immediately
-        setContacts(prevContacts => prevContacts.filter(contact => contact.id !== id));
-        setError(null);
-        return true;
-      }
-    } catch (err: unknown) {
-      console.error('Error deleting contact:', err);
-      toast.error(`Error deleting contact: ${getErrorMessage(err, 'Please try again.')}`);
-      return false;
-    } finally {
-      setLoading(false);
-    }
-  };
+    // Only hide the contact locally after the server accepts the request.
+    setContacts((previousContacts) => previousContacts.filter(
+      (contact) => contact.id !== request.providerId,
+    ));
+    setError(null);
+    return receipt;
+  }, []);
+
+  const undoDelete = useCallback(async (
+    request: Parameters<typeof undoProviderDeletion>[0],
+  ) => {
+    await undoProviderDeletion(request);
+  }, []);
 
   // Apply bilingual, typo-tolerant search and the existing category filter.
   const filteredContacts = useMemo(() => {
@@ -430,6 +425,7 @@ export const useContacts = () => {
     refreshContacts,
     addContact,
     updateContact,
-    deleteContact
+    deleteContact,
+    undoDelete,
   };
 };
