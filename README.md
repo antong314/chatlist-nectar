@@ -1,5 +1,9 @@
 # Welcome to your Lovable project
 
+The production app also includes **Machu**, the WhatsApp community-directory
+bot served at `POST /bot`. See [docs/MACHU_BOT.md](docs/MACHU_BOT.md) for its
+flows, environment variables, database migration, and operational checks.
+
 ## Project info
 
 **URL**: https://lovable.dev/projects/95cc3dae-9f23-4461-b96d-6dda7dc2347c
