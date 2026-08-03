@@ -133,8 +133,10 @@ export class MachuBot {
     for (const contact of contacts) {
       messages.push({
         body: this.providerSummary(contact, reviewSummaries[contact.id]),
-        mediaUrl: this.mediaUrl(contact.id),
       });
+      // WhatsApp ignores a text body attached to free-form vCard media, so the
+      // directory details and native contact card must be separate messages.
+      messages.push({ mediaUrl: this.mediaUrl(contact.id) });
     }
     return messages;
   }
