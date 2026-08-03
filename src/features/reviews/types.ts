@@ -7,6 +7,10 @@ export interface ProviderReview {
   comment: string | null;
   reviewerName: string | null;
   createdAt: string;
+  /** Ordered object paths in the public `review-images` bucket. */
+  imagePaths: string[];
+  /** Ordered public URLs derived from imagePaths for direct UI rendering. */
+  imageUrls: string[];
 }
 
 export type RatingCounts = Record<ReviewRating, number>;
@@ -26,6 +30,8 @@ export interface SubmitReviewInput {
   reviewerWhatsapp: string;
   comment?: string | null;
   reviewerName?: string | null;
+  /** Paths returned by uploadReviewImages; pass [] when the review has no images. */
+  imagePaths?: string[];
 }
 
 export interface GetProviderReviewsOptions {

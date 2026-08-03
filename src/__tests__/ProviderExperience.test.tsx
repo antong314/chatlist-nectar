@@ -16,12 +16,16 @@ jest.mock('@/lib/supabase', () => ({
 }));
 
 jest.mock('@/features/reviews', () => ({
+  ...jest.requireActual('@/features/reviews'),
+  uploadReviewImages: jest.fn(),
   useProviderReviews: jest.fn(),
   useSubmitReview: jest.fn(),
 }));
 
+const providerId = '11111111-1111-4111-8111-111111111111';
+
 const contact: Contact = {
-  id: 'provider-1',
+  id: providerId,
   name: 'Efra Mechanic',
   category: 'Mechanic',
   description: 'Trusted mobile mechanic.',
@@ -30,8 +34,20 @@ const contact: Contact = {
 };
 
 describe('Provider experience', () => {
+  beforeAll(() => {
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: jest.fn((file: File) => `blob:${file.name}`),
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: jest.fn(),
+    });
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
+    (URL.createObjectURL as jest.Mock).mockImplementation((file: File) => `blob:${file.name}`);
   });
 
   test('makes WhatsApp the primary action and renders shareable provider details', () => {
@@ -56,7 +72,7 @@ describe('Provider experience', () => {
     expect(screen.getByText('12 reviews')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /edit listing/i })).toHaveAttribute(
       'href',
-      '/?edit=provider-1',
+      `/?edit=${providerId}`,
     );
 
     fireEvent.click(screen.getByRole('button', { name: /share/i }));
@@ -114,9 +130,66 @@ describe('Provider experience', () => {
         comment: 'Showed up quickly and did great work.',
         reviewerName: undefined,
         whatsappNumber: '+506 8777 1234',
+        images: [],
       });
     });
     expect(screen.getByText(/review is now part of the community rating/i)).toBeInTheDocument();
+  });
+
+  test('previews, removes, and submits optional review photos', async () => {
+    const user = userEvent.setup();
+    const onSubmit = jest.fn().mockResolvedValue(undefined);
+    const firstImage = new File(['first'], 'before.jpg', { type: 'image/jpeg' });
+    const secondImage = new File(['second'], 'after.webp', { type: 'image/webp' });
+
+    render(<ReviewForm onSubmit={onSubmit} />);
+
+    await user.upload(screen.getByLabelText(/photos/i), [firstImage, secondImage]);
+    expect(screen.getByRole('img', { name: /preview 1: before.jpg/i })).toHaveAttribute('src', 'blob:before.jpg');
+    expect(screen.getByRole('img', { name: /preview 2: after.webp/i })).toHaveAttribute('src', 'blob:after.webp');
+
+    await user.click(screen.getByRole('button', { name: /remove before.jpg/i }));
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:before.jpg');
+    expect(screen.queryByRole('img', { name: /before.jpg/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: '5 stars' }));
+    await user.type(screen.getByLabelText(/whatsapp number/i), '+506 8777 1234');
+    await user.click(screen.getByRole('button', { name: /post review/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        images: [secondImage],
+      }));
+    });
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:after.webp');
+  });
+
+  test('enforces the four-photo review limit', async () => {
+    const user = userEvent.setup();
+    const images = Array.from({ length: 5 }, (_, index) =>
+      new File([String(index)], `photo-${index + 1}.png`, { type: 'image/png' }),
+    );
+
+    render(<ReviewForm onSubmit={jest.fn()} />);
+    await user.upload(screen.getByLabelText(/photos/i), images);
+
+    expect(screen.getAllByRole('img', { name: /preview/i })).toHaveLength(4);
+    expect(screen.getByRole('alert')).toHaveTextContent(/up to 4 images/i);
+  });
+
+  test('rejects unsupported and oversized review photos', () => {
+    const unsupportedImage = new File(['gif'], 'animated.gif', { type: 'image/gif' });
+    const oversizedImage = new File(['large'], 'large.png', { type: 'image/png' });
+    Object.defineProperty(oversizedImage, 'size', { value: (5 * 1024 * 1024) + 1 });
+
+    render(<ReviewForm onSubmit={jest.fn()} />);
+    fireEvent.change(screen.getByLabelText(/photos/i), {
+      target: { files: [unsupportedImage, oversizedImage] },
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/JPEG, PNG, or WebP/i);
+    expect(screen.getByRole('alert')).toHaveTextContent(/5 MB or smaller/i);
+    expect(screen.queryByRole('img', { name: /preview/i })).not.toBeInTheDocument();
   });
 
   test('preserves an existing provider image when public edits leave it unchanged', async () => {
@@ -155,6 +228,10 @@ describe('Provider experience', () => {
             comment: 'Friendly and reliable.',
             reviewerName: null,
             createdAt: '2026-07-12T12:00:00.000Z',
+            imageUrls: [
+              'https://example.com/review-1.jpg',
+              'https://example.com/review-2.webp',
+            ],
           },
         ]}
       />,
@@ -162,15 +239,23 @@ describe('Provider experience', () => {
 
     expect(screen.getByText('Anonymous neighbor')).toBeInTheDocument();
     expect(screen.getByText('Friendly and reliable.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /open anonymous neighbor's review photo 1/i })).toHaveAttribute(
+      'href',
+      'https://example.com/review-1.jpg',
+    );
+    expect(screen.getAllByRole('img', { name: /anonymous neighbor's review photo/i })).toHaveLength(2);
   });
 
   test('loads a provider from its permanent route', async () => {
+    const user = userEvent.setup();
+    const submitReview = jest.fn().mockResolvedValue(undefined);
+    const reviewImage = new File(['work'], 'repair.jpg', { type: 'image/jpeg' });
     const query = {
       select: jest.fn(),
       eq: jest.fn(),
       maybeSingle: jest.fn().mockResolvedValue({
         data: {
-          id: 'provider-1',
+          id: providerId,
           title: 'Efra Mechanic',
           subtitle: 'Trusted mobile mechanic.',
           category: 'Mechanic',
@@ -187,19 +272,22 @@ describe('Provider experience', () => {
     (supabase.from as jest.Mock).mockReturnValue(query);
     (ReviewsModule.useProviderReviews as jest.Mock).mockReturnValue({
       reviews: [],
-      summary: { providerId: 'provider-1', averageRating: 0, reviewCount: 0, ratingCounts: {} },
+      summary: { providerId, averageRating: 0, reviewCount: 0, ratingCounts: {} },
       isLoading: false,
       error: null,
       reload: jest.fn(),
     });
     (ReviewsModule.useSubmitReview as jest.Mock).mockReturnValue({
-      submitReview: jest.fn(),
+      submitReview,
       isSubmitting: false,
       error: null,
     });
+    (ReviewsModule.uploadReviewImages as jest.Mock).mockResolvedValue([
+      `${providerId}/review-1/repair.jpg`,
+    ]);
 
     render(
-      <MemoryRouter initialEntries={['/provider/provider-1']}>
+      <MemoryRouter initialEntries={[`/provider/${providerId}`]}>
         <Routes>
           <Route element={<ProviderPage />} path="/provider/:providerId" />
         </Routes>
@@ -211,11 +299,92 @@ describe('Provider experience', () => {
       'href',
       expect.stringContaining('https://wa.me/50688881212'),
     );
-    expect(query.eq).toHaveBeenCalledWith('id', 'provider-1');
+    expect(query.eq).toHaveBeenCalledWith('id', providerId);
     expect(screen.getByText(/be the first neighbor to share an experience/i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /edit listing/i })).toHaveAttribute(
       'href',
-      '/?edit=provider-1',
+      `/?edit=${providerId}`,
     );
+
+    await user.upload(screen.getByLabelText(/photos/i), reviewImage);
+    await user.click(screen.getByRole('radio', { name: '5 stars' }));
+    await user.type(screen.getByLabelText(/whatsapp number/i), '+506 8777 1234');
+    await user.click(screen.getByRole('button', { name: /post review/i }));
+
+    await waitFor(() => {
+      expect(ReviewsModule.uploadReviewImages).toHaveBeenCalledWith(providerId, [reviewImage]);
+      expect(submitReview).toHaveBeenCalledWith(expect.objectContaining({
+        providerId,
+        imagePaths: [`${providerId}/review-1/repair.jpg`],
+      }));
+    });
+  });
+
+  test('does not save a review when its image upload fails', async () => {
+    const user = userEvent.setup();
+    const submitReview = jest.fn();
+    const reviewImage = new File(['work'], 'repair.jpg', { type: 'image/jpeg' });
+    const query = {
+      select: jest.fn(),
+      eq: jest.fn(),
+      maybeSingle: jest.fn().mockResolvedValue({
+        data: {
+          id: providerId,
+          title: 'Efra Mechanic',
+          subtitle: 'Trusted mobile mechanic.',
+          category: 'Mechanic',
+          phone_number: '+506 8888-1212',
+          website_url: null,
+          map_url: null,
+          image_url: null,
+        },
+        error: null,
+      }),
+    };
+    query.select.mockReturnValue(query);
+    query.eq.mockReturnValue(query);
+    (supabase.from as jest.Mock).mockReturnValue(query);
+    (ReviewsModule.useProviderReviews as jest.Mock).mockReturnValue({
+      reviews: [],
+      summary: { providerId, averageRating: 0, reviewCount: 0, ratingCounts: {} },
+      isLoading: false,
+      error: null,
+      reload: jest.fn(),
+    });
+    (ReviewsModule.useSubmitReview as jest.Mock).mockReturnValue({
+      submitReview,
+      isSubmitting: false,
+      error: null,
+    });
+    (ReviewsModule.uploadReviewImages as jest.Mock).mockRejectedValue(
+      new Error('Photos could not be uploaded. Please try again.'),
+    );
+
+    render(
+      <MemoryRouter initialEntries={[`/provider/${providerId}`]}>
+        <Routes>
+          <Route element={<ProviderPage />} path="/provider/:providerId" />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('heading', { name: 'Efra Mechanic', level: 1 });
+    await user.upload(screen.getByLabelText(/photos/i), reviewImage);
+    await user.click(screen.getByRole('radio', { name: '5 stars' }));
+    const whatsappInput = screen.getByLabelText(/whatsapp number/i);
+    await user.type(whatsappInput, 'not-a-number');
+    await user.click(screen.getByRole('button', { name: /post review/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/valid WhatsApp number/i);
+    expect(ReviewsModule.uploadReviewImages).not.toHaveBeenCalled();
+    expect(submitReview).not.toHaveBeenCalled();
+
+    await user.clear(whatsappInput);
+    await user.type(whatsappInput, '+506 8777 1234');
+    await user.click(screen.getByRole('button', { name: /post review/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/photos could not be uploaded/i);
+    expect(submitReview).not.toHaveBeenCalled();
+    expect(screen.getByRole('img', { name: /preview 1: repair.jpg/i })).toBeInTheDocument();
   });
 });

@@ -1,9 +1,14 @@
-import React, { FormEvent, useState } from 'react';
-import { Loader2, LockKeyhole } from 'lucide-react';
+import React, { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
+import { ImagePlus, Loader2, LockKeyhole, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  REVIEW_IMAGE_ALLOWED_MIME_TYPES,
+  REVIEW_IMAGE_MAX_BYTES,
+  REVIEW_IMAGE_MAX_COUNT,
+} from '@/features/reviews/validation';
 import { StarRating } from './StarRating';
 
 export interface ReviewFormValues {
@@ -11,6 +16,7 @@ export interface ReviewFormValues {
   comment?: string;
   reviewerName?: string;
   whatsappNumber: string;
+  images: File[];
 }
 
 interface ReviewFormProps {
@@ -18,13 +24,80 @@ interface ReviewFormProps {
   onSubmit: (values: ReviewFormValues) => Promise<void>;
 }
 
+interface SelectedReviewImage {
+  file: File;
+  previewUrl: string;
+}
+
+const REVIEW_IMAGE_TYPES = new Set<string>(REVIEW_IMAGE_ALLOWED_MIME_TYPES);
+
 export function ReviewForm({ isSubmitting = false, onSubmit }: ReviewFormProps) {
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
   const [reviewerName, setReviewerName] = useState('');
   const [whatsappNumber, setWhatsappNumber] = useState('');
+  const [selectedImages, setSelectedImages] = useState<SelectedReviewImage[]>([]);
+  const [imageError, setImageError] = useState('');
   const [formError, setFormError] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const previewUrlsRef = useRef(new Set<string>());
+
+  useEffect(() => () => {
+    previewUrlsRef.current.forEach((previewUrl) => URL.revokeObjectURL(previewUrl));
+    previewUrlsRef.current.clear();
+  }, []);
+
+  const removeImage = (previewUrl: string) => {
+    URL.revokeObjectURL(previewUrl);
+    previewUrlsRef.current.delete(previewUrl);
+    setSelectedImages((currentImages) =>
+      currentImages.filter((image) => image.previewUrl !== previewUrl),
+    );
+    setImageError('');
+  };
+
+  const clearImages = () => {
+    selectedImages.forEach(({ previewUrl }) => {
+      URL.revokeObjectURL(previewUrl);
+      previewUrlsRef.current.delete(previewUrl);
+    });
+    setSelectedImages([]);
+    setImageError('');
+    if (imageInputRef.current) imageInputRef.current.value = '';
+  };
+
+  const handleImageSelection = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.currentTarget.files ?? []);
+    const availableSlots = Math.max(REVIEW_IMAGE_MAX_COUNT - selectedImages.length, 0);
+    const nextImages: SelectedReviewImage[] = [];
+    const errors = new Set<string>();
+
+    files.forEach((file) => {
+      if (nextImages.length >= availableSlots) {
+        errors.add(`You can add up to ${REVIEW_IMAGE_MAX_COUNT} images.`);
+        return;
+      }
+      if (!REVIEW_IMAGE_TYPES.has(file.type)) {
+        errors.add('Images must be JPEG, PNG, or WebP files.');
+        return;
+      }
+      if (file.size > REVIEW_IMAGE_MAX_BYTES) {
+        errors.add('Each image must be 5 MB or smaller.');
+        return;
+      }
+
+      const previewUrl = URL.createObjectURL(file);
+      previewUrlsRef.current.add(previewUrl);
+      nextImages.push({ file, previewUrl });
+    });
+
+    if (nextImages.length > 0) {
+      setSelectedImages((currentImages) => [...currentImages, ...nextImages]);
+    }
+    setImageError(Array.from(errors).join(' '));
+    event.currentTarget.value = '';
+  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -48,11 +121,13 @@ export function ReviewForm({ isSubmitting = false, onSubmit }: ReviewFormProps) 
         comment: comment.trim() || undefined,
         reviewerName: reviewerName.trim() || undefined,
         whatsappNumber: whatsappNumber.trim(),
+        images: selectedImages.map(({ file }) => file),
       });
       setRating(0);
       setComment('');
       setReviewerName('');
       setWhatsappNumber('');
+      clearImages();
       setSubmitted(true);
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Your review could not be submitted. Please try again.');
@@ -76,6 +151,57 @@ export function ReviewForm({ isSubmitting = false, onSubmit }: ReviewFormProps) 
           rows={4}
           value={comment}
         />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="review-images">Photos <span className="font-normal text-gray-500">(optional)</span></Label>
+        <div className="rounded-xl border border-dashed border-gray-300 bg-stone-50 p-3">
+          <label className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-primary shadow-sm ring-1 ring-gray-200 transition hover:bg-emerald-50 focus-within:ring-2 focus-within:ring-primary">
+            <ImagePlus aria-hidden="true" className="h-4 w-4" />
+            {selectedImages.length >= REVIEW_IMAGE_MAX_COUNT ? 'Photo limit reached' : 'Add photos'}
+            <input
+              accept="image/jpeg,image/png,image/webp"
+              aria-describedby="review-images-hint review-images-error"
+              aria-invalid={Boolean(imageError)}
+              className="sr-only"
+              disabled={isSubmitting || selectedImages.length >= REVIEW_IMAGE_MAX_COUNT}
+              id="review-images"
+              multiple
+              onChange={handleImageSelection}
+              ref={imageInputRef}
+              type="file"
+            />
+          </label>
+          <p className="mt-2 text-xs leading-relaxed text-gray-500" id="review-images-hint">
+            Up to 4 JPEG, PNG, or WebP images. Maximum 5 MB each.
+          </p>
+        </div>
+
+        {selectedImages.length > 0 && (
+          <ul aria-label="Selected review photos" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {selectedImages.map(({ file, previewUrl }, index) => (
+              <li className="group relative aspect-square overflow-hidden rounded-lg bg-gray-100" key={previewUrl}>
+                <img
+                  alt={`Preview ${index + 1}: ${file.name}`}
+                  className="h-full w-full object-cover"
+                  src={previewUrl}
+                />
+                <button
+                  aria-label={`Remove ${file.name}`}
+                  className="absolute right-1.5 top-1.5 inline-flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white shadow-sm transition hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-50"
+                  disabled={isSubmitting}
+                  onClick={() => removeImage(previewUrl)}
+                  type="button"
+                >
+                  <X aria-hidden="true" className="h-4 w-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="text-sm font-medium text-red-600" id="review-images-error" role={imageError ? 'alert' : undefined}>
+          {imageError}
+        </p>
       </div>
 
       <div className="space-y-2">

@@ -20,6 +20,7 @@ describe('review input validation', () => {
       comment: 'Great work!\nWould call again.',
       reviewerName: 'Ana M.',
       reviewerWhatsapp: '+50687184331',
+      imagePaths: [],
     });
   });
 
@@ -36,6 +37,7 @@ describe('review input validation', () => {
       comment: undefined,
       reviewerName: undefined,
       reviewerWhatsapp: '87184331',
+      imagePaths: [],
     });
   });
 

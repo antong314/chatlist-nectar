@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { v4 as uuidv4 } from 'uuid';
 import {
   GetProviderReviewsOptions,
   ProviderReview,
@@ -7,12 +8,20 @@ import {
   ReviewRating,
   SubmitReviewInput,
 } from '../types';
-import { normalizeSubmitReviewInput, REVIEW_PAGE_MAX_SIZE } from '../validation';
+import {
+  normalizeProviderId,
+  normalizeSubmitReviewInput,
+  REVIEW_IMAGE_ALLOWED_MIME_TYPES,
+  REVIEW_PAGE_MAX_SIZE,
+  validateReviewImageFiles,
+} from '../validation';
 
 // The shared Supabase module is the source of truth for client creation.
 // Avoid reading `import.meta.env` again here so this API can be isolated or
 // mocked by non-Vite test runners.
 const isSupabaseConfigured = typeof supabase?.rpc === 'function';
+const isReviewStorageConfigured = typeof supabase?.storage?.from === 'function';
+export const REVIEW_IMAGES_BUCKET = 'review-images';
 
 interface PublicReviewRow {
   id: string;
@@ -21,6 +30,7 @@ interface PublicReviewRow {
   comment: string | null;
   reviewer_name: string | null;
   created_at: string;
+  image_paths: string[] | null;
 }
 
 interface ReviewSummaryRow {
@@ -46,14 +56,27 @@ const toReviewRating = (rating: number): ReviewRating => {
   return rating as ReviewRating;
 };
 
-const mapReview = (row: PublicReviewRow): ProviderReview => ({
-  id: row.id,
-  providerId: row.contact_id,
-  rating: toReviewRating(Number(row.rating)),
-  comment: row.comment,
-  reviewerName: row.reviewer_name,
-  createdAt: row.created_at,
-});
+const getReviewImagePublicUrl = (storagePath: string): string => {
+  if (!isReviewStorageConfigured) return '';
+  return supabase.storage.from(REVIEW_IMAGES_BUCKET).getPublicUrl(storagePath).data.publicUrl || '';
+};
+
+const mapReview = (row: PublicReviewRow): ProviderReview => {
+  const imagePaths = (row.image_paths ?? []).filter(
+    (storagePath): storagePath is string => typeof storagePath === 'string' && storagePath.length > 0,
+  );
+
+  return {
+    id: row.id,
+    providerId: row.contact_id,
+    rating: toReviewRating(Number(row.rating)),
+    comment: row.comment,
+    reviewerName: row.reviewer_name,
+    createdAt: row.created_at,
+    imagePaths,
+    imageUrls: imagePaths.map(getReviewImagePublicUrl).filter(Boolean),
+  };
+};
 
 const mapSummary = (row: ReviewSummaryRow): ProviderReviewSummary => {
   const counts = emptyRatingCounts();
@@ -71,6 +94,49 @@ const mapSummary = (row: ReviewSummaryRow): ProviderReviewSummary => {
 
 const databaseError = (operation: string, error: { message?: string } | null): Error =>
   new Error(error?.message || `Unable to ${operation}. Please try again.`);
+
+const REVIEW_IMAGE_EXTENSIONS: Record<(typeof REVIEW_IMAGE_ALLOWED_MIME_TYPES)[number], string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+};
+
+/**
+ * Uploads already-validated image blobs and returns ordered Storage object
+ * paths for submitProviderReview. The database stores these paths, never bytes.
+ */
+export const uploadReviewImages = async (
+  providerId: string,
+  files: File[],
+): Promise<string[]> => {
+  const normalizedProviderId = normalizeProviderId(providerId);
+  const validatedFiles = validateReviewImageFiles(files);
+  if (validatedFiles.length === 0) return [];
+  if (!isReviewStorageConfigured) {
+    throw new Error('Review images cannot be uploaded because storage is not configured.');
+  }
+
+  // Validate the complete selection before starting any network upload.
+  const uploads = validatedFiles.map((file) => {
+    const extension = REVIEW_IMAGE_EXTENSIONS[file.type as keyof typeof REVIEW_IMAGE_EXTENSIONS];
+    const storagePath = `${normalizedProviderId}/${uuidv4()}.${extension}`;
+    return { file, storagePath };
+  });
+
+  await Promise.all(uploads.map(async ({ file, storagePath }) => {
+    const { error } = await supabase.storage
+      .from(REVIEW_IMAGES_BUCKET)
+      .upload(storagePath, file, {
+        cacheControl: '3600',
+        contentType: file.type,
+        upsert: false,
+      });
+
+    if (error) throw databaseError('upload a review image', error);
+  }));
+
+  return uploads.map(({ storagePath }) => storagePath);
+};
 
 export const getProviderReviews = async (
   providerId: string,
@@ -144,6 +210,7 @@ export const submitProviderReview = async (input: SubmitReviewInput): Promise<Pr
     p_contact_id: normalized.providerId,
     p_rating: normalized.rating,
     p_reviewer_whatsapp: normalized.reviewerWhatsapp,
+    p_image_paths: normalized.imagePaths,
     p_comment: normalized.comment ?? null,
     p_reviewer_name: normalized.reviewerName ?? null,
   });

@@ -1,6 +1,7 @@
 import React from 'react';
 import { MessageSquareText } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { getSafeExternalUrl } from '@/lib/urls';
 import { StarRating } from './StarRating';
 
 export interface ProviderReviewView {
@@ -9,6 +10,7 @@ export interface ProviderReviewView {
   comment?: string | null;
   reviewerName?: string | null;
   createdAt: string;
+  imageUrls?: string[];
 }
 
 interface ProviderReviewsProps {
@@ -62,20 +64,49 @@ export function ProviderReviews({ averageRating, isLoading = false, reviews }: P
           </div>
         ) : (
           <ol>
-            {reviews.map((review) => (
-              <li className="border-t py-5 first:border-t-0 first:pt-0 last:pb-0" key={review.id}>
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="font-semibold text-gray-900">{review.reviewerName?.trim() || 'Anonymous neighbor'}</p>
-                    <StarRating size="sm" value={review.rating} />
+            {reviews.map((review) => {
+              const reviewerLabel = review.reviewerName?.trim() || 'Anonymous neighbor';
+              const imageUrls = (review.imageUrls ?? [])
+                .map(getSafeExternalUrl)
+                .filter(Boolean);
+
+              return (
+                <li className="border-t py-5 first:border-t-0 first:pt-0 last:pb-0" key={review.id}>
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="font-semibold text-gray-900">{reviewerLabel}</p>
+                      <StarRating size="sm" value={review.rating} />
+                    </div>
+                    <time className="shrink-0 text-xs text-gray-500" dateTime={review.createdAt}>
+                      {formatReviewDate(review.createdAt)}
+                    </time>
                   </div>
-                  <time className="shrink-0 text-xs text-gray-500" dateTime={review.createdAt}>
-                    {formatReviewDate(review.createdAt)}
-                  </time>
-                </div>
-                {review.comment && <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-700">{review.comment}</p>}
-              </li>
-            ))}
+                  {review.comment && <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-700">{review.comment}</p>}
+                  {imageUrls.length > 0 && (
+                    <ul aria-label={`Photos from ${reviewerLabel}'s review`} className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {imageUrls.map((imageUrl, index) => (
+                        <li className="aspect-square overflow-hidden rounded-lg bg-gray-100" key={`${imageUrl}-${index}`}>
+                          <a
+                            aria-label={`Open ${reviewerLabel}'s review photo ${index + 1}`}
+                            className="block h-full w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                            href={imageUrl}
+                            rel="noopener noreferrer"
+                            target="_blank"
+                          >
+                            <img
+                              alt={`${reviewerLabel}'s review photo ${index + 1}`}
+                              className="h-full w-full object-cover transition duration-200 hover:scale-105"
+                              loading="lazy"
+                              src={imageUrl}
+                            />
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
           </ol>
         )}
       </CardContent>

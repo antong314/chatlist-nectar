@@ -11,7 +11,12 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
-import { useProviderReviews, useSubmitReview } from '@/features/reviews';
+import {
+  normalizeSubmitReviewInput,
+  uploadReviewImages,
+  useProviderReviews,
+  useSubmitReview,
+} from '@/features/reviews';
 import { getDirectoryCategoryLabel } from '@/features/directory/data/categories';
 
 interface ContactRow {
@@ -44,6 +49,7 @@ export function ProviderPage() {
   const [isLoadingContact, setIsLoadingContact] = useState(true);
   const [contactError, setContactError] = useState('');
   const [shareStatus, setShareStatus] = useState('');
+  const [isHandlingReviewSubmit, setIsHandlingReviewSubmit] = useState(false);
   const { reviews, summary, isLoading: isLoadingReviews, error: reviewsError, reload } = useProviderReviews(providerId);
   const { submitReview, isSubmitting } = useSubmitReview({ onSuccess: reload });
 
@@ -128,13 +134,33 @@ export function ProviderPage() {
   };
 
   const handleReviewSubmit = async (values: ReviewFormValues) => {
-    await submitReview({
-      providerId,
-      rating: values.rating,
-      comment: values.comment,
-      reviewerName: values.reviewerName,
-      reviewerWhatsapp: values.whatsappNumber,
-    });
+    setIsHandlingReviewSubmit(true);
+    try {
+      // Validate every non-file field before uploading so an invalid review
+      // can never leave unattached objects in Storage.
+      const normalizedReview = normalizeSubmitReviewInput({
+        providerId,
+        rating: values.rating,
+        comment: values.comment,
+        reviewerName: values.reviewerName,
+        reviewerWhatsapp: values.whatsappNumber,
+        imagePaths: [],
+      });
+      const imagePaths = values.images.length > 0
+        ? await uploadReviewImages(normalizedReview.providerId, values.images)
+        : [];
+
+      await submitReview({
+        ...normalizedReview,
+        imagePaths,
+      });
+    } catch (error) {
+      throw error instanceof Error
+        ? error
+        : new Error('Your review could not be submitted. Please try again.');
+    } finally {
+      setIsHandlingReviewSubmit(false);
+    }
   };
 
   if (isLoadingContact) {
@@ -211,7 +237,7 @@ export function ProviderPage() {
               <p className="text-sm leading-6 text-gray-600">A quick rating helps your neighbors choose with confidence.</p>
             </CardHeader>
             <CardContent>
-              <ReviewForm isSubmitting={isSubmitting} onSubmit={handleReviewSubmit} />
+              <ReviewForm isSubmitting={isSubmitting || isHandlingReviewSubmit} onSubmit={handleReviewSubmit} />
             </CardContent>
           </Card>
         </div>
