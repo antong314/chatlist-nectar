@@ -1,12 +1,11 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card } from '@/components/ui/card';
-import { Search as SearchIcon, X, BookOpen, Tag } from 'lucide-react';
-import { useWikiSearch } from '@/features/wiki/hooks/useWikiSearch';
 import { formatDistance } from 'date-fns';
+import { BookOpen, Search, Tag, X } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { useWikiSearch } from '@/features/wiki/hooks/useWikiSearch';
 
 interface WikiSearchProps {
   variant?: 'icon' | 'inline';
@@ -16,7 +15,6 @@ const WikiSearch: React.FC<WikiSearchProps> = ({ variant = 'icon' }) => {
   const navigate = useNavigate();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  
   const {
     query,
     setQuery,
@@ -29,55 +27,29 @@ const WikiSearch: React.FC<WikiSearchProps> = ({ variant = 'icon' }) => {
     clearCategoryFilter,
   } = useWikiSearch();
 
-  // Toggle search panel
-  const toggleSearch = () => {
-    const newState = !isSearchOpen;
-    setIsSearchOpen(newState);
-    
-    if (newState && searchInputRef.current) {
-      // Focus the search input when opening
-      setTimeout(() => {
-        searchInputRef.current?.focus();
-      }, 100);
-    } else {
-      // Clear search when closing
-      clearSearch();
-    }
-  };
-  
-  // Handle escape key press to close search
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && isSearchOpen) {
-        toggleSearch();
-      }
-    };
-    
-    document.addEventListener('keydown', handleKeyDown);
-    
-    // Clean up the event listener when component unmounts
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isSearchOpen]); // Re-run effect when isSearchOpen changes
-
-  // Navigate to a search result
-  const handleResultClick = (slug: string) => {
-    navigate(`/wiki/${slug}`);
+  const closeSearch = useCallback(() => {
     setIsSearchOpen(false);
     clearSearch();
+  }, [clearSearch]);
+
+  const openSearch = () => {
+    setIsSearchOpen(true);
+    window.setTimeout(() => searchInputRef.current?.focus(), 100);
   };
 
-  // Apply category filter
-  const handleCategoryClick = (category: string) => {
-    if (selectedCategory === category) {
-      clearCategoryFilter();
-    } else {
-      setSelectedCategory(category);
-    }
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && isSearchOpen) closeSearch();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [closeSearch, isSearchOpen]);
+
+  const handleResultClick = (slug: string) => {
+    navigate(`/wiki/${slug}`);
+    closeSearch();
   };
 
-  // Format time
   const formatTimeAgo = (dateString: string) => {
     try {
       return formatDistance(new Date(dateString), new Date(), { addSuffix: true });
@@ -92,135 +64,110 @@ const WikiSearch: React.FC<WikiSearchProps> = ({ variant = 'icon' }) => {
         <Button
           variant="ghost"
           size="icon"
-          className="ml-2"
-          onClick={toggleSearch}
-          aria-label={isSearchOpen ? "Close search" : "Open search"}
+          className="h-10 w-10 rounded-full text-stone-500 hover:bg-[var(--directory-cream)] hover:text-[var(--directory-green)]"
+          onClick={openSearch}
+          aria-label="Search wiki"
         >
-          <SearchIcon className="h-4 w-4" />
+          <Search className="h-4 w-4" />
         </Button>
       ) : (
-        <div className="relative w-full max-w-sm">
-          <div className="flex h-9 items-center rounded-md border bg-background px-3 py-1 text-sm shadow-sm">
-            <SearchIcon className="h-4 w-4 mr-2 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search wiki..."
-              className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onClick={() => {
-                if (!isSearchOpen) {
-                  setIsSearchOpen(true);
-                }
-              }}
-            />
-          </div>
-        </div>
+        <button
+          type="button"
+          onClick={openSearch}
+          className="flex h-10 w-44 items-center gap-2 rounded-full border border-stone-200 bg-white px-3 text-sm text-stone-400 transition hover:border-green-900/20 hover:text-[var(--directory-green)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--directory-green)] xl:w-52"
+        >
+          <Search className="h-4 w-4 shrink-0" />
+          <span className="truncate">Search wiki…</span>
+        </button>
       )}
-      
+
       {isSearchOpen && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-start justify-center pt-16 px-4">
-          <div className="w-full max-w-2xl bg-white shadow-lg rounded-lg overflow-hidden flex flex-col max-h-[80vh]">
-            <div className="p-4 flex items-center gap-2 border-b">
-              <SearchIcon className="h-5 w-5 text-muted-foreground" />
+        <div
+          className="fixed inset-0 z-[60] flex items-start justify-center bg-stone-950/25 px-4 pt-[10vh] backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeSearch();
+          }}
+        >
+          <div className="flex max-h-[78vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/80 bg-[var(--directory-paper)] shadow-[0_24px_70px_rgba(36,48,39,0.24)]">
+            <div className="flex items-center gap-3 border-b border-stone-200/80 p-4">
+              <Search className="h-5 w-5 text-[var(--directory-green)]" />
               <Input
                 ref={searchInputRef}
-                placeholder="Search wiki..."
+                placeholder="Search local guides and pages…"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                className="flex-1 border-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                onChange={(event) => setQuery(event.target.value)}
+                className="flex-1 border-none bg-transparent text-base shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
                 autoFocus
               />
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={toggleSearch}
-                className="h-8 w-8"
-                aria-label="Close search"
-              >
+              <Button variant="ghost" size="icon" onClick={closeSearch} className="h-9 w-9 rounded-full" aria-label="Close search">
                 <X className="h-4 w-4" />
               </Button>
             </div>
-            
-            <div className="overflow-y-auto flex-1">
+
+            <div className="min-h-36 flex-1 overflow-y-auto p-3 sm:p-4">
               {loading && (
-                <div className="flex justify-center items-center p-8">
-                  <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-solid border-primary border-r-transparent"></div>
-                  <span className="ml-2 text-sm text-muted-foreground">Searching...</span>
+                <div className="flex items-center justify-center p-10 text-sm text-[var(--directory-muted)]">
+                  <div className="mr-3 h-5 w-5 animate-spin rounded-full border-2 border-[var(--directory-green)] border-r-transparent" />
+                  Searching…
                 </div>
               )}
-              
-              {error && (
-                <div className="p-6 text-center text-red-500">
-                  <p>{error}</p>
+              {error && <div className="p-8 text-center text-sm text-red-700">{error}</div>}
+              {!loading && !error && !query && (
+                <div className="flex flex-col items-center justify-center px-4 py-10 text-center">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[var(--directory-cream)] text-[var(--directory-green)]">
+                    <BookOpen className="h-5 w-5" />
+                  </span>
+                  <p className="mt-3 font-header text-lg font-semibold text-[var(--directory-ink)]">Find something useful</p>
+                  <p className="mt-1 text-sm text-[var(--directory-muted)]">Search page titles, topics, and community notes.</p>
                 </div>
               )}
-              
-              {!loading && !error && query.length > 0 && results.length === 0 && (
-                <div className="p-6 text-center text-muted-foreground">
-                  <p>No results found for "{query}"</p>
-                </div>
+              {!loading && !error && query && results.length === 0 && (
+                <div className="p-10 text-center text-sm text-[var(--directory-muted)]">No results found for “{query}”.</div>
               )}
-              
               {results.length > 0 && (
-                <div className="p-2">
-                  {/* Show applied category filter if selected */}
+                <div className="space-y-2">
                   {selectedCategory && (
-                    <div className="px-2 py-1 flex items-center">
-                      <span className="text-xs text-muted-foreground mr-2">Filtered by:</span>
-                      <Badge 
-                        variant="outline" 
-                        className="flex items-center gap-1"
-                        onClick={clearCategoryFilter}
-                      >
-                        <Tag className="h-3 w-3" />
+                    <div className="mb-3 flex items-center gap-2 px-1 text-xs text-[var(--directory-muted)]">
+                      Filtered by
+                      <Badge variant="outline" className="cursor-pointer rounded-full border-stone-200 bg-white" onClick={clearCategoryFilter}>
+                        <Tag className="mr-1 h-3 w-3" />
                         {selectedCategory}
-                        <X className="h-3 w-3 ml-1 cursor-pointer" />
+                        <X className="ml-1 h-3 w-3" />
                       </Badge>
                     </div>
                   )}
-                  
-                  {/* Results list */}
-                  <div className="space-y-2">
-                    {results.map((result) => (
-                      <Card 
-                        key={result.id} 
-                        className="p-3 hover:bg-muted/50 cursor-pointer transition-colors"
-                        onClick={() => handleResultClick(result.slug)}
-                      >
-                        <div className="flex justify-between items-start">
-                          <h3 className="font-medium text-primary flex items-center">
-                            <BookOpen className="h-3 w-3 mr-1 flex-shrink-0" />
-                            {result.title}
-                          </h3>
-                          {result.category && (
-                            <Badge 
-                              variant="secondary" 
-                              className="text-xs"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleCategoryClick(result.category || 'Uncategorized');
-                              }}
-                            >
-                              {result.category}
-                            </Badge>
-                          )}
-                        </div>
-                        
-                        {result.matched_content && (
-                          <div className="mt-2 text-xs bg-muted/50 p-1.5 rounded">
-                            <p className="text-muted-foreground">
-                              {result.matched_content}
-                            </p>
-                          </div>
+                  {results.map((result) => (
+                    <button
+                      type="button"
+                      key={result.id}
+                      className="w-full rounded-xl border border-stone-200/80 bg-white p-4 text-left transition hover:border-green-900/20 hover:bg-[var(--directory-cream)]/35"
+                      onClick={() => handleResultClick(result.slug)}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <h3 className="flex items-center gap-2 font-header font-semibold text-[var(--directory-ink)]">
+                          <BookOpen className="h-4 w-4 shrink-0 text-[var(--directory-green)]" />
+                          {result.title}
+                        </h3>
+                        {result.category && (
+                          <Badge
+                            variant="secondary"
+                            className="rounded-full bg-[var(--directory-cream)] text-[var(--directory-green)]"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              if (selectedCategory === result.category) clearCategoryFilter();
+                              else setSelectedCategory(result.category || 'Uncategorized');
+                            }}
+                          >
+                            {result.category}
+                          </Badge>
                         )}
-                        
-                        <div className="mt-2 text-xs text-muted-foreground">
-                          Updated {formatTimeAgo(result.updated_at)}
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
+                      </div>
+                      {result.matched_content && (
+                        <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-[var(--directory-muted)]">{result.matched_content}</p>
+                      )}
+                      <p className="mt-2 text-xs text-stone-400">Updated {formatTimeAgo(result.updated_at)}</p>
+                    </button>
+                  ))}
                 </div>
               )}
             </div>

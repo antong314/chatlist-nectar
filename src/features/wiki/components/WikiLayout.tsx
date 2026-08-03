@@ -1,14 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { useWikiIndex } from '@/features/wiki/hooks';
-import { Toaster } from "@/components/ui/toaster";
-import WikiSidebar from './WikiSidebar';
-import WikiHeader from './WikiHeader';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useToast } from '@/components/ui/use-toast';
+import { useWikiIndex } from '@/features/wiki/hooks';
+import WikiHeader from './WikiHeader';
+import WikiSidebar from './WikiSidebar';
 
 interface WikiLayoutProps {
   children: React.ReactNode;
@@ -16,131 +14,99 @@ interface WikiLayoutProps {
   isEditing?: boolean;
 }
 
-const WikiLayout: React.FC<WikiLayoutProps> = ({ 
-  children, 
-  title = "Machuca Wiki", 
-  isEditing = false
+const WikiLayout: React.FC<WikiLayoutProps> = ({
+  children,
+  title = 'San Mateo Love Wiki',
+  isEditing = false,
 }) => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const location = useLocation();
-  
-  // Use the shared wiki index hook for new page functionality
-  const { 
-    newPageDialogOpen, 
-    setNewPageDialogOpen, 
-    newPageTitle, 
-    setNewPageTitle, 
+  const {
+    newPageDialogOpen,
+    setNewPageDialogOpen,
+    newPageTitle,
+    setNewPageTitle,
     handleCreatePage,
-    categories              // Get categories list from the hook 
+    categories,
   } = useWikiIndex();
-  
-  // Local state for selected category in this dialog
-  const [selectedCategory, setSelectedCategory] = useState<string>('Uncategorized');
+  const [selectedCategory, setSelectedCategory] = useState('Uncategorized');
 
-  // Close sidebar on mobile by default
   useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 768) {
-        setSidebarOpen(false);
-      } else {
-        setSidebarOpen(true);
-      }
-    };
-
+    const handleResize = () => setSidebarOpen(window.innerWidth >= 768);
     handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Close sidebar on route change on mobile
   useEffect(() => {
-    if (window.innerWidth < 768) {
-      setSidebarOpen(false);
-    }
+    if (window.innerWidth < 768) setSidebarOpen(false);
   }, [location.pathname]);
 
-  const toggleSidebar = () => {
-    setSidebarOpen(!sidebarOpen);
-  };
-
-  const openNewPageDialog = () => {
-    setNewPageDialogOpen(true);
-  };
-
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <WikiHeader 
-        title={title} 
-        onMenuToggle={toggleSidebar} 
+    <div className="directory-page min-h-screen pb-12">
+      <WikiHeader
+        title={title}
+        onMenuToggle={() => setSidebarOpen((open) => !open)}
         isEditing={isEditing}
       />
-      
-      <div className="flex flex-1">
-        <WikiSidebar 
-          isOpen={sidebarOpen} 
-          onToggle={toggleSidebar} 
-          onCreatePage={openNewPageDialog} 
-        />
-        
-        <main
-          className={`flex-1 transition-all duration-300 ease-in-out bg-gradient-to-b from-machuca-off-white via-machuca-off-white to-machuca-sidebar-bg ${
-            sidebarOpen ? 'md:ml-64' : 'ml-0'
-          }`}
-        >
-          <div className="px-4 py-6 md:px-8 md:py-8 max-w-5xl mx-auto">
+
+      <div className="directory-container">
+        <div className="flex items-start gap-5">
+          <WikiSidebar
+            isOpen={sidebarOpen}
+            onToggle={() => setSidebarOpen((open) => !open)}
+            onCreatePage={() => setNewPageDialogOpen(true)}
+          />
+
+          <main className="min-w-0 flex-1">
             {children}
-          </div>
-        </main>
+          </main>
+        </div>
       </div>
 
       <Dialog open={newPageDialogOpen} onOpenChange={setNewPageDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="border-stone-200 bg-[var(--directory-paper)] sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Create New Page</DialogTitle>
+            <DialogTitle className="font-header text-2xl text-[var(--directory-ink)]">Create a new page</DialogTitle>
           </DialogHeader>
-          <div className="py-4 space-y-4">
+          <div className="space-y-4 py-4">
             <div>
-              <Label htmlFor="title" className="text-right">
-                Page Title
-              </Label>
+              <Label htmlFor="layout-page-title">Page title</Label>
               <Input
-                id="title"
+                id="layout-page-title"
                 value={newPageTitle}
-                onChange={(e) => setNewPageTitle(e.target.value)}
+                onChange={(event) => setNewPageTitle(event.target.value)}
                 placeholder="Enter page title"
-                className="mt-1"
+                className="mt-1.5 rounded-xl border-stone-200 focus-visible:ring-[var(--directory-green)]"
               />
             </div>
-            
             <div>
-              <Label htmlFor="category" className="text-right">
-                Category
-              </Label>
+              <Label htmlFor="layout-page-category">Category</Label>
               <select
-                id="category"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 mt-1"
+                id="layout-page-category"
+                className="mt-1.5 flex h-10 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-[var(--directory-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--directory-green)]"
                 value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
+                onChange={(event) => setSelectedCategory(event.target.value)}
               >
-                {categories.map(category => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
+                {categories.map((category) => (
+                  <option key={category} value={category}>{category}</option>
                 ))}
               </select>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setNewPageDialogOpen(false)}>
+            <Button variant="outline" className="rounded-xl" onClick={() => setNewPageDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={() => {
-              // Create page with the selected category and pass the necessary data
-              handleCreatePage({
+            <Button
+              className="rounded-xl bg-[var(--directory-green)] hover:bg-[var(--directory-green-hover)]"
+              onClick={() => handleCreatePage({
                 title: newPageTitle,
-                category: selectedCategory || 'Uncategorized'
-              });
-            }}>Create</Button>
+                category: selectedCategory || 'Uncategorized',
+              })}
+            >
+              Create page
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

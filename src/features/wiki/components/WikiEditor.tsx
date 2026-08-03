@@ -1,4 +1,4 @@
-import React, { Component, useEffect, useRef, useCallback, ErrorInfo, ReactNode } from 'react';
+import React, { Component, useEffect, useRef, ErrorInfo, ReactNode } from 'react';
 import { FormattingToolbar, useCreateBlockNote } from '@blocknote/react';
 import { BlockNoteView } from '@blocknote/mantine';
 import { Image as ImageIcon } from 'lucide-react';
@@ -119,7 +119,7 @@ const WikiEditor: React.FC<WikiEditorProps> = ({
         const text = event.clipboardData.getData("text/plain");
 
         // Simple heuristic to detect markdown
-        const containsMarkdown = /[\*#\-\>\`\|\[\]]/.test(text) ||
+        const containsMarkdown = ['*', '#', '-', '>', '`', '|', '[', ']'].some((symbol) => text.includes(symbol)) ||
                                 /^\d+\.\s/.test(text) ||
                                 text.includes('http') ||
                                 text.includes('__') ||
@@ -215,9 +215,9 @@ const WikiEditor: React.FC<WikiEditorProps> = ({
 
   // Fallback UI when editor fails to render
   const fallbackEditor = (
-    <div className="p-6 bg-machuca-off-white rounded border border-machuca-jungle-green/20">
-      <h3 className="text-lg font-medium text-red-600">Editor could not be loaded</h3>
-      <p className="mt-2 text-machuca-neutral-gray">
+    <div className="rounded-2xl border border-red-200 bg-red-50/70 p-6">
+      <h3 className="font-header text-lg font-semibold text-red-700">Editor could not be loaded</h3>
+      <p className="mt-2 text-sm text-[var(--directory-muted)]">
         There was a problem loading the editor. Please refresh the page to try again.
       </p>
     </div>
@@ -225,23 +225,23 @@ const WikiEditor: React.FC<WikiEditorProps> = ({
 
   // Return the editor with an error boundary
   return (
-    <div className={`rounded-lg shadow ${className}`}>
+    <div className={className}>
       <EditorErrorBoundary fallback={fallbackEditor}>
         <div className="wiki-editor-container">
           <BlockNoteView
             editor={editor}
             formattingToolbar={false}
-            className="min-h-[200px] bg-gradient-to-b from-white to-machuca-off-white text-black rounded-lg overflow-hidden border border-machuca-jungle-green/10"
+            className="min-h-[200px] overflow-hidden rounded-2xl bg-[var(--directory-paper)] text-[var(--directory-ink)]"
           >
             {!readOnly && (
-              <div className="formatting-toolbar-container p-2 bg-machuca-off-white border-b border-machuca-jungle-green/10">
+              <div className="formatting-toolbar-container">
                 <FormattingToolbar />
                 
                 {/* Add custom image upload button */}
-                <div className="flex items-center px-2 ml-2 h-8 rounded border border-gray-200 bg-white shadow-sm hover:bg-gray-50">
+                <div className="ml-2 flex h-8 items-center rounded-lg border border-stone-200 bg-white px-2 shadow-sm hover:bg-[var(--directory-cream)]">
                   <button
                     type="button"
-                    className="flex items-center gap-1 text-sm font-medium text-gray-700"
+                    className="flex items-center gap-1 text-sm font-medium text-[var(--directory-ink)]"
                     title="Insert Image"
                     onClick={() => {
                       // Upload image using BlockNote's file picker
@@ -274,7 +274,7 @@ const WikiEditor: React.FC<WikiEditorProps> = ({
                                 // Create a temporary partial block
                                 // This uses the structure that BlockNote expects
                                 const imageBlock = {
-                                  type: 'image',
+                                  type: 'image' as const,
                                   props: {
                                     url: imageUrl,    // Use URL or src depending on version
                                     alt: file.name,
@@ -284,7 +284,7 @@ const WikiEditor: React.FC<WikiEditorProps> = ({
                                 
                                 // Insert the block at cursor position
                                 editor.insertBlocks(
-                                  [imageBlock as any], // Type assertion to bypass TS checking
+                                  [imageBlock],
                                   insertPosition.block,
                                   insertPosition.placement
                                 );

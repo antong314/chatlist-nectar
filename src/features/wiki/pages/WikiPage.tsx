@@ -150,10 +150,10 @@ const WikiPage: React.FC = () => {
   if (isLoading) {
     return (
       <WikiLayout title="Loading...">
-        <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="wiki-state-card min-h-[60vh]">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-[var(--directory-green)] border-r-transparent" />
           <div className="text-center">
-            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite] mb-4"></div>
-            <p className="text-muted-foreground">Loading wiki page...</p>
+            <p>Loading wiki page…</p>
           </div>
         </div>
       </WikiLayout>
@@ -164,10 +164,10 @@ const WikiPage: React.FC = () => {
   if (error || !page) {
     return (
       <WikiLayout title="Error">
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="text-center text-destructive">
-            <h2 className="text-xl font-semibold mb-2">Page not found</h2>
-            <p className="text-muted-foreground">{error || 'The requested wiki page could not be loaded'}</p>
+        <div className="wiki-state-card min-h-[60vh]">
+          <div className="text-center text-red-700">
+            <h2 className="mb-2 font-header text-xl font-semibold">Page not found</h2>
+            <p className="text-sm text-[var(--directory-muted)]">{error || 'The requested wiki page could not be loaded'}</p>
           </div>
         </div>
       </WikiLayout>

@@ -5,26 +5,27 @@
   display: flex !important;
   flex-direction: column-reverse !important; /* This puts the toolbar above the editor */
   gap: 0 !important; /* Remove gap between toolbar and editor */
-  background: linear-gradient(to bottom, #ffffff, #FAF9F6) !important; /* Eco-friendly gradient */
-  border-radius: 8px !important;
+  background: var(--directory-paper) !important;
+  border-radius: 16px !important;
   overflow: hidden !important; /* Ensure content doesn't overflow rounded corners */
-  box-shadow: 0 2px 8px rgba(46, 125, 50, 0.15) !important; /* Jungle green shadow */
-  border: 1px solid rgba(46, 125, 50, 0.1) !important; /* Subtle jungle green border */
+  box-shadow: 0 2px 12px rgba(46, 57, 44, 0.06) !important;
+  border: 1px solid rgba(120, 113, 108, 0.2) !important;
 }
 
 /* Center the formatting toolbar and set background color */
 .bn-formatting-toolbar {
   margin-inline: auto !important;
-  background-color: #FAF9F6 !important; /* Machuca off-white */
-  border-radius: 8px !important;
+  background-color: var(--directory-paper) !important;
+  border-radius: 12px !important;
   padding: 4px 8px !important;
-  box-shadow: 0 2px 5px rgba(46, 125, 50, 0.1) !important; /* Jungle green shadow */
+  box-shadow: 0 2px 8px rgba(46, 57, 44, 0.08) !important;
 }
 
 /* Fix editor background color */
 .bn-editor {
-  background: linear-gradient(to bottom, #ffffff, #FAF9F6) !important; /* Eco-friendly gradient */
-  border-radius: 0 0 8px 8px !important; /* Round bottom corners */
+  background: var(--directory-paper) !important;
+  border-radius: 0 0 16px 16px !important;
+  color: var(--directory-ink) !important;
   word-break: normal !important;
   overflow-wrap: break-word !important;
   hyphens: none !important;
@@ -32,7 +33,8 @@
 
 /* Ensure the editor has proper padding */
 .wiki-editor-container .bn-editor {
-  padding: 1.5rem !important; /* Slightly more padding like in image 2 */
+  padding: 1.5rem !important;
+  min-height: 60vh !important;
 }
 
 /* Editor text styling - default styles but allow colors to be changed */
@@ -53,45 +55,45 @@
 /* Hyperlink styling within the editor */
 .bn-editor a,
 .bn-editor a:visited {
-  color: #0000ee !important; /* Standard hyperlink blue color */
+  color: var(--directory-river) !important;
   text-decoration: underline !important;
   cursor: pointer !important;
 }
 
 .bn-editor a:hover {
-  color: #1a0dab !important; /* Darker blue on hover */
+  color: var(--directory-green) !important;
   text-decoration: underline !important;
 }
 
 /* Make sure the formatting toolbar container has proper styling */
 .formatting-toolbar-container {
-  background-color: #FAF9F6 !important; /* Machuca off-white */
-  border-bottom: 1px solid rgba(46, 125, 50, 0.1) !important; /* Subtle jungle green border */
+  background-color: var(--directory-paper) !important;
+  border-bottom: 1px solid rgba(120, 113, 108, 0.2) !important;
   padding: 8px !important;
   display: flex !important;
   justify-content: center !important;
-  border-radius: 8px 8px 0 0 !important; /* Round top corners */
+  border-radius: 16px 16px 0 0 !important;
 }
 
 /* Style the toolbar buttons to have eco-friendly background */
 .bn-formatting-toolbar button {
   background-color: #ffffff !important;
-  color: #2E7D32 !important; /* Jungle green text */
-  border-radius: 4px !important;
+  color: var(--directory-green) !important;
+  border-radius: 8px !important;
   margin: 0 2px !important;
-  border: 1px solid rgba(46, 125, 50, 0.1) !important; /* Subtle jungle green border */
+  border: 1px solid rgba(120, 113, 108, 0.18) !important;
 }
 
 /* Style the toolbar button hover state */
 .bn-formatting-toolbar button:hover {
-  background-color: #F1F8E9 !important; /* Light green hover */
-  color: #1B5E20 !important; /* Darker green on hover */
+  background-color: var(--directory-cream) !important;
+  color: var(--directory-green-hover) !important;
 }
 
 /* Style the wiki editor container to match eco theme */
 .wiki-editor-container {
-  border-radius: 8px !important;
+  border-radius: 16px !important;
   overflow: hidden !important;
-  box-shadow: 0 2px 8px rgba(46, 125, 50, 0.15) !important; /* Jungle green shadow */
-  border: 1px solid rgba(46, 125, 50, 0.1) !important; /* Subtle jungle green border */
+  box-shadow: 0 2px 12px rgba(46, 57, 44, 0.06) !important;
+  border: 1px solid rgba(120, 113, 108, 0.2) !important;
 }

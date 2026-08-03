@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Button } from "@/components/ui/button";
-import { Menu, Newspaper, BookOpen, FileText, ChevronDown, ChevronUp } from "lucide-react";
-import WikiSearch from "./WikiSearch";
+import { BookOpen, ChevronDown, ChevronUp, Menu, Newspaper } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import WikiSearch from './WikiSearch';
 
 interface WikiHeaderProps {
   title: string;
@@ -10,102 +10,80 @@ interface WikiHeaderProps {
   onMenuToggle: () => void;
 }
 
-const WikiHeader: React.FC<WikiHeaderProps> = ({
-  title,
-  isEditing = false,
-  onMenuToggle
-}) => {
+const WikiHeader: React.FC<WikiHeaderProps> = ({ title, onMenuToggle }) => {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
   return (
-    <header className="border-b bg-white sticky top-0 z-50">
-      {/* Main header row */}
-      <div className="flex items-center justify-between px-4 h-16">
-        <div className="flex items-center">
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="mr-2 md:mr-4" 
-            onClick={onMenuToggle}
-            aria-label="Toggle menu"
-          >
-            <Menu className="h-4 w-4 md:h-5 md:w-5" />
-          </Button>
-          
-          <div className="flex items-center">
-            <div className="bg-machuca-jungle-green/10 p-1.5 md:p-2 rounded-md mr-2">
-              <FileText className="h-4 w-4 md:h-5 md:w-5 text-machuca-jungle-green" />
-            </div>
-            <div className="flex items-center">
-              <Link to="/wiki" className="text-xl md:text-2xl font-header font-bold text-machuca-jungle-green">
-                Machuca Wiki
-              </Link>
-            </div>
-            <div className="flex items-center ml-4">
-              {/* Desktop navigation links - visible on all screen sizes */}
-              <div className="hidden md:flex items-center">
-                <div className="h-6 w-px bg-machuca-earth-brown/30"></div>
-                <Link to="/" className="ml-4 text-machuca-neutral-gray hover:text-machuca-jungle-green transition-colors flex items-center font-body">
-                  <BookOpen className="h-5 w-5 mr-1" />
-                  <span className="text-lg">MV Directory</span>
-                </Link>
-                <div className="ml-4 h-6 w-px bg-machuca-earth-brown/30"></div>
-                <Link to="/elements" className="ml-4 text-machuca-neutral-gray hover:text-machuca-jungle-green transition-colors flex items-center font-body">
-                  <Newspaper className="h-5 w-5 mr-1" />
-                  <span className="text-lg">Elements</span>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        {/* Desktop search only */}
-        <div className="hidden md:block">
-          <WikiSearch variant="inline" />
-        </div>
-        
-        {/* Mobile navigation toggle and search */}
-        <div className="flex md:hidden items-center gap-2">
-          <WikiSearch variant="icon" />
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="flex items-center" 
-            onClick={() => setMobileNavOpen(!mobileNavOpen)}
-            aria-label="Toggle navigation"
-          >
-            <span className="sr-only">Navigation</span>
-            {mobileNavOpen ? (
-              <ChevronUp className="h-4 w-4" />
-            ) : (
-              <ChevronDown className="h-4 w-4" />
-            )}
-          </Button>
-        </div>
-      </div>
-      
-      {/* Mobile navigation dropdown */}
-      {mobileNavOpen && (
-        <div className="md:hidden border-t px-4 py-2 bg-gray-50">
-          <div className="flex flex-col space-y-2">
-            <Link 
-              to="/" 
-              className="text-gray-500 hover:text-gray-800 transition-colors flex items-center p-2"
-              onClick={() => setMobileNavOpen(false)}
+    <header className="sticky top-0 z-50 bg-[#f8f5ed]/90 py-3 backdrop-blur-md sm:py-4">
+      <div className="directory-container">
+        <nav className="directory-nav" aria-label={`${title} navigation`}>
+          <div className="flex min-w-0 items-center gap-1 sm:gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10 shrink-0 rounded-full text-stone-500 hover:bg-[var(--directory-cream)] hover:text-[var(--directory-green)]"
+              onClick={onMenuToggle}
+              aria-label="Toggle wiki pages"
             >
-              <BookOpen className="h-4 w-4 mr-2" />
-              <span>MV Directory</span>
+              <Menu className="h-5 w-5" />
+            </Button>
+
+            <Link to="/wiki" className="directory-wordmark" aria-label="San Mateo Love Wiki home">
+              <img
+                src="/SanMateo_love_logo2_sm.jpg"
+                alt=""
+                className="h-10 w-10 rounded-xl object-cover shadow-sm sm:h-11 sm:w-11"
+              />
+              <span className="min-w-0">
+                <span className="block truncate font-header text-base font-semibold leading-tight text-[var(--directory-ink)] sm:text-lg">
+                  San Mateo Love
+                </span>
+                <span className="hidden text-xs text-[var(--directory-muted)] sm:block">Community wiki</span>
+              </span>
             </Link>
-            <Link 
-              to="/elements" 
-              className="text-gray-500 hover:text-gray-800 transition-colors flex items-center p-2"
+          </div>
+
+          <div className="flex items-center gap-1 sm:gap-2">
+            <div className="hidden lg:block">
+              <WikiSearch variant="inline" />
+            </div>
+            <Link to="/" className="directory-nav-link">
+              <BookOpen className="h-4 w-4" aria-hidden="true" />
+              <span className="hidden sm:inline">Directory</span>
+            </Link>
+            <Link to="/elements" className="directory-nav-link hidden md:inline-flex">
+              <Newspaper className="h-4 w-4" aria-hidden="true" />
+              <span>Elements</span>
+            </Link>
+            <div className="lg:hidden">
+              <WikiSearch variant="icon" />
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10 rounded-full text-stone-500 hover:bg-[var(--directory-cream)] hover:text-[var(--directory-green)] md:hidden"
+              onClick={() => setMobileNavOpen((open) => !open)}
+              aria-label="Toggle navigation"
+              aria-expanded={mobileNavOpen}
+            >
+              {mobileNavOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </Button>
+          </div>
+        </nav>
+
+        {mobileNavOpen && (
+          <div className="mt-2 rounded-2xl border border-white/70 bg-white/95 p-2 shadow-sm md:hidden">
+            <Link
+              to="/elements"
+              className="directory-nav-link w-full justify-start"
               onClick={() => setMobileNavOpen(false)}
             >
-              <Newspaper className="h-4 w-4 mr-2" />
+              <Newspaper className="h-4 w-4" />
               <span>Elements</span>
             </Link>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </header>
   );
 };

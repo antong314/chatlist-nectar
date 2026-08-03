@@ -215,6 +215,23 @@
     background: rgba(99, 132, 76, 0.08);
   }
 
+  .wiki-hero {
+    @apply relative flex flex-col justify-between gap-4 overflow-hidden rounded-[1.75rem] border border-white/80 px-5 py-7 shadow-sm sm:flex-row sm:items-end sm:px-8 sm:py-9;
+    background:
+      linear-gradient(112deg, rgba(255, 253, 248, 0.98), rgba(245, 236, 216, 0.9)),
+      url('./assets/jungle-silhouette.svg') right bottom / auto 90% no-repeat;
+  }
+
+  .wiki-hero::after {
+    content: '';
+    @apply pointer-events-none absolute -bottom-20 -right-10 h-48 w-48 rounded-full;
+    background: rgba(99, 132, 76, 0.08);
+  }
+
+  .wiki-state-card {
+    @apply flex min-h-64 flex-col items-center justify-center gap-3 rounded-2xl border border-stone-200/80 bg-[var(--directory-paper)] p-8 text-center text-[var(--directory-muted)] shadow-[0_2px_12px_rgba(46,57,44,0.05)];
+  }
+
   .directory-hero-title {
     @apply max-w-2xl font-header text-[2rem] font-semibold leading-[1.08] tracking-[-0.025em] text-[var(--directory-ink)] sm:text-5xl;
   }
