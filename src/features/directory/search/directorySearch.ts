@@ -71,7 +71,26 @@ function fuzzyMatch(left: string, right: string): boolean {
     && levenshteinDistance(left, right) <= allowedDistance;
 }
 
+function groupContainsExactToken(group: readonly string[], token: string): boolean {
+  return group.some((alias) =>
+    normalizeSearchText(alias).split(' ').includes(token),
+  );
+}
+
+function includesWholePhrase(searchableText: string, phrase: string): boolean {
+  return ` ${searchableText} `.includes(` ${phrase} `);
+}
+
 function aliasGroupsForToken(token: string): ReadonlyArray<readonly string[]> {
+  const exactGroups = SEARCH_SYNONYM_GROUPS.filter((group) =>
+    groupContainsExactToken(group, token),
+  );
+
+  // A recognized service term is already valid vocabulary. Keep it anchored to
+  // its curated synonym group instead of fuzzily turning it into another valid
+  // word in a provider description (for example, "massage" -> "message").
+  if (exactGroups.length > 0) return exactGroups;
+
   return SEARCH_SYNONYM_GROUPS.filter((group) =>
     group.some((alias) => {
       const normalizedAlias = normalizeSearchText(alias);
@@ -83,10 +102,25 @@ function aliasGroupsForToken(token: string): ReadonlyArray<readonly string[]> {
 }
 
 function tokenMatches(token: string, searchableText: string, searchableTokens: string[]): boolean {
+  const aliasGroups = aliasGroupsForToken(token);
+  const isRecognizedServiceTerm = aliasGroups.some((group) =>
+    groupContainsExactToken(group, token),
+  );
+
+  if (isRecognizedServiceTerm) {
+    if (includesWholePhrase(searchableText, token)) return true;
+
+    return aliasGroups.some((aliasGroup) =>
+      aliasGroup.some((alias) =>
+        includesWholePhrase(searchableText, normalizeSearchText(alias)),
+      ),
+    );
+  }
+
   if (searchableText.includes(token)) return true;
   if (searchableTokens.some((candidate) => fuzzyMatch(token, candidate))) return true;
 
-  return aliasGroupsForToken(token).some((aliasGroup) =>
+  return aliasGroups.some((aliasGroup) =>
     aliasGroup.some((alias) => {
       const normalizedAlias = normalizeSearchText(alias);
       return searchableText.includes(normalizedAlias)
@@ -106,8 +140,6 @@ export function matchesDirectorySearch(contact: Contact, query: string): boolean
     contact.category,
     contact.description,
   ].filter(Boolean).join(' '));
-
-  if (searchableText.includes(normalizedQuery)) return true;
 
   const searchableTokens = searchableText.split(' ').filter(Boolean);
   return normalizedQuery

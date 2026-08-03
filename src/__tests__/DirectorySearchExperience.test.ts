@@ -34,6 +34,27 @@ const contacts: Contact[] = [
     category: 'Construction',
     phone: '50680000004',
   },
+  {
+    id: '5',
+    name: 'Somatic Coach',
+    description: 'Somatic coaching and leadership mentoring. Message me to learn more.',
+    category: 'Healer',
+    phone: '50680000005',
+  },
+  {
+    id: '6',
+    name: 'Bodywork Studio',
+    description: 'Therapeutic massage and wellness sessions',
+    category: 'Healer',
+    phone: '50680000006',
+  },
+  {
+    id: '7',
+    name: 'Market Equipment',
+    description: 'Shopping cart repair and maintenance',
+    category: 'Service',
+    phone: '50680000007',
+  },
 ];
 
 describe('directory search experience', () => {
@@ -59,6 +80,12 @@ describe('directory search experience', () => {
   test('tolerates useful spelling mistakes', () => {
     expect(matchesDirectorySearch(contacts[0], 'plumbr')).toBe(true);
     expect(matchesDirectorySearch(contacts[1], 'mecancio')).toBe(true);
+  });
+
+  test('does not turn a recognized service term into an unrelated valid word', () => {
+    expect(matchesDirectorySearch(contacts[4], 'massage')).toBe(false);
+    expect(matchesDirectorySearch(contacts[5], 'massage')).toBe(true);
+    expect(matchesDirectorySearch(contacts[6], 'art')).toBe(false);
   });
 
   test('requires every search concept to match', () => {
