@@ -40,6 +40,7 @@ class MemoryStore {
   async findContactsByCategory(category) {
     return this.contacts.filter((contact) => contact.category === category);
   }
+  async findSearchCandidates() { return this.contacts; }
   async submitReview(review) { this.reviews.push(review); return review; }
 }
 
@@ -50,6 +51,7 @@ const createBot = (store = new MemoryStore()) => ({
     ai: {
       inferCategory: async () => null,
       classifyMessage: async () => null,
+      planDirectorySearch: async () => null,
     },
     fetchMedia: async () => [
       'BEGIN:VCARD',
@@ -123,6 +125,77 @@ test('returns native contact-card media for category searches', async () => {
   const messages = await bot.handle(inbound({ Body: 'Can you send me all taxi contacts?' }));
   assert.match(messages[0].body, /1 taxis & drivers contact/);
   assert.match(messages[1].mediaUrl, /\/bot\/contact\/taxi-1\.vcf\?token=/);
+});
+
+test('returns only massage-related providers instead of the whole wellness category', async () => {
+  const { bot, store } = createBot();
+  store.contacts.push(
+    {
+      id: 'massage-1',
+      title: 'Jocsan',
+      subtitle: 'Physiotherapist offering dry needling and massage',
+      category: 'Healer',
+      phone_number: '+50670001111',
+    },
+    {
+      id: 'physio-1',
+      title: 'Diana',
+      subtitle: 'Physio therapy',
+      category: 'Healer',
+      phone_number: '+50670002222',
+    },
+    {
+      id: 'astrology-1',
+      title: 'Astrology Studio',
+      subtitle: 'Astrology, meditation and spiritual coaching',
+      category: 'Healer',
+      phone_number: '+50670003333',
+    },
+  );
+
+  const messages = await bot.handle(inbound({ Body: 'Do you know anyone who does massages?' }));
+  assert.match(messages[0].body, /2 massage and bodywork matches/);
+  assert.equal(messages.length, 3);
+  assert.ok(messages.some((message) => message.mediaUrl?.includes('massage-1')));
+  assert.ok(messages.some((message) => message.mediaUrl?.includes('physio-1')));
+  assert.ok(!messages.some((message) => message.mediaUrl?.includes('astrology-1')));
+});
+
+test('searches descriptions for chefs without returning every food listing', async () => {
+  const { bot, store } = createBot();
+  store.contacts.push(
+    {
+      id: 'chef-1',
+      title: 'Irene',
+      subtitle: 'Pastry chef making gluten-free and vegan products',
+      category: 'Groceries',
+      phone_number: '+50670001111',
+    },
+    {
+      id: 'market-1',
+      title: 'Organic Market',
+      subtitle: 'Organic produce and household goods',
+      category: 'Groceries',
+      phone_number: '+50670002222',
+    },
+  );
+
+  const messages = await bot.handle(inbound({ Body: 'Can you recommend a chef?' }));
+  assert.match(messages[0].body, /1 chefs and cooks match/);
+  assert.equal(messages.length, 2);
+  assert.match(messages[1].mediaUrl, /chef-1/);
+});
+
+test('still supports intentionally broad category searches', async () => {
+  const { bot, store } = createBot();
+  store.contacts.push(
+    { id: 'healer-1', title: 'Massage', subtitle: 'Massage', category: 'Healer', phone_number: '+50670001111' },
+    { id: 'healer-2', title: 'Astrology', subtitle: 'Astrology', category: 'Healer', phone_number: '+50670002222' },
+  );
+
+  const messages = await bot.handle(inbound({ Body: 'Send me all wellness contacts' }));
+  assert.match(messages[0].body, /2 wellness contacts/);
+  assert.equal(messages.length, 3);
 });
 
 test('accepts an optional review after contact submission', async () => {

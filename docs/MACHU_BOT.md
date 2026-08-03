@@ -13,7 +13,12 @@ Node process serves the existing Vite build and the bot webhook at `POST /bot`.
   listing immediately, then offers the same optional enrichment.
 - Send `5 stars — kind and reliable`: Machu saves an account-free review for
   the most recently submitted contact.
-- Ask `send me all taxi contacts`: Machu returns native WhatsApp vCards.
+- Ask `send me all taxi contacts`: Machu returns the full category as native
+  WhatsApp vCards.
+- Ask for a specific service, such as `who does massages?` or `find me a chef`:
+  Machu expands the intent into English/Spanish professional terms, ranks name
+  and description matches across the directory, and does not return unrelated
+  providers merely because they share a broad category.
 
 There is no publish or confirmation step. Once Machu has a valid name and phone
 number, the contact is in the directory.

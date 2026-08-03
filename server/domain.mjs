@@ -61,7 +61,148 @@ const CATEGORY_ALIASES = {
   Service: ['service', 'services', 'servicio', 'servicios'],
 };
 
+const SPECIFIC_SEARCH_INTENTS = [
+  {
+    pattern: /\b(massag(?:e|es|ist)|masseu(?:r|se)|massous|masaj(?:e|es|ista)|bodywork|physio(?:therapy|therapist|\s+therapy))\b/i,
+    serviceLabel: 'massage and bodywork',
+    category: 'Healer',
+    terms: [
+      'massage', 'massages', 'massage therapist', 'masseuse', 'masseur', 'massous',
+      'bodywork', 'physio therapy', 'physiotherapy', 'physiotherapist',
+      'physical therapy', 'masaje', 'masajista', 'fisioterapia', 'fisioterapeuta',
+    ],
+  },
+  {
+    pattern: /\b(chef|cook|catering|caterer|cocin(?:a|ar|ero|era)|reposter(?:o|a))\b/i,
+    serviceLabel: 'chefs and cooks',
+    category: 'Groceries',
+    terms: [
+      'chef', 'pastry chef', 'cook', 'cooking', 'catering', 'caterer',
+      'cocinero', 'cocinera', 'cocina', 'repostero', 'repostera',
+    ],
+  },
+  {
+    pattern: /\b(plumb(?:er|ing)|plomer(?:o|a)|fontaner(?:o|a))\b/i,
+    serviceLabel: 'plumbers',
+    category: 'Construction',
+    terms: ['plumber', 'plumbing', 'plomero', 'plomera', 'fontanero', 'fontanera', 'tuberia', 'tubería'],
+  },
+  {
+    pattern: /\b(electrician|electrical|electricista|electricidad)\b/i,
+    serviceLabel: 'electricians',
+    category: 'Construction',
+    terms: ['electrician', 'electrical', 'electricista', 'electricidad'],
+  },
+  {
+    pattern: /\b(photograph(?:er|y)|fotograf(?:o|a|ia|ía))\b/i,
+    serviceLabel: 'photographers',
+    category: 'Creative',
+    terms: ['photographer', 'photography', 'fotografo', 'fotógrafo', 'fotografa', 'fotógrafa', 'fotografia', 'fotografía'],
+  },
+];
+
 const cleanText = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
+
+export const normalizeSearchText = (value) => cleanText(value)
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLocaleLowerCase()
+  .replace(/[^a-z0-9]+/g, ' ')
+  .trim();
+
+export const looksLikeDirectorySearch = (value) => {
+  const normalized = cleanText(value);
+  return /\b(send|show|find|search|looking|need|recommend|give|all|any|anyone|someone|know|does|buscar|busco|necesito|manda|enviar|conoces|alguien|contactos?)\b/i.test(normalized);
+};
+
+export const planSearchHeuristically = (value) => {
+  const normalized = cleanText(value);
+  if (!looksLikeDirectorySearch(normalized)) return null;
+
+  const specific = SPECIFIC_SEARCH_INTENTS.find((intent) => intent.pattern.test(normalized));
+  if (specific) {
+    return {
+      broadCategory: false,
+      category: specific.category,
+      serviceLabel: specific.serviceLabel,
+      searchTerms: specific.terms,
+    };
+  }
+
+  const lower = normalized.toLocaleLowerCase();
+  const explicitlyBroad = /\b(all|every|any|contacts?|everyone|todos?|todas?|cualquiera)\b/i.test(lower);
+  if (explicitlyBroad) {
+    for (const category of DIRECTORY_CATEGORIES) {
+      const categoryNames = [category, CATEGORY_LABELS[category]];
+      if (categoryNames.some((candidate) => lower.includes(candidate.toLocaleLowerCase()))) {
+        return {
+          broadCategory: true,
+          category,
+          serviceLabel: CATEGORY_LABELS[category] || category,
+          searchTerms: [],
+        };
+      }
+    }
+  }
+
+  return null;
+};
+
+const levenshteinDistance = (left, right) => {
+  if (left === right) return 0;
+  if (!left.length) return right.length;
+  if (!right.length) return left.length;
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let leftIndex = 0; leftIndex < left.length; leftIndex += 1) {
+    const current = [leftIndex + 1];
+    for (let rightIndex = 0; rightIndex < right.length; rightIndex += 1) {
+      current[rightIndex + 1] = Math.min(
+        current[rightIndex] + 1,
+        previous[rightIndex + 1] + 1,
+        previous[rightIndex] + (left[leftIndex] === right[rightIndex] ? 0 : 1),
+      );
+    }
+    previous.splice(0, previous.length, ...current);
+  }
+  return previous[right.length];
+};
+
+const fieldTermScore = (field, term, baseScore) => {
+  const normalizedField = normalizeSearchText(field);
+  const normalizedTerm = normalizeSearchText(term);
+  if (!normalizedField || normalizedTerm.length < 3) return 0;
+
+  if (` ${normalizedField} `.includes(` ${normalizedTerm} `)) return baseScore;
+  const compactTerm = normalizedTerm.replace(/\s/g, '');
+  const compactField = normalizedField.replace(/\s/g, '');
+  if (compactTerm.length >= 6 && compactField.includes(compactTerm)) return baseScore * 0.8;
+
+  const termTokens = normalizedTerm.split(' ').filter((token) => token.length >= 4);
+  const fieldTokens = normalizedField.split(' ');
+  if (termTokens.length === 1 && termTokens[0].length >= 9) {
+    const [token] = termTokens;
+    const tolerance = token.length >= 12 ? 2 : 1;
+    if (fieldTokens.some((candidate) => Math.abs(candidate.length - token.length) <= tolerance
+      && levenshteinDistance(candidate, token) <= tolerance)) return baseScore * 0.45;
+  }
+  return 0;
+};
+
+export const rankContactsForSearch = (contacts, plan, limit = 20) => {
+  const terms = Array.from(new Set((plan.searchTerms ?? []).map(normalizeSearchText).filter(Boolean)));
+  return contacts.map((contact) => {
+    const textScore = terms.reduce((score, term) => score
+      + fieldTermScore(contact.title, term, 12)
+      + fieldTermScore(contact.subtitle, term, 8), 0);
+    const categoryBonus = textScore > 0 && contact.category === plan.category ? 1 : 0;
+    return { contact, score: textScore + categoryBonus };
+  })
+    .filter((result) => result.score > 0)
+    .sort((left, right) => right.score - left.score
+      || String(left.contact.title).localeCompare(String(right.contact.title)))
+    .slice(0, limit)
+    .map((result) => result.contact);
+};
 
 export const normalizePhone = (value, defaultCountryCode = '506') => {
   let digits = String(value ?? '').replace(/^whatsapp:/i, '').replace(/\D/g, '');

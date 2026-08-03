@@ -87,6 +87,17 @@ export class DirectoryStore {
     return data ?? [];
   }
 
+  async findSearchCandidates(limit = 200) {
+    const { data, error } = await this.client
+      .from('contacts')
+      .select('id,title,subtitle,category,phone_number,website_url,map_url,image_url')
+      .eq('is_deleted', false)
+      .order('title', { ascending: true })
+      .limit(limit);
+    if (error) throw databaseError('load directory search candidates', error);
+    return data ?? [];
+  }
+
   async getConversation(conversationKey) {
     const { data, error } = await this.client.rpc('get_bot_conversation', {
       p_conversation_key: conversationKey,

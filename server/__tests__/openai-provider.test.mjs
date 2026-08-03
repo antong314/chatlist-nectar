@@ -34,3 +34,33 @@ test('fails open to deterministic routing when OpenAI is unavailable', async () 
   const provider = new OpenAIProvider({ apiKey: '' });
   assert.equal(await provider.classifyMessage('hello'), null);
 });
+
+test('builds a specific multilingual directory search plan', async () => {
+  let requestBody;
+  const provider = new OpenAIProvider({
+    apiKey: 'test-key',
+    fetchImpl: async (_url, options) => {
+      requestBody = JSON.parse(options.body);
+      return new Response(JSON.stringify({
+        output: [{
+          type: 'message',
+          content: [{
+            type: 'output_text',
+            text: JSON.stringify({
+              is_search: true,
+              broad_category: false,
+              category: 'Healer',
+              service_label: 'massage therapists',
+              search_terms: ['massage', 'masajista', 'physiotherapy'],
+            }),
+          }],
+        }],
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    },
+  });
+
+  const plan = await provider.planDirectorySearch('Who does massages?');
+  assert.equal(requestBody.text.format.name, 'directory_search_plan');
+  assert.equal(plan.broad_category, false);
+  assert.deepEqual(plan.search_terms, ['massage', 'masajista', 'physiotherapy']);
+});

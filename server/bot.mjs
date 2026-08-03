@@ -3,13 +3,15 @@ import {
   CATEGORY_LABELS,
   DIRECTORY_CATEGORIES,
   detectAddRequest,
-  detectSearchCategory,
   extractPhoneFromText,
   inferCategoryHeuristically,
+  looksLikeDirectorySearch,
   normalizePhone,
   parseCategoryReply,
   parseReview,
   parseVcards,
+  planSearchHeuristically,
+  rankContactsForSearch,
 } from './domain.mjs';
 
 const DESCRIPTION_MAX_LENGTH = 1000;
@@ -107,7 +109,7 @@ export class MachuBot {
     }];
   }
 
-  async search(category) {
+  async searchBroadCategory(category) {
     const contacts = await this.store.findContactsByCategory(category, 20);
     if (contacts.length === 0) {
       return [{ body: `I couldn’t find any ${CATEGORY_LABELS[category] || category} contacts yet.` }];
@@ -118,6 +120,51 @@ export class MachuBot {
     }];
     for (const contact of contacts) messages.push({ mediaUrl: this.mediaUrl(contact.id) });
     return messages;
+  }
+
+  async searchSpecific(plan) {
+    const candidates = await this.store.findSearchCandidates(200);
+    const contacts = rankContactsForSearch(candidates, plan, 20);
+    const serviceLabel = String(plan.serviceLabel || 'provider').trim();
+    if (contacts.length === 0) {
+      const categoryNote = plan.category
+        ? ` I didn’t send the whole ${CATEGORY_LABELS[plan.category] || plan.category} category because it would include unrelated providers.`
+        : '';
+      return [{ body: `I couldn’t find an exact ${serviceLabel} match in the directory yet.${categoryNote}` }];
+    }
+
+    const messages = [{
+      body: `🌿 I found ${contacts.length} ${serviceLabel} match${contacts.length === 1 ? '' : 'es'} in sanmateo.love:`,
+    }];
+    for (const contact of contacts) messages.push({ mediaUrl: this.mediaUrl(contact.id) });
+    return messages;
+  }
+
+  async planAndRunSearch(body, heuristicPlan = null) {
+    const modelPlan = await this.ai?.planDirectorySearch?.(body);
+    const modelIsUsable = modelPlan?.is_search
+      && (modelPlan.broad_category || (modelPlan.search_terms?.length > 0));
+
+    if (heuristicPlan?.broadCategory) {
+      return this.searchBroadCategory(heuristicPlan.category);
+    }
+
+    const plan = modelIsUsable ? {
+      broadCategory: Boolean(modelPlan.broad_category),
+      category: DIRECTORY_CATEGORIES.includes(modelPlan.category) ? modelPlan.category : (heuristicPlan?.category || ''),
+      serviceLabel: String(modelPlan.service_label || heuristicPlan?.serviceLabel || 'provider').trim(),
+      searchTerms: Array.from(new Set([
+        ...((heuristicPlan && !heuristicPlan.broadCategory) ? [] : (modelPlan.search_terms ?? [])),
+        ...(heuristicPlan?.searchTerms ?? []),
+      ])),
+    } : heuristicPlan;
+
+    // Known specific intents are a guardrail against an overly broad model plan.
+    if (heuristicPlan && !heuristicPlan.broadCategory && plan) plan.broadCategory = false;
+    if (!plan) return null;
+    if (plan.broadCategory && plan.category) return this.searchBroadCategory(plan.category);
+    if (plan.searchTerms?.length > 0) return this.searchSpecific(plan);
+    return null;
   }
 
   async saveReview({ conversation, review, senderPhone, profileName, conversationKey }) {
@@ -198,8 +245,14 @@ export class MachuBot {
       return this.addContacts(cards, conversationKey);
     }
 
-    const explicitSearch = detectSearchCategory(body);
-    if (explicitSearch) return this.search(explicitSearch);
+    const heuristicSearchPlan = planSearchHeuristically(body);
+    if (heuristicSearchPlan?.broadCategory) {
+      return this.searchBroadCategory(heuristicSearchPlan.category);
+    }
+    if (looksLikeDirectorySearch(body)) {
+      const searchResult = await this.planAndRunSearch(body, heuristicSearchPlan);
+      if (searchResult) return searchResult;
+    }
 
     const explicitAdd = detectAddRequest(body, senderPhone, profileName);
     if (explicitAdd) return this.addContacts([explicitAdd], conversationKey);
@@ -263,7 +316,7 @@ export class MachuBot {
 
     const classified = await this.ai?.classifyMessage?.(body);
     if (classified?.intent === 'search_directory' && DIRECTORY_CATEGORIES.includes(classified.category)) {
-      return this.search(classified.category);
+      return this.searchBroadCategory(classified.category);
     }
     if (classified?.intent === 'add_contact') {
       const phone = normalizePhone(classified.phone) || extractPhoneFromText(body)?.normalized;

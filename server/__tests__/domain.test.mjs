@@ -9,6 +9,8 @@ import {
   normalizePhone,
   parseReview,
   parseVcards,
+  planSearchHeuristically,
+  rankContactsForSearch,
 } from '../domain.mjs';
 
 test('normalizes Costa Rican local and WhatsApp phone numbers', () => {
@@ -46,6 +48,25 @@ test('routes directory searches and category descriptions', () => {
   assert.equal(detectSearchCategory('I am a taxi driver'), null);
   assert.equal(inferCategoryHeuristically('Airport taxi and local driver').category, 'Taxi');
   assert.equal(inferCategoryHeuristically('Fisioterapia, Pilates and wellness').category, 'Healer');
+});
+
+test('keeps specific service searches narrower than their category', () => {
+  const plan = planSearchHeuristically('Do you know anyone who does massages?');
+  assert.equal(plan.broadCategory, false);
+  assert.equal(plan.category, 'Healer');
+
+  const matches = rankContactsForSearch([
+    { id: '1', title: 'Physio', subtitle: 'Physio therapy and massage', category: 'Healer' },
+    { id: '2', title: 'Coach', subtitle: 'Leadership coaching', category: 'Healer' },
+  ], plan);
+  assert.deepEqual(matches.map((contact) => contact.id), ['1']);
+});
+
+test('recognizes an explicitly broad category request', () => {
+  const plan = planSearchHeuristically('Send me all wellness contacts');
+  assert.equal(plan.broadCategory, true);
+  assert.equal(plan.category, 'Healer');
+  assert.deepEqual(plan.searchTerms, []);
 });
 
 test('parses reviews without mistaking a bare number for one', () => {

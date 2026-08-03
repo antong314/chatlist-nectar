@@ -122,4 +122,36 @@ export class OpenAIProvider {
       },
     });
   }
+
+  async planDirectorySearch(message) {
+    return this.structured({
+      name: 'directory_search_plan',
+      instructions: [
+        'Create a precise search plan for a small local service-provider directory.',
+        'A specific request must remain specific: massage is not all wellness, chef is not all food, and plumber is not all home repair.',
+        'For a specific service, produce up to 14 useful English and Spanish search terms, common spellings, and closely equivalent professional terms that could appear in a provider name or description.',
+        'Do not include unrelated services from the same broad category.',
+        'Set broad_category true only when the user explicitly asks for an entire named directory category, such as all wellness contacts or every taxi.',
+        'Choose category only as a ranking hint. Use an empty category when no category is reasonably implied.',
+        'service_label should be a short natural plural phrase suitable for: I found 3 {service_label} matches.',
+      ].join(' '),
+      input: message,
+      schema: {
+        type: 'object',
+        properties: {
+          is_search: { type: 'boolean' },
+          broad_category: { type: 'boolean' },
+          category: { type: 'string', enum: ['', ...DIRECTORY_CATEGORIES] },
+          service_label: { type: 'string', maxLength: 80 },
+          search_terms: {
+            type: 'array',
+            items: { type: 'string', minLength: 2, maxLength: 60 },
+            maxItems: 14,
+          },
+        },
+        required: ['is_search', 'broad_category', 'category', 'service_label', 'search_terms'],
+        additionalProperties: false,
+      },
+    });
+  }
 }
