@@ -239,9 +239,9 @@ describe('Provider experience', () => {
 
     expect(screen.getByText('Anonymous neighbor')).toBeInTheDocument();
     expect(screen.getByText('Friendly and reliable.')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /open anonymous neighbor's review photo 1/i })).toHaveAttribute(
-      'href',
-      'https://example.com/review-1.jpg',
+    expect(screen.getByRole('button', { name: /view anonymous neighbor's review photo 1 of 2/i })).toHaveAttribute(
+      'aria-haspopup',
+      'dialog',
     );
     expect(screen.getAllByRole('img', { name: /anonymous neighbor's review photo/i })).toHaveLength(2);
   });

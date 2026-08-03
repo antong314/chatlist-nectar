@@ -2,6 +2,7 @@ import React from 'react';
 import { MessageSquareText } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getSafeExternalUrl } from '@/lib/urls';
+import { ReviewPhotoGallery } from './ReviewPhotoGallery';
 import { StarRating } from './StarRating';
 
 export interface ProviderReviewView {
@@ -83,26 +84,7 @@ export function ProviderReviews({ averageRating, isLoading = false, reviews }: P
                   </div>
                   {review.comment && <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-700">{review.comment}</p>}
                   {imageUrls.length > 0 && (
-                    <ul aria-label={`Photos from ${reviewerLabel}'s review`} className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                      {imageUrls.map((imageUrl, index) => (
-                        <li className="aspect-square overflow-hidden rounded-lg bg-gray-100" key={`${imageUrl}-${index}`}>
-                          <a
-                            aria-label={`Open ${reviewerLabel}'s review photo ${index + 1}`}
-                            className="block h-full w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
-                            href={imageUrl}
-                            rel="noopener noreferrer"
-                            target="_blank"
-                          >
-                            <img
-                              alt={`${reviewerLabel}'s review photo ${index + 1}`}
-                              className="h-full w-full object-cover transition duration-200 hover:scale-105"
-                              loading="lazy"
-                              src={imageUrl}
-                            />
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
+                    <ReviewPhotoGallery imageUrls={imageUrls} reviewerLabel={reviewerLabel} />
                   )}
                 </li>
               );
