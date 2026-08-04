@@ -215,6 +215,26 @@
     background: rgba(99, 132, 76, 0.08);
   }
 
+  .directory-hero-content {
+    @apply relative z-10 grid items-center gap-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:gap-8;
+  }
+
+  .machu-promo-card {
+    @apply relative flex items-center gap-4 overflow-hidden rounded-3xl border border-white/90 bg-white/75 p-3.5 shadow-[0_10px_30px_rgba(36,87,58,0.1)] backdrop-blur-sm lg:block lg:p-4;
+  }
+
+  .machu-promo-image {
+    @apply h-24 w-24 shrink-0 rounded-2xl object-cover shadow-sm lg:h-auto lg:w-full;
+  }
+
+  .machu-whatsapp-btn {
+    @apply mt-3 inline-flex min-h-10 items-center justify-center gap-2 rounded-full bg-[var(--directory-whatsapp)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-green-800 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-800 focus-visible:ring-offset-2;
+  }
+
+  .machu-nav-btn {
+    @apply min-h-10 items-center gap-1.5 whitespace-nowrap rounded-full border border-green-900/15 bg-green-50/80 px-3.5 py-2 text-sm font-semibold text-[var(--directory-green)] transition hover:-translate-y-0.5 hover:bg-green-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--directory-green)] focus-visible:ring-offset-2;
+  }
+
   .wiki-hero {
     @apply relative flex flex-col justify-between gap-4 overflow-hidden rounded-[1.75rem] border border-white/80 px-5 py-7 shadow-sm sm:flex-row sm:items-end sm:px-8 sm:py-9;
     background:

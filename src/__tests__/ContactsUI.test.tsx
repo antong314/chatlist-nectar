@@ -103,6 +103,21 @@ describe('Contacts UI', () => {
     expect(screen.getByText('Instacart')).toBeInTheDocument();
   });
 
+  test('promotes Machu with WhatsApp links and an eco-bot visual', () => {
+    setup();
+
+    const machuLinks = screen.getAllByRole('link', { name: /Ask Machu|Ask on WhatsApp/i });
+    expect(machuLinks).toHaveLength(2);
+    machuLinks.forEach((link) => {
+      expect(link).toHaveAttribute('href', 'https://wa.me/15204473525?text=Hi%20Machu!');
+      expect(link).toHaveAttribute('target', '_blank');
+    });
+    expect(screen.getByAltText('Machu, the San Mateo Love eco bot')).toHaveAttribute(
+      'src',
+      '/machu-eco-bot.webp',
+    );
+  });
+
   // Note: These tests are dependent on the actual implementation of the UI
   // They may need to be adjusted based on your actual UI elements
   test('search input should call setSearchQuery', () => {

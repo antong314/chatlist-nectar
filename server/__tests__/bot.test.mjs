@@ -120,6 +120,13 @@ test('adds the submitter phone with one minimal text request', async () => {
   assert.match(response[0].body, /Added María/);
 });
 
+test('greets website visitors who open a prefilled Machu chat', async () => {
+  const { bot } = createBot();
+  const response = await bot.handle(inbound({ Body: 'Hi Machu!' }));
+  assert.match(response[0].body, /I’m Machu/);
+  assert.match(response[0].body, /Forward me a contact card/);
+});
+
 test('returns native contact-card media for category searches', async () => {
   const { bot, store } = createBot();
   store.contacts.push({

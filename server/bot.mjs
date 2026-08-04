@@ -81,7 +81,7 @@ const contactAddedReply = (contact, created) => {
 
 const isSkip = (value) => /^(?:skip|done|no thanks|no|later|omitir|listo|nada)$/i.test(String(value ?? '').trim());
 const asksForReview = (value) => /\b(?:leave|write|add|dejar|escribir)\b.*\b(?:review|reseña)\b/i.test(String(value ?? ''));
-const isHelp = (value) => /^(?:help|menu|start|hola|hello|hi|hey|ayuda|what can you do)[?!. ]*$/i.test(String(value ?? '').trim());
+const isHelp = (value) => /^(?:help|menu|start|hola|hello|hi|hey|ayuda|what can you do)(?:\s+machu)?[?!. ]*$/i.test(String(value ?? '').trim());
 
 export class MachuBot {
   constructor({
