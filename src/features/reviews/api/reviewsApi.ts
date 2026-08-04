@@ -6,11 +6,9 @@ import {
   ProviderReviewSummary,
   RatingCounts,
   ReviewRating,
-  SubmitReviewInput,
 } from '../types';
 import {
   normalizeProviderId,
-  normalizeSubmitReviewInput,
   REVIEW_IMAGE_ALLOWED_MIME_TYPES,
   REVIEW_PAGE_MAX_SIZE,
   validateReviewImageFiles,
@@ -103,7 +101,8 @@ const REVIEW_IMAGE_EXTENSIONS: Record<(typeof REVIEW_IMAGE_ALLOWED_MIME_TYPES)[n
 
 /**
  * Uploads already-validated image blobs and returns ordered Storage object
- * paths for submitProviderReview. The database stores these paths, never bytes.
+ * paths for the verified review completion endpoint. The database stores these
+ * paths, never bytes.
  */
 export const uploadReviewImages = async (
   providerId: string,
@@ -198,25 +197,4 @@ export const getProviderReviewSummaries = async (
     summaries[providerId] ??= emptyProviderReviewSummary(providerId);
   });
   return summaries;
-};
-
-export const submitProviderReview = async (input: SubmitReviewInput): Promise<ProviderReview> => {
-  const normalized = normalizeSubmitReviewInput(input);
-  if (!isSupabaseConfigured) {
-    throw new Error('Reviews cannot be submitted because the database is not configured.');
-  }
-
-  const { data, error } = await supabase.rpc('submit_provider_review', {
-    p_contact_id: normalized.providerId,
-    p_rating: normalized.rating,
-    p_reviewer_whatsapp: normalized.reviewerWhatsapp,
-    p_image_paths: normalized.imagePaths,
-    p_comment: normalized.comment ?? null,
-    p_reviewer_name: normalized.reviewerName ?? null,
-  });
-
-  if (error) throw databaseError('submit your review', error);
-  const row = (data as PublicReviewRow[] | null)?.[0];
-  if (!row) throw new Error('The review was not saved. Please try again.');
-  return mapReview(row);
 };

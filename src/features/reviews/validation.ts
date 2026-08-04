@@ -12,7 +12,7 @@ export const REVIEW_IMAGE_ALLOWED_MIME_TYPES = [
 ] as const;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const WHATSAPP_PATTERN = /^\+?[0-9]{8,15}$/;
+const WHATSAPP_PATTERN = /^\+[1-9][0-9]{7,14}$/;
 const REVIEW_IMAGE_PATH_SUFFIX_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(jpg|jpeg|png|webp)$/;
 
 export type ReviewField = 'providerId' | 'rating' | 'comment' | 'reviewerName' | 'reviewerWhatsapp' | 'imagePaths' | 'images';
@@ -62,7 +62,7 @@ export const normalizeWhatsappNumber = (value: string): string => {
   if (!WHATSAPP_PATTERN.test(normalized)) {
     throw new ReviewValidationError(
       'reviewerWhatsapp',
-      'Enter a valid WhatsApp number with 8 to 15 digits.',
+      'Enter your WhatsApp number with country code, for example +506 8888 8888.',
     );
   }
   return normalized;

@@ -8,12 +8,18 @@ export const PROVIDER_DELETION_REASONS = [
 
 export type ProviderDeletionReason = (typeof PROVIDER_DELETION_REASONS)[number];
 
-export interface RequestProviderDeletionInput {
+export interface StartProviderDeletionVerificationInput {
   providerId: string;
   providerNameConfirmation: string;
   reason: ProviderDeletionReason;
   requesterWhatsapp: string;
-  communityCode: string;
+}
+
+export interface RequestProviderDeletionInput {
+  providerId: string;
+  actionId: string;
+  actionToken: string;
+  code: string;
 }
 
 export interface RequestProviderDeletionResult {

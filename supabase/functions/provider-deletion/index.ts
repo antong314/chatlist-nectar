@@ -17,9 +17,7 @@ const corsHeaders = (origin: string | null) => ({
   'Vary': 'Origin',
 });
 
-const reasons = new Set(['outdated', 'duplicate', 'closed', 'incorrect', 'other']);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const whatsappPattern = /^\+?[0-9]{8,15}$/;
 const undoTokenPattern = /^[A-Za-z0-9_-]{32,128}$/;
 const textEncoder = new TextEncoder();
 
@@ -33,35 +31,10 @@ const boundedString = (value: unknown, maxLength: number): string | null => {
   return value.trim();
 };
 
-const normalizeWhatsapp = (value: string): string => {
-  let normalized = value.trim().replace(/[\s().-]+/g, '');
-  if (normalized.startsWith('00')) normalized = `+${normalized.slice(2)}`;
-  return normalized;
-};
-
-const constantTimeEqual = (left: string, right: string): boolean => {
-  const leftBytes = textEncoder.encode(left);
-  const rightBytes = textEncoder.encode(right);
-  const length = Math.max(leftBytes.length, rightBytes.length);
-  let difference = leftBytes.length ^ rightBytes.length;
-  for (let index = 0; index < length; index += 1) {
-    difference |= (leftBytes[index] ?? 0) ^ (rightBytes[index] ?? 0);
-  }
-  return difference === 0;
-};
-
-const randomToken = (): string => {
-  const bytes = crypto.getRandomValues(new Uint8Array(32));
-  const binary = String.fromCharCode(...bytes);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-};
-
 const sha256Hex = async (value: string): Promise<string> => {
   const digest = await crypto.subtle.digest('SHA-256', textEncoder.encode(value));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 };
-
-const delayInvalidCode = () => new Promise((resolve) => setTimeout(resolve, 350));
 
 Deno.serve(async (request) => {
   const origin = request.headers.get('origin');
@@ -83,8 +56,7 @@ Deno.serve(async (request) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')?.trim() ?? '';
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim() ?? '';
-  const configuredCode = Deno.env.get('COMMUNITY_DELETE_CODE')?.trim().toUpperCase() ?? '';
-  if (!supabaseUrl || !serviceRoleKey || configuredCode.length < 12) {
+  if (!supabaseUrl || !serviceRoleKey) {
     return json(503, { error: 'Provider removal is temporarily unavailable.' }, origin);
   }
 
@@ -109,54 +81,8 @@ Deno.serve(async (request) => {
   });
 
   if (action === 'delete') {
-    const providerId = boundedString(body.providerId, 64)?.toLowerCase() ?? '';
-    const providerNameConfirmation = boundedString(body.providerNameConfirmation, 2_000);
-    const reason = boundedString(body.reason, 32)?.toLowerCase() ?? '';
-    const requesterWhatsappInput = boundedString(body.requesterWhatsapp, 40);
-    const suppliedCode = boundedString(body.communityCode, 128)?.toUpperCase() ?? '';
-
-    if (!constantTimeEqual(suppliedCode, configuredCode)) {
-      await delayInvalidCode();
-      return json(403, { error: 'The community code is incorrect.' }, origin);
-    }
-    if (!uuidPattern.test(providerId) || !providerNameConfirmation
-      || !reasons.has(reason) || !requesterWhatsappInput) {
-      return json(400, { error: 'Complete every required provider removal field.' }, origin);
-    }
-
-    const requesterWhatsapp = normalizeWhatsapp(requesterWhatsappInput);
-    if (!whatsappPattern.test(requesterWhatsapp)) {
-      return json(400, { error: 'Enter a valid WhatsApp number with country code.' }, origin);
-    }
-
-    const undoToken = randomToken();
-    const undoTokenHash = await sha256Hex(undoToken);
-    const { data, error } = await admin.rpc('perform_provider_soft_delete', {
-      p_contact_id: providerId,
-      p_provider_name_confirmation: providerNameConfirmation,
-      p_reason: reason,
-      p_requester_whatsapp: requesterWhatsapp,
-      p_undo_token_hash: undoTokenHash,
-    });
-
-    if (error) {
-      const message = error.message.includes('name confirmation')
-        ? 'The provider name does not match.'
-        : error.message.includes('already removed') || error.code === 'P0002'
-          ? 'This provider is no longer available.'
-          : 'We could not remove this provider right now.';
-      return json(error.code === 'P0002' ? 404 : 400, { error: message }, origin);
-    }
-
-    const event = Array.isArray(data) ? data[0] : null;
-    if (!event?.event_id || !event?.undo_expires_at) {
-      return json(500, { error: 'Provider removal did not return undo information.' }, origin);
-    }
-
-    return json(200, {
-      eventId: event.event_id,
-      undoToken,
-      undoExpiresAt: event.undo_expires_at,
+    return json(410, {
+      error: 'Provider removal now requires an individual WhatsApp confirmation code.',
     }, origin);
   }
 

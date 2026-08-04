@@ -15,9 +15,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   PROVIDER_DELETION_REASONS,
+  startProviderDeletionVerification,
   type ProviderDeletionReason,
   type RequestProviderDeletionInput,
 } from '@/features/provider-deletion';
+import type { WhatsappVerificationChallenge } from '@/features/verification';
 
 export type ProviderDeletionRequest = RequestProviderDeletionInput;
 
@@ -57,7 +59,8 @@ export function ProviderDeletionDialog({
   const [nameConfirmation, setNameConfirmation] = useState('');
   const [reason, setReason] = useState<ProviderDeletionReason | ''>('');
   const [requesterWhatsapp, setRequesterWhatsapp] = useState('');
-  const [communityCode, setCommunityCode] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [verificationChallenge, setVerificationChallenge] = useState<WhatsappVerificationChallenge | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -65,14 +68,15 @@ export function ProviderDeletionDialog({
   const canSubmit = nameMatches
     && Boolean(reason)
     && Boolean(requesterWhatsapp.trim())
-    && Boolean(communityCode.trim())
+    && (!verificationChallenge || Boolean(verificationCode.trim()))
     && !isSubmitting;
 
   const resetForm = () => {
     setNameConfirmation('');
     setReason('');
     setRequesterWhatsapp('');
-    setCommunityCode('');
+    setVerificationCode('');
+    setVerificationChallenge(null);
     setSubmitError(null);
   };
 
@@ -91,13 +95,23 @@ export function ProviderDeletionDialog({
     setSubmitError(null);
 
     try {
-      await onDelete({
-        providerId,
-        providerNameConfirmation: normalizeConfirmation(nameConfirmation),
-        reason,
-        requesterWhatsapp: requesterWhatsapp.trim(),
-        communityCode: communityCode.trim(),
-      });
+      if (!verificationChallenge) {
+        const challenge = await startProviderDeletionVerification({
+          providerId,
+          providerNameConfirmation: normalizeConfirmation(nameConfirmation),
+          reason,
+          requesterWhatsapp: requesterWhatsapp.trim(),
+        });
+        setVerificationChallenge(challenge);
+        setVerificationCode('');
+      } else {
+        await onDelete({
+          providerId,
+          actionId: verificationChallenge.actionId,
+          actionToken: verificationChallenge.actionToken,
+          code: verificationCode.trim(),
+        });
+      }
     } catch (error) {
       setSubmitError(getErrorMessage(error));
     } finally {
@@ -125,7 +139,7 @@ export function ProviderDeletionDialog({
           <DialogTitle>Remove this provider?</DialogTitle>
           <DialogDescription className="leading-6">
             This will hide the listing from the public directory. It remains recoverable for a short time after removal.
-            No login is required.
+            No login is required. We’ll send a one-time code to your WhatsApp number before removing it.
           </DialogDescription>
         </DialogHeader>
 
@@ -141,6 +155,7 @@ export function ProviderDeletionDialog({
               id="delete-provider-name"
               onChange={(event) => setNameConfirmation(event.target.value)}
               required
+              disabled={Boolean(verificationChallenge)}
               value={nameConfirmation}
             />
             <p className="text-xs leading-5 text-muted-foreground" id="delete-provider-name-hint">
@@ -158,6 +173,7 @@ export function ProviderDeletionDialog({
               id="delete-reason"
               onChange={(event) => setReason(event.target.value as ProviderDeletionReason | '')}
               required
+              disabled={Boolean(verificationChallenge)}
               value={reason}
             >
               <option value="">Select a reason</option>
@@ -178,29 +194,46 @@ export function ProviderDeletionDialog({
               inputMode="tel"
               onChange={(event) => setRequesterWhatsapp(event.target.value)}
               required
+              disabled={Boolean(verificationChallenge)}
               type="tel"
               value={requesterWhatsapp}
             />
             <p className="text-xs leading-5 text-muted-foreground" id="delete-requester-whatsapp-hint">
-              Kept private as an audit contact if the community needs to follow up. This does not verify your identity.
+              Kept private as an audit contact. The code confirms that you control this WhatsApp number.
             </p>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="delete-community-code">Community deletion code</Label>
-            <Input
-              aria-describedby="delete-community-code-hint"
-              autoComplete="off"
-              id="delete-community-code"
-              onChange={(event) => setCommunityCode(event.target.value)}
-              required
-              type="password"
-              value={communityCode}
-            />
-            <p className="text-xs leading-5 text-muted-foreground" id="delete-community-code-hint">
-              Find this shared code in the private community WhatsApp group.
-            </p>
-          </div>
+          {verificationChallenge && (
+            <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+              <Label htmlFor="delete-verification-code">WhatsApp confirmation code</Label>
+              <Input
+                aria-describedby="delete-verification-code-hint"
+                autoComplete="one-time-code"
+                id="delete-verification-code"
+                inputMode="numeric"
+                maxLength={10}
+                onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, ''))}
+                placeholder="Enter the code"
+                required
+                value={verificationCode}
+              />
+              <p className="text-xs leading-5 text-muted-foreground" id="delete-verification-code-hint">
+                Code sent to {verificationChallenge.phone}. It expires in about 10 minutes.
+              </p>
+              <Button
+                className="h-auto p-0 text-xs"
+                onClick={() => {
+                  setVerificationChallenge(null);
+                  setVerificationCode('');
+                  setSubmitError(null);
+                }}
+                type="button"
+                variant="link"
+              >
+                Change number or request a new code
+              </Button>
+            </div>
+          )}
 
           {submitError && (
             <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
@@ -215,7 +248,9 @@ export function ProviderDeletionDialog({
               </Button>
             </DialogClose>
             <Button disabled={!canSubmit} type="submit" variant="destructive">
-              {isSubmitting ? 'Removing…' : 'Remove listing'}
+              {isSubmitting
+                ? (verificationChallenge ? 'Verifying…' : 'Sending code…')
+                : (verificationChallenge ? 'Verify & remove' : 'Send WhatsApp code')}
             </Button>
           </DialogFooter>
         </form>

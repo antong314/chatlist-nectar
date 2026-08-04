@@ -38,6 +38,8 @@ These are server-only DigitalOcean runtime variables:
 - `TWILIO_ACCOUNT_SID`
 - `TWILIO_AUTH_TOKEN`
 - `TWILIO_WHATSAPP_FROM`
+- `TWILIO_VERIFY_SERVICE_SID`
+- `SUPABASE_SERVICE_ROLE_KEY`
 - `OPENAI_API_KEY`
 
 The server also consumes the existing `VITE_SUPABASE_URL` and
@@ -55,6 +57,9 @@ JavaScript during the frontend build.
 ## Endpoints
 
 - `POST /bot` — Twilio inbound-message webhook; validates `X-Twilio-Signature`
+- `POST /bot/verify/start` — starts a WhatsApp OTP bound to a review or deletion
+- `POST /bot/verify/check` — verifies the OTP and completes actions without photos
+- `POST /bot/verify/review/complete` — finishes a verified review after photo upload
 - `GET /bot` — lightweight bot status
 - `GET /bot/contact/:id.vcf?token=...` — short-lived signed vCard media URL
 - `GET /healthz` — service health check

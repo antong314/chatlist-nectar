@@ -242,13 +242,14 @@ export class MachuBot {
     return null;
   }
 
-  async saveReview({ conversation, review, senderPhone, profileName, conversationKey }) {
+  async saveReview({ conversation, review, senderPhone, profileName, conversationKey, messageSid }) {
     await this.store.submitReview({
       contactId: conversation.contact_id,
       rating: review.rating,
       comment: review.comment,
       reviewerWhatsapp: senderPhone,
       reviewerName: profileName || null,
+      twilioMessageSid: messageSid || null,
     });
     await this.store.clearConversation(conversationKey);
     return [{ body: `Thank you 🌿 Your ${review.rating}-star review is now in the directory.` }];
@@ -338,7 +339,14 @@ export class MachuBot {
 
     const review = parseReview(body);
     if (review && conversation?.contact_id) {
-      return this.saveReview({ conversation, review, senderPhone, profileName, conversationKey });
+      return this.saveReview({
+        conversation,
+        review,
+        senderPhone,
+        profileName,
+        conversationKey,
+        messageSid: String(params.MessageSid ?? '').trim(),
+      });
     }
 
     if (asksForReview(body) && conversation?.contact_id) {

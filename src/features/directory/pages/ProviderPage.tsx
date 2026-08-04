@@ -15,8 +15,12 @@ import {
   normalizeSubmitReviewInput,
   uploadReviewImages,
   useProviderReviews,
-  useSubmitReview,
 } from '@/features/reviews';
+import {
+  checkWhatsappVerification,
+  completeVerifiedReview,
+  type WhatsappVerificationChallenge,
+} from '@/features/verification';
 import { getDirectoryCategoryLabel } from '@/features/directory/data/categories';
 
 interface ContactRow {
@@ -51,7 +55,6 @@ export function ProviderPage() {
   const [shareStatus, setShareStatus] = useState('');
   const [isHandlingReviewSubmit, setIsHandlingReviewSubmit] = useState(false);
   const { reviews, summary, isLoading: isLoadingReviews, error: reviewsError, reload } = useProviderReviews(providerId);
-  const { submitReview, isSubmitting } = useSubmitReview({ onSuccess: reload });
 
   useEffect(() => {
     let isCurrent = true;
@@ -133,7 +136,11 @@ export function ProviderPage() {
     }
   };
 
-  const handleReviewSubmit = async (values: ReviewFormValues) => {
+  const handleReviewSubmit = async (
+    values: ReviewFormValues,
+    challenge: WhatsappVerificationChallenge,
+    code: string,
+  ) => {
     setIsHandlingReviewSubmit(true);
     try {
       // Validate every non-file field before uploading so an invalid review
@@ -146,14 +153,12 @@ export function ProviderPage() {
         reviewerWhatsapp: values.whatsappNumber,
         imagePaths: [],
       });
-      const imagePaths = values.images.length > 0
-        ? await uploadReviewImages(normalizedReview.providerId, values.images)
-        : [];
-
-      await submitReview({
-        ...normalizedReview,
-        imagePaths,
-      });
+      await checkWhatsappVerification(challenge, code);
+      if (values.images.length > 0) {
+        const imagePaths = await uploadReviewImages(normalizedReview.providerId, values.images);
+        await completeVerifiedReview(challenge, imagePaths);
+      }
+      await reload();
     } catch (error) {
       throw error instanceof Error
         ? error
@@ -237,7 +242,11 @@ export function ProviderPage() {
               <p className="text-sm leading-6 text-gray-600">A quick rating helps your neighbors choose with confidence.</p>
             </CardHeader>
             <CardContent>
-              <ReviewForm isSubmitting={isSubmitting || isHandlingReviewSubmit} onSubmit={handleReviewSubmit} />
+              <ReviewForm
+                isSubmitting={isHandlingReviewSubmit}
+                onSubmit={handleReviewSubmit}
+                providerId={providerId}
+              />
             </CardContent>
           </Card>
         </div>

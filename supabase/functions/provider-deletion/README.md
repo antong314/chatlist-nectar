@@ -1,18 +1,14 @@
-# Provider deletion Edge Function
+# Provider deletion Undo Edge Function
 
-The function requires the default `SUPABASE_URL` and
-`SUPABASE_SERVICE_ROLE_KEY` environment variables plus one project secret:
+New provider removals are verified through Twilio Verify and completed by the
+DigitalOcean service. This legacy Edge Function now accepts only the short-lived
+Undo token returned by a successful verified deletion.
 
 ```sh
-supabase secrets set COMMUNITY_DELETE_CODE=<random-12+-character-community-code>
 supabase functions deploy provider-deletion --no-verify-jwt
 ```
 
 `--no-verify-jwt` is required because the directory intentionally has no user
-login. The function authenticates deletion requests with `COMMUNITY_DELETE_CODE`
-and calls database RPCs that only `service_role` may execute.
-
-Rotate the community code with `supabase secrets set`; no database migration is
-needed. Use a random code of at least 12 characters, distribute it through the private community channel,
-and do not use a personal password. Existing undo tokens remain valid until
-their database expiry because they are independent of the community code.
+login. The old `delete` action returns HTTP 410 so a shared community code can
+never bypass individual WhatsApp verification. Undo hashes its single-use token
+before calling a service-role-only database RPC.

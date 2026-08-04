@@ -11,7 +11,7 @@ const databaseError = (operation, error) => {
 export class DirectoryStore {
   constructor({
     url = process.env.VITE_SUPABASE_URL,
-    anonKey = process.env.VITE_SUPABASE_ANON_KEY,
+    anonKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY,
     client,
   } = {}) {
     if (!client && (!url || !anonKey)) throw new Error('Supabase URL and anonymous key are required.');
@@ -136,7 +136,14 @@ export class DirectoryStore {
     if (error) throw databaseError('clear the conversation', error);
   }
 
-  async submitReview({ contactId, rating, comment, reviewerWhatsapp, reviewerName }) {
+  async submitReview({
+    contactId,
+    rating,
+    comment,
+    reviewerWhatsapp,
+    reviewerName,
+    twilioMessageSid = null,
+  }) {
     const { data, error } = await this.client.rpc('submit_provider_review', {
       p_contact_id: contactId,
       p_rating: rating,
@@ -144,6 +151,9 @@ export class DirectoryStore {
       p_comment: comment || null,
       p_reviewer_name: reviewerName || null,
       p_image_paths: [],
+      p_verification_method: 'whatsapp_inbound',
+      p_verification_action_id: null,
+      p_twilio_verification_sid: twilioMessageSid,
     });
     if (error) throw databaseError('save the review', error);
     return firstRow(data);

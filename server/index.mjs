@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import twilio from 'twilio';
+import { createClient } from '@supabase/supabase-js';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +9,10 @@ import { MachuBot, verifyContactMediaSignature } from './bot.mjs';
 import { createVcard, messagesToTwiml } from './domain.mjs';
 import { DirectoryStore } from './directory-store.mjs';
 import { OpenAIProvider } from './openai-provider.mjs';
+import {
+  CommunityVerificationService,
+  verificationJsonError,
+} from './community-verification.mjs';
 
 const { validateRequest } = twilio;
 
@@ -15,8 +20,10 @@ const requiredEnvironment = [
   'TWILIO_ACCOUNT_SID',
   'TWILIO_AUTH_TOKEN',
   'TWILIO_WHATSAPP_FROM',
+  'TWILIO_VERIFY_SERVICE_SID',
   'VITE_SUPABASE_URL',
   'VITE_SUPABASE_ANON_KEY',
+  'SUPABASE_SERVICE_ROLE_KEY',
 ];
 
 const missingEnvironment = requiredEnvironment.filter((key) => !process.env[key]);
@@ -32,6 +39,18 @@ const validateTwilioSignatures = process.env.TWILIO_VALIDATE_SIGNATURE !== 'fals
 
 const store = new DirectoryStore();
 const ai = new OpenAIProvider();
+const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+const adminSupabase = createClient(
+  process.env.VITE_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  { auth: { autoRefreshToken: false, persistSession: false } },
+);
+const communityVerification = new CommunityVerificationService({
+  supabase: adminSupabase,
+  twilioClient,
+  verifyServiceSid: process.env.TWILIO_VERIFY_SERVICE_SID,
+  signingSecret,
+});
 
 const fetchTwilioMedia = async (url) => {
   const controller = new AbortController();
@@ -73,6 +92,47 @@ app.get('/bot', (_request, response) => {
     directoryFooter: true,
   });
 });
+
+const verificationRoute = (handler) => async (request, response) => {
+  response.set('Cache-Control', 'no-store');
+  try {
+    response.status(200).json(await handler(request));
+  } catch (error) {
+    const failure = verificationJsonError(error);
+    response.status(failure.status).json({ error: failure.message });
+  }
+};
+
+app.post(
+  '/bot/verify/start',
+  express.json({ limit: '16kb', type: 'application/json' }),
+  verificationRoute((request) => communityVerification.start({
+    actionType: request.body?.actionType,
+    phone: request.body?.phone,
+    payload: request.body?.payload,
+    requestIp: request.ip,
+  })),
+);
+
+app.post(
+  '/bot/verify/check',
+  express.json({ limit: '8kb', type: 'application/json' }),
+  verificationRoute((request) => communityVerification.check({
+    actionId: request.body?.actionId,
+    actionToken: request.body?.actionToken,
+    code: request.body?.code,
+  })),
+);
+
+app.post(
+  '/bot/verify/review/complete',
+  express.json({ limit: '8kb', type: 'application/json' }),
+  verificationRoute((request) => communityVerification.completeReview({
+    actionId: request.body?.actionId,
+    actionToken: request.body?.actionToken,
+    imagePaths: request.body?.imagePaths,
+  })),
+);
 
 app.post('/bot', express.urlencoded({ extended: false, limit: '256kb' }), async (request, response) => {
   try {

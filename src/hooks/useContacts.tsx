@@ -371,7 +371,7 @@ export const useContacts = () => {
     }
   }, []);
 
-  // Request a recoverable deletion through the community-code protected endpoint.
+  // Complete a recoverable deletion only after WhatsApp OTP verification.
   const deleteContact = useCallback(async (
     request: Parameters<typeof requestProviderDeletion>[0],
   ) => {

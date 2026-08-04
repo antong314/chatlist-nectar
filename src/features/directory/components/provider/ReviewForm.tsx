@@ -8,8 +8,13 @@ import {
   REVIEW_IMAGE_ALLOWED_MIME_TYPES,
   REVIEW_IMAGE_MAX_BYTES,
   REVIEW_IMAGE_MAX_COUNT,
+  normalizeWhatsappNumber,
 } from '@/features/reviews/validation';
 import { StarRating } from './StarRating';
+import {
+  startWhatsappVerification,
+  type WhatsappVerificationChallenge,
+} from '@/features/verification';
 
 export interface ReviewFormValues {
   rating: number;
@@ -20,8 +25,13 @@ export interface ReviewFormValues {
 }
 
 interface ReviewFormProps {
+  providerId: string;
   isSubmitting?: boolean;
-  onSubmit: (values: ReviewFormValues) => Promise<void>;
+  onSubmit: (
+    values: ReviewFormValues,
+    challenge: WhatsappVerificationChallenge,
+    code: string,
+  ) => Promise<void>;
 }
 
 interface SelectedReviewImage {
@@ -31,7 +41,7 @@ interface SelectedReviewImage {
 
 const REVIEW_IMAGE_TYPES = new Set<string>(REVIEW_IMAGE_ALLOWED_MIME_TYPES);
 
-export function ReviewForm({ isSubmitting = false, onSubmit }: ReviewFormProps) {
+export function ReviewForm({ providerId, isSubmitting = false, onSubmit }: ReviewFormProps) {
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
   const [reviewerName, setReviewerName] = useState('');
@@ -40,6 +50,9 @@ export function ReviewForm({ isSubmitting = false, onSubmit }: ReviewFormProps) 
   const [imageError, setImageError] = useState('');
   const [formError, setFormError] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [isRequestingCode, setIsRequestingCode] = useState(false);
+  const [verificationCode, setVerificationCode] = useState('');
+  const [verificationChallenge, setVerificationChallenge] = useState<WhatsappVerificationChallenge | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const previewUrlsRef = useRef(new Set<string>());
 
@@ -115,22 +128,59 @@ export function ReviewForm({ isSubmitting = false, onSubmit }: ReviewFormProps) 
 
     setFormError('');
 
+    let normalizedWhatsapp: string;
     try {
-      await onSubmit({
+      normalizedWhatsapp = normalizeWhatsappNumber(whatsappNumber);
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Enter a valid WhatsApp number.');
+      return;
+    }
+
+    const values = {
         rating,
         comment: comment.trim() || undefined,
         reviewerName: reviewerName.trim() || undefined,
-        whatsappNumber: whatsappNumber.trim(),
+        whatsappNumber: normalizedWhatsapp,
         images: selectedImages.map(({ file }) => file),
-      });
+      };
+
+    try {
+      if (!verificationChallenge) {
+        setIsRequestingCode(true);
+        const challenge = await startWhatsappVerification({
+          actionType: 'provider_review',
+          phone: values.whatsappNumber,
+          payload: {
+            providerId,
+            rating: values.rating,
+            comment: values.comment ?? null,
+            reviewerName: values.reviewerName ?? null,
+            imageCount: values.images.length,
+          },
+        });
+        setVerificationChallenge(challenge);
+        setVerificationCode('');
+        return;
+      }
+
+      if (!verificationCode.trim()) {
+        setFormError('Enter the confirmation code sent to WhatsApp.');
+        return;
+      }
+
+      await onSubmit(values, verificationChallenge, verificationCode.trim());
       setRating(0);
       setComment('');
       setReviewerName('');
       setWhatsappNumber('');
       clearImages();
+      setVerificationCode('');
+      setVerificationChallenge(null);
       setSubmitted(true);
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Your review could not be submitted. Please try again.');
+    } finally {
+      setIsRequestingCode(false);
     }
   };
 
@@ -147,6 +197,7 @@ export function ReviewForm({ isSubmitting = false, onSubmit }: ReviewFormProps) 
           id="review-comment"
           maxLength={1000}
           onChange={(event) => setComment(event.target.value)}
+          disabled={Boolean(verificationChallenge)}
           placeholder="What should your neighbors know?"
           rows={4}
           value={comment}
@@ -164,7 +215,7 @@ export function ReviewForm({ isSubmitting = false, onSubmit }: ReviewFormProps) 
               aria-describedby="review-images-hint review-images-error"
               aria-invalid={Boolean(imageError)}
               className="sr-only"
-              disabled={isSubmitting || selectedImages.length >= REVIEW_IMAGE_MAX_COUNT}
+              disabled={isSubmitting || Boolean(verificationChallenge) || selectedImages.length >= REVIEW_IMAGE_MAX_COUNT}
               id="review-images"
               multiple
               onChange={handleImageSelection}
@@ -189,7 +240,7 @@ export function ReviewForm({ isSubmitting = false, onSubmit }: ReviewFormProps) 
                 <button
                   aria-label={`Remove ${file.name}`}
                   className="absolute right-1.5 top-1.5 inline-flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white shadow-sm transition hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-50"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || Boolean(verificationChallenge)}
                   onClick={() => removeImage(previewUrl)}
                   type="button"
                 >
@@ -211,6 +262,7 @@ export function ReviewForm({ isSubmitting = false, onSubmit }: ReviewFormProps) 
           id="reviewer-name"
           maxLength={80}
           onChange={(event) => setReviewerName(event.target.value)}
+          disabled={Boolean(verificationChallenge)}
           placeholder="Leave blank to post anonymously"
           value={reviewerName}
         />
@@ -224,6 +276,7 @@ export function ReviewForm({ isSubmitting = false, onSubmit }: ReviewFormProps) 
           inputMode="tel"
           maxLength={32}
           onChange={(event) => setWhatsappNumber(event.target.value)}
+          disabled={Boolean(verificationChallenge)}
           placeholder="Include country code, e.g. +506 8888 8888"
           required
           type="tel"
@@ -235,14 +288,53 @@ export function ReviewForm({ isSubmitting = false, onSubmit }: ReviewFormProps) 
         </p>
       </div>
 
+      {verificationChallenge && (
+        <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+          <Label htmlFor="review-verification-code">WhatsApp confirmation code</Label>
+          <Input
+            aria-describedby="review-verification-code-hint"
+            autoComplete="one-time-code"
+            id="review-verification-code"
+            inputMode="numeric"
+            maxLength={10}
+            onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, ''))}
+            placeholder="Enter the code"
+            required
+            value={verificationCode}
+          />
+          <p className="text-xs leading-relaxed text-gray-500" id="review-verification-code-hint">
+            Code sent to {verificationChallenge.phone}. Your number stays private.
+          </p>
+          <Button
+            className="h-auto p-0 text-xs"
+            disabled={isSubmitting}
+            onClick={() => {
+              setVerificationChallenge(null);
+              setVerificationCode('');
+              setFormError('');
+            }}
+            type="button"
+            variant="link"
+          >
+            Change number or request a new code
+          </Button>
+        </div>
+      )}
+
       <div aria-live="polite">
         {formError && <p className="mb-3 text-sm font-medium text-red-600" role="alert">{formError}</p>}
         {submitted && <p className="mb-3 text-sm font-medium text-green-700">Thank you—your review is now part of the community rating.</p>}
       </div>
 
-      <Button className="h-12 w-full rounded-xl text-base" disabled={isSubmitting} type="submit">
-        {isSubmitting && <Loader2 aria-hidden="true" className="animate-spin" />}
-        {isSubmitting ? 'Posting review…' : 'Post review'}
+      <Button className="h-12 w-full rounded-xl text-base" disabled={isSubmitting || isRequestingCode} type="submit">
+        {(isSubmitting || isRequestingCode) && <Loader2 aria-hidden="true" className="animate-spin" />}
+        {isSubmitting
+          ? 'Verifying & posting…'
+          : isRequestingCode
+            ? 'Sending code…'
+            : verificationChallenge
+              ? 'Verify & post review'
+              : 'Send WhatsApp code'}
       </Button>
     </form>
   );

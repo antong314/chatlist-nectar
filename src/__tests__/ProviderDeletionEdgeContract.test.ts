@@ -17,11 +17,11 @@ describe('provider deletion Edge Function security contract', () => {
     expect(edgeFunction).toMatch(/createClient\(supabaseUrl, serviceRoleKey/);
   });
 
-  test('fails closed on a weak secret and compares a normalized code without early exit', () => {
-    expect(edgeFunction).toMatch(/COMMUNITY_DELETE_CODE[\s\S]*trim\(\)\.toUpperCase\(\)/);
-    expect(edgeFunction).toMatch(/!supabaseUrl \|\| !serviceRoleKey \|\| configuredCode\.length < 12/);
-    expect(edgeFunction).toMatch(/constantTimeEqual\(suppliedCode, configuredCode\)/);
-    expect(edgeFunction).toMatch(/delayInvalidCode/);
+  test('cannot bypass WhatsApp verification through the legacy delete action', () => {
+    expect(edgeFunction).not.toMatch(/COMMUNITY_DELETE_CODE/);
+    expect(edgeFunction).toMatch(/action === 'delete'[\s\S]*return json\(410/);
+    expect(edgeFunction).not.toMatch(/perform_provider_soft_delete/);
+    expect(edgeFunction).toMatch(/requires an individual WhatsApp confirmation code/);
   });
 
   test('uses strict request, byte-size, cache, and origin controls', () => {
@@ -35,11 +35,10 @@ describe('provider deletion Edge Function security contract', () => {
     expect(edgeFunction).toContain('http://localhost:8080');
   });
 
-  test('returns only a random undo token while sending only its SHA-256 hash to SQL', () => {
-    expect(edgeFunction).toMatch(/crypto\.getRandomValues\(new Uint8Array\(32\)\)/);
+  test('accepts only an existing random undo token and sends only its SHA-256 hash to SQL', () => {
     expect(edgeFunction).toMatch(/crypto\.subtle\.digest\('SHA-256'/);
-    expect(edgeFunction).toMatch(/p_undo_token_hash: undoTokenHash/);
-    expect(edgeFunction).toMatch(/eventId: event\.event_id,[\s\S]*undoToken,[\s\S]*undoExpiresAt/);
+    expect(edgeFunction).toMatch(/p_undo_token_hash: await sha256Hex\(undoToken\)/);
+    expect(edgeFunction).not.toMatch(/undoTokenHash/);
     expect(edgeFunction).not.toMatch(/console\.(log|error|warn)/);
   });
 });

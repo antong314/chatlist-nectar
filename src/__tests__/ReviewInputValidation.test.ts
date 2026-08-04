@@ -30,13 +30,13 @@ describe('review input validation', () => {
       rating: 4,
       comment: '   ',
       reviewerName: '',
-      reviewerWhatsapp: '8718 4331',
+      reviewerWhatsapp: '+506 8718 4331',
     })).toEqual({
       providerId: '4380eb01-addb-4de4-a6a4-4164c6d6b5c3',
       rating: 4,
       comment: undefined,
       reviewerName: undefined,
-      reviewerWhatsapp: '87184331',
+      reviewerWhatsapp: '+50687184331',
       imagePaths: [],
     });
   });

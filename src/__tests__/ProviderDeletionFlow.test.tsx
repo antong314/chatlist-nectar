@@ -8,9 +8,15 @@ import type { ProviderDeletionRequest } from '@/features/directory/components/Pr
 import type { Contact } from '@/types/contact';
 import Index from '@/pages/Index';
 import { useContacts } from '@/hooks/useContacts';
+import { startProviderDeletionVerification } from '@/features/provider-deletion';
 
 jest.mock('@/hooks/useContacts', () => ({
   useContacts: jest.fn(),
+}));
+
+jest.mock('@/features/provider-deletion', () => ({
+  ...jest.requireActual('@/features/provider-deletion'),
+  startProviderDeletionVerification: jest.fn(),
 }));
 
 jest.mock('@/lib/supabase', () => ({
@@ -40,6 +46,13 @@ const deletionReceipt = {
   undoExpiresAt: new Date(Date.now() + 60_000).toISOString(),
 };
 
+const verificationChallenge = {
+  actionId: '7a279684-13b7-4df4-b0e0-ac68d41cd656',
+  actionToken: 'verification_action_token_12345678901234567890',
+  expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+  phone: '+50687771234',
+};
+
 const renderContactForm = (onDelete: (request: ProviderDeletionRequest) => Promise<void>) => render(
   <ContactForm
     categories={['Service']}
@@ -62,12 +75,17 @@ const fillDeletionForm = async (
   await user.type(screen.getByLabelText(/type sample provider to confirm/i), name);
   await user.selectOptions(screen.getByLabelText(/why should this listing be removed/i), 'duplicate');
   await user.type(screen.getByLabelText(/your whatsapp number/i), '+506 8777 1234');
-  await user.type(screen.getByLabelText(/community deletion code/i), 'community-code');
+};
+
+const requestDeletionCode = async (user: ReturnType<typeof userEvent.setup>) => {
+  await user.click(screen.getByRole('button', { name: /send whatsapp code/i }));
+  return screen.findByLabelText(/whatsapp confirmation code/i);
 };
 
 describe('provider deletion request flow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (startProviderDeletionVerification as jest.Mock).mockResolvedValue(verificationChallenge);
     (toast.success as jest.Mock).mockReturnValue('removal-toast-id');
     window.history.replaceState({}, '', '/');
   });
@@ -85,7 +103,7 @@ describe('provider deletion request flow', () => {
     expect(confirmSpy).not.toHaveBeenCalled();
     expect(screen.getByText(/hide the listing from the public directory/i)).toBeInTheDocument();
     expect(screen.getByText(/recoverable for a short time/i)).toBeInTheDocument();
-    expect(screen.getByText(/private community WhatsApp group/i)).toBeInTheDocument();
+    expect(screen.getByText(/one-time code to your WhatsApp number/i)).toBeInTheDocument();
     expect(screen.getByText(/kept private as an audit contact/i)).toBeInTheDocument();
 
     confirmSpy.mockRestore();
@@ -97,7 +115,7 @@ describe('provider deletion request flow', () => {
     await openDeletionDialog(user);
     await fillDeletionForm(user, 'Wrong Provider');
 
-    const removeButton = screen.getByRole('button', { name: /remove listing/i });
+    const removeButton = screen.getByRole('button', { name: /send whatsapp code/i });
     expect(removeButton).toBeDisabled();
     expect(screen.getByText(/provider name does not match/i)).toBeInTheDocument();
 
@@ -107,25 +125,35 @@ describe('provider deletion request flow', () => {
     expect(screen.getByText(/capitalization and extra spaces do not matter/i)).toBeInTheDocument();
   });
 
-  test('submits every required value with the agreed API payload shape', async () => {
+  test('sends a code before submitting a verified deletion payload', async () => {
     const user = userEvent.setup();
     const onDelete = jest.fn().mockResolvedValue(undefined);
     renderContactForm(onDelete);
     await openDeletionDialog(user);
     await fillDeletionForm(user);
 
-    await user.click(screen.getByRole('button', { name: /remove listing/i }));
+    const codeInput = await requestDeletionCode(user);
+
+    expect(startProviderDeletionVerification).toHaveBeenCalledWith({
+      providerId: provider.id,
+      providerNameConfirmation: provider.name,
+      reason: 'duplicate',
+      requesterWhatsapp: '+506 8777 1234',
+    });
+    expect(onDelete).not.toHaveBeenCalled();
+
+    await user.type(codeInput, '123456');
+    await user.click(screen.getByRole('button', { name: /verify & remove/i }));
 
     await waitFor(() => {
       expect(onDelete).toHaveBeenCalledWith({
         providerId: provider.id,
-        providerNameConfirmation: provider.name,
-        reason: 'duplicate',
-        requesterWhatsapp: '+506 8777 1234',
-        communityCode: 'community-code',
+        actionId: verificationChallenge.actionId,
+        actionToken: verificationChallenge.actionToken,
+        code: '123456',
       });
     });
-    expect(screen.getByLabelText(/community deletion code/i)).toHaveAttribute('type', 'password');
+    expect(codeInput).toHaveAttribute('inputmode', 'numeric');
   });
 
   test('prevents duplicate submissions and keeps backend errors in the dialog', async () => {
@@ -138,15 +166,17 @@ describe('provider deletion request flow', () => {
     await openDeletionDialog(user);
     await fillDeletionForm(user);
 
-    const removeButton = screen.getByRole('button', { name: /remove listing/i });
+    await requestDeletionCode(user);
+    await user.type(screen.getByLabelText(/whatsapp confirmation code/i), '000000');
+    const removeButton = screen.getByRole('button', { name: /verify & remove/i });
     await user.click(removeButton);
     expect(removeButton).toBeDisabled();
     await user.click(removeButton);
     expect(onDelete).toHaveBeenCalledTimes(1);
 
-    rejectRequest(new Error('The community deletion code is incorrect.'));
+    rejectRequest(new Error('That code is incorrect or expired.'));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/community deletion code is incorrect/i);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/incorrect or expired/i);
     expect(screen.getByRole('dialog', { name: /remove this provider/i })).toBeInTheDocument();
   });
 
@@ -245,7 +275,9 @@ describe('provider deletion request flow', () => {
     await user.click(screen.getByRole('button', { name: `Edit ${provider.name}` }));
     await openDeletionDialog(user);
     await fillDeletionForm(user);
-    await user.click(screen.getByRole('button', { name: /remove listing/i }));
+    await requestDeletionCode(user);
+    await user.type(screen.getByLabelText(/whatsapp confirmation code/i), '123456');
+    await user.click(screen.getByRole('button', { name: /verify & remove/i }));
 
     await waitFor(() => {
       expect(screen.queryByRole('dialog', { name: 'Edit provider' })).not.toBeInTheDocument();
