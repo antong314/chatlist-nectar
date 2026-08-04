@@ -125,6 +125,7 @@ test('greets website visitors who open a prefilled Machu chat', async () => {
   const response = await bot.handle(inbound({ Body: 'Hi Machu!' }));
   assert.match(response[0].body, /I’m Machu/);
   assert.match(response[0].body, /Forward me a contact card/);
+  assert.match(response[0].body, /browse the full community directory at https:\/\/www\.sanmateo\.love\//);
 });
 
 test('returns native contact-card media for category searches', async () => {
@@ -146,6 +147,8 @@ test('returns native contact-card media for category searches', async () => {
   assert.equal(messages[1].mediaUrl, undefined);
   assert.equal(messages[2].body, undefined);
   assert.match(messages[2].mediaUrl, /\/bot\/contact\/taxi-1\.vcf\?token=/);
+  assert.match(messages[3].body, /browse the full community directory/);
+  assert.match(messages[3].body, /https:\/\/www\.sanmateo\.love\//);
 });
 
 test('returns only massage-related providers instead of the whole wellness category', async () => {
@@ -181,7 +184,7 @@ test('returns only massage-related providers instead of the whole wellness categ
 
   const messages = await bot.handle(inbound({ Body: 'Do you know anyone who does massages?' }));
   assert.match(messages[0].body, /2 massage and bodywork matches/);
-  assert.equal(messages.length, 5);
+  assert.equal(messages.length, 6);
   assert.ok(messages.some((message) => message.mediaUrl?.includes('massage-1')));
   assert.ok(messages.some((message) => message.mediaUrl?.includes('physio-1')));
   assert.ok(!messages.some((message) => message.mediaUrl?.includes('astrology-1')));
@@ -190,6 +193,7 @@ test('returns only massage-related providers instead of the whole wellness categ
   assert.match(jocsanMessage.body, /Physiotherapist offering dry needling and massage/);
   assert.match(jocsanMessage.body, /4\.8\/5 · 4 community reviews/);
   assert.match(jocsanMessage.body, /Website: https:\/\/example\.com\/jocsan/);
+  assert.match(messages.at(-1).body, /browse the full community directory/);
 });
 
 test('searches descriptions for chefs without returning every food listing', async () => {
@@ -213,9 +217,10 @@ test('searches descriptions for chefs without returning every food listing', asy
 
   const messages = await bot.handle(inbound({ Body: 'Can you recommend a chef?' }));
   assert.match(messages[0].body, /1 chefs and cooks match/);
-  assert.equal(messages.length, 3);
+  assert.equal(messages.length, 4);
   assert.match(messages[1].body, /Pastry chef/);
   assert.match(messages[2].mediaUrl, /chef-1/);
+  assert.match(messages[3].body, /https:\/\/www\.sanmateo\.love\//);
 });
 
 test('still supports intentionally broad category searches', async () => {
@@ -227,7 +232,8 @@ test('still supports intentionally broad category searches', async () => {
 
   const messages = await bot.handle(inbound({ Body: 'Send me all wellness contacts' }));
   assert.match(messages[0].body, /2 wellness contacts/);
-  assert.equal(messages.length, 5);
+  assert.equal(messages.length, 6);
+  assert.match(messages.at(-1).body, /browse the full community directory/);
 });
 
 test('accepts an optional review after contact submission', async () => {

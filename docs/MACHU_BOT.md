@@ -24,6 +24,9 @@ Node process serves the existing Vite build and the bot webhook at `POST /bot`.
   directory listing, followed immediately by its native WhatsApp contact card.
   They are separate messages because WhatsApp ignores captions attached to
   free-form vCard media.
+- Every bot response ends with a direct link to the full community directory.
+  Text-only replies include it as a footer; responses ending in a vCard receive
+  one short final text message so WhatsApp does not discard the link.
 
 There is no publish or confirmation step. Once Machu has a valid name and phone
 number, the contact is in the directory.

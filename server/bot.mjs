@@ -103,6 +103,27 @@ export class MachuBot {
     return `${this.publicBaseUrl}/bot/contact/${encodeURIComponent(contactId)}.vcf?token=${token}`;
   }
 
+  directoryFooter() {
+    return `You can always browse the full community directory at ${this.publicBaseUrl}/ 🌿`;
+  }
+
+  withDirectoryFooter(messages) {
+    const footer = this.directoryFooter();
+    const response = Array.isArray(messages) ? [...messages] : [];
+    const lastMessage = response.at(-1);
+
+    if (lastMessage?.body && !lastMessage.mediaUrl) {
+      response[response.length - 1] = {
+        ...lastMessage,
+        body: `${lastMessage.body}\n\n${footer}`,
+      };
+      return response;
+    }
+
+    response.push({ body: footer });
+    return response;
+  }
+
   providerSummary(contact, reviewSummary) {
     const description = truncateDescription(contact.subtitle) || 'No description has been added yet.';
     const reviewCount = Math.max(0, Number(reviewSummary?.review_count ?? 0) || 0);
@@ -280,6 +301,10 @@ export class MachuBot {
   }
 
   async handle(params) {
+    return this.withDirectoryFooter(await this.handleMessage(params));
+  }
+
+  async handleMessage(params) {
     const body = String(params.Body ?? '').trim();
     const senderPhone = normalizePhone(params.WaId || stripWhatsappPrefix(params.From), '');
     const profileName = String(params.ProfileName ?? '').trim().slice(0, 80);

@@ -82,9 +82,9 @@ app.post('/bot', express.urlencoded({ extended: false, limit: '256kb' }), async 
     response.type('text/xml').send(messagesToTwiml(messages));
   } catch (error) {
     console.error('Machu webhook error:', error);
-    response.type('text/xml').send(messagesToTwiml([{
+    response.type('text/xml').send(messagesToTwiml(bot.withDirectoryFooter([{
       body: 'I hit a little snag 🌱 Your message is safe—please try once more in a moment.',
-    }]));
+    }])));
   }
 });
 
