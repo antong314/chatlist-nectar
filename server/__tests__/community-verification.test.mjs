@@ -54,7 +54,6 @@ test('starts a WhatsApp Verify action with only a hashed browser token in storag
         assert.deepEqual(input, {
           to: '+50687184331',
           channel: 'whatsapp',
-          customFriendlyName: 'Machu',
         });
         return { sid: 'VEaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' };
       } },

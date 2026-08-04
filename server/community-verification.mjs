@@ -155,7 +155,6 @@ export class CommunityVerificationService {
         .verifications.create({
           to: phone,
           channel: 'whatsapp',
-          customFriendlyName: 'Machu',
         });
       const { error: updateError } = await this.supabase
         .from('community_verification_actions')
