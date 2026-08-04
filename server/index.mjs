@@ -65,7 +65,13 @@ app.get('/healthz', (_request, response) => {
 });
 
 app.get('/bot', (_request, response) => {
-  response.json({ ok: true, bot: 'Machu', webhook: '/bot' });
+  response.json({
+    ok: true,
+    bot: 'Machu',
+    webhook: '/bot',
+    directory: `${publicBaseUrl}/`,
+    directoryFooter: true,
+  });
 });
 
 app.post('/bot', express.urlencoded({ extended: false, limit: '256kb' }), async (request, response) => {
