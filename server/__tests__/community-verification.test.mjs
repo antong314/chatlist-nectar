@@ -51,7 +51,11 @@ test('starts a WhatsApp Verify action with only a hashed browser token in storag
   const twilioClient = {
     verify: { v2: { services: () => ({
       verifications: { create: async (input) => {
-        assert.deepEqual(input, { to: '+50687184331', channel: 'whatsapp' });
+        assert.deepEqual(input, {
+          to: '+50687184331',
+          channel: 'whatsapp',
+          customFriendlyName: 'Machu',
+        });
         return { sid: 'VEaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' };
       } },
     }) } },

@@ -152,7 +152,11 @@ export class CommunityVerificationService {
     try {
       const verification = await this.twilioClient.verify.v2
         .services(this.verifyServiceSid)
-        .verifications.create({ to: phone, channel: 'whatsapp' });
+        .verifications.create({
+          to: phone,
+          channel: 'whatsapp',
+          customFriendlyName: 'Machu',
+        });
       const { error: updateError } = await this.supabase
         .from('community_verification_actions')
         .update({ status: 'sent', twilio_verification_sid: verification.sid })

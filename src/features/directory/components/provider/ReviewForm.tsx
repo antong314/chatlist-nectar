@@ -284,7 +284,7 @@ export function ReviewForm({ providerId, isSubmitting = false, onSubmit }: Revie
         />
         <p className="flex items-center gap-1.5 text-xs leading-relaxed text-gray-500">
           <LockKeyhole aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-          Your number stays private and is never shown with your review.
+          We’ll send a one-time code here to verify your review. Your number stays private and is never shown.
         </p>
       </div>
 
@@ -303,7 +303,7 @@ export function ReviewForm({ providerId, isSubmitting = false, onSubmit }: Revie
             value={verificationCode}
           />
           <p className="text-xs leading-relaxed text-gray-500" id="review-verification-code-hint">
-            Code sent to {verificationChallenge.phone}. Your number stays private.
+            We sent a verification code to {verificationChallenge.phone}. Enter it above to post your review.
           </p>
           <Button
             className="h-auto p-0 text-xs"
@@ -334,7 +334,7 @@ export function ReviewForm({ providerId, isSubmitting = false, onSubmit }: Revie
             ? 'Sending code…'
             : verificationChallenge
               ? 'Verify & post review'
-              : 'Send WhatsApp code'}
+              : 'Submit review'}
       </Button>
     </form>
   );
