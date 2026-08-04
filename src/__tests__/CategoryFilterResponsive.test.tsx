@@ -39,11 +39,12 @@ describe('responsive category filter', () => {
     expect(onCategoryChange).toHaveBeenCalledWith('Mechanic');
   });
 
-  test('shows the mobile swipe affordance only while categories remain offscreen', () => {
+  test('makes the mobile scroll affordance clickable while categories remain offscreen', () => {
+    const onCategoryChange = jest.fn();
     render(
       <CategoryFilter
         categories={categories}
-        onCategoryChange={jest.fn()}
+        onCategoryChange={onCategoryChange}
         selectedCategory="All"
       />,
     );
@@ -52,9 +53,17 @@ describe('responsive category filter', () => {
     Object.defineProperty(navigation, 'scrollWidth', { configurable: true, value: 900 });
     Object.defineProperty(navigation, 'clientWidth', { configurable: true, value: 320 });
     Object.defineProperty(navigation, 'scrollLeft', { configurable: true, value: 0, writable: true });
+    const scrollBy = jest.fn(({ left }: ScrollToOptions) => {
+      navigation.scrollLeft += Number(left ?? 0);
+    });
+    Object.defineProperty(navigation, 'scrollBy', { configurable: true, value: scrollBy });
 
     fireEvent(window, new Event('resize'));
-    expect(screen.getByRole('status')).toHaveTextContent('Swipe to see more categories.');
+    expect(screen.getByRole('status')).toHaveTextContent('Swipe or use the arrow to see more categories.');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show more categories' }));
+    expect(scrollBy).toHaveBeenCalledWith({ left: 240, behavior: 'smooth' });
+    expect(onCategoryChange).not.toHaveBeenCalled();
 
     navigation.scrollLeft = 580;
     fireEvent.scroll(navigation);

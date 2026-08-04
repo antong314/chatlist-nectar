@@ -35,6 +35,16 @@ export function CategoryFilter({
     setShowMobileScrollHint(hasHiddenCategories && remainingScroll > 4);
   }, []);
 
+  const scrollToMoreCategories = () => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+
+    scrollContainer.scrollBy({
+      left: Math.max(scrollContainer.clientWidth * 0.72, 240),
+      behavior: 'smooth',
+    });
+  };
+
   useEffect(() => {
     updateMobileScrollHint();
     window.addEventListener('resize', updateMobileScrollHint);
@@ -53,6 +63,7 @@ export function CategoryFilter({
   return (
     <div className="relative mb-6">
       <nav
+        id="directory-category-filter"
         aria-label="Filter by service category"
         className="category-scroll -mx-4 overflow-x-auto px-4 pb-2 touch-pan-x sm:mx-0 sm:overflow-visible sm:px-0 sm:pb-0"
         onScroll={updateMobileScrollHint}
@@ -87,11 +98,17 @@ export function CategoryFilter({
       </nav>
 
       {showMobileScrollHint && (
-        <div className="pointer-events-none absolute -right-4 bottom-2 top-0 flex w-16 items-center justify-end bg-gradient-to-r from-transparent via-[#f8f5ed]/90 to-[#f8f5ed] pr-2 sm:hidden">
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-[var(--directory-green)] shadow-sm ring-1 ring-stone-200" aria-hidden="true">
+        <div className="pointer-events-none absolute -right-4 bottom-2 top-0 z-10 flex w-20 items-center justify-end bg-gradient-to-r from-transparent via-[#f8f5ed]/90 to-[#f8f5ed] pr-2 sm:hidden">
+          <button
+            type="button"
+            className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-white text-[var(--directory-green)] shadow-md ring-1 ring-stone-200 transition active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--directory-green)] focus-visible:ring-offset-2"
+            onClick={scrollToMoreCategories}
+            aria-label="Show more categories"
+            aria-controls="directory-category-filter"
+          >
             <ChevronRight className="h-4 w-4" />
-          </span>
-          <span className="sr-only" role="status">Swipe to see more categories.</span>
+          </button>
+          <span className="sr-only" role="status">Swipe or use the arrow to see more categories.</span>
         </div>
       )}
     </div>
