@@ -222,7 +222,8 @@ describe('Provider experience', () => {
     expect(screen.queryByRole('img', { name: /preview/i })).not.toBeInTheDocument();
   });
 
-  test('preserves an existing provider image when public edits leave it unchanged', async () => {
+  test('verifies an editor before saving and preserves an unchanged provider image', async () => {
+    const user = userEvent.setup();
     const onSave = jest.fn().mockResolvedValue(undefined);
     const existingImageUrl = 'https://example.com/provider-image.jpg';
 
@@ -235,16 +236,73 @@ describe('Provider experience', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    await user.type(screen.getByLabelText(/whatsapp number for verification/i), '+506 8777 1234');
+    await user.click(screen.getByRole('button', { name: /send whatsapp code/i }));
+
+    expect(VerificationModule.startWhatsappVerification).toHaveBeenCalledWith({
+      actionType: 'provider_update',
+      phone: '+50687771234',
+      payload: expect.objectContaining({
+        providerId,
+        name: contact.name,
+        imageChange: 'keep',
+      }),
+    });
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/provider or business name/i)).toBeDisabled();
+
+    await user.type(screen.getByLabelText(/whatsapp confirmation code/i), '123456');
+    await user.click(screen.getByRole('button', { name: /verify & save changes/i }));
 
     await waitFor(() => {
-      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
-        id: contact.id,
-        image_url: existingImageUrl,
-        imageFile: null,
-        removeLogo: false,
-      }));
+      expect(onSave).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: contact.id,
+          image_url: existingImageUrl,
+          imageFile: null,
+          removeLogo: false,
+        }),
+        { challenge: verificationChallenge, code: '123456' },
+      );
     });
+  });
+
+  test('requires verification before creating a new provider', async () => {
+    const user = userEvent.setup();
+    const onSave = jest.fn().mockResolvedValue(undefined);
+
+    render(
+      <ContactForm
+        categories={['Service']}
+        onCancel={jest.fn()}
+        onSave={onSave}
+      />,
+    );
+
+    await user.type(screen.getByLabelText(/provider or business name/i), 'New Neighbor Service');
+    await user.type(screen.getByLabelText(/what do they help with/i), 'Friendly local repairs.');
+    await user.type(screen.getByPlaceholderText(/local number/i), '88881212');
+    await user.type(screen.getByLabelText(/whatsapp number for verification/i), '+506 8777 1234');
+    await user.click(screen.getByRole('button', { name: /send whatsapp code/i }));
+
+    expect(VerificationModule.startWhatsappVerification).toHaveBeenCalledWith({
+      actionType: 'provider_create',
+      phone: '+50687771234',
+      payload: expect.objectContaining({
+        name: 'New Neighbor Service',
+        description: 'Friendly local repairs.',
+        imageChange: 'none',
+      }),
+    });
+    expect(onSave).not.toHaveBeenCalled();
+
+    await user.type(screen.getByLabelText(/whatsapp confirmation code/i), '654321');
+    await user.click(screen.getByRole('button', { name: /verify & add provider/i }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'New Neighbor Service', imageFile: null }),
+      { challenge: verificationChallenge, code: '654321' },
+    ));
   });
 
   test('labels unnamed reviewers as anonymous', () => {

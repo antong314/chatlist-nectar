@@ -134,6 +134,27 @@ app.post(
   })),
 );
 
+app.post(
+  '/bot/verify/provider/complete',
+  express.json({ limit: '8kb', type: 'application/json' }),
+  verificationRoute((request) => communityVerification.completeProviderWrite({
+    actionId: request.body?.actionId,
+    actionToken: request.body?.actionToken,
+    imagePath: request.body?.imagePath,
+  })),
+);
+
+app.post(
+  '/bot/verify/provider/logo',
+  express.raw({ limit: '5mb', type: ['image/jpeg', 'image/png', 'image/webp'] }),
+  verificationRoute((request) => communityVerification.uploadProviderLogo({
+    actionId: request.get('x-verification-action-id'),
+    actionToken: request.get('x-verification-action-token'),
+    contentType: request.get('content-type'),
+    bytes: request.body,
+  })),
+);
+
 app.post('/bot', express.urlencoded({ extended: false, limit: '256kb' }), async (request, response) => {
   try {
     if (validateTwilioSignatures) {

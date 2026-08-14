@@ -7,7 +7,12 @@ export interface WhatsappVerificationChallenge {
 
 export interface VerificationApproval {
   status: 'approved';
-  actionType: 'provider_delete' | 'provider_review';
+  actionType: VerificationActionType;
   requiresCompletion?: boolean;
 }
 
+export type VerificationActionType =
+  | 'provider_create'
+  | 'provider_update'
+  | 'provider_delete'
+  | 'provider_review';

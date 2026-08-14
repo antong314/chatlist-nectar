@@ -57,9 +57,11 @@ JavaScript during the frontend build.
 ## Endpoints
 
 - `POST /bot` — Twilio inbound-message webhook; validates `X-Twilio-Signature`
-- `POST /bot/verify/start` — starts a WhatsApp OTP bound to a review or deletion
+- `POST /bot/verify/start` — starts a WhatsApp OTP bound to a provider create/edit, review, or deletion
 - `POST /bot/verify/check` — verifies the OTP and completes actions without photos
 - `POST /bot/verify/review/complete` — finishes a verified review after photo upload
+- `POST /bot/verify/provider/complete` — atomically finishes a verified provider create/edit, including an optional logo
+- `POST /bot/verify/provider/logo` — uploads an action-scoped logo after the provider OTP is approved
 - `GET /bot` — lightweight bot status
 - `GET /bot/contact/:id.vcf?token=...` — short-lived signed vCard media URL
 - `GET /healthz` — service health check

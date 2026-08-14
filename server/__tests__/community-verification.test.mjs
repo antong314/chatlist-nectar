@@ -123,3 +123,164 @@ test('accepts an approved Twilio code and completes a no-photo review', async ()
     code: '123456',
   }), { status: 'approved', actionType: 'provider_review' });
 });
+
+test('normalizes and binds provider edits to the verification action payload', async () => {
+  let insertedAction;
+  const results = [
+    { count: 0, error: null },
+    { count: 0, error: null },
+    { data: { id: actionId, expires_at: '2026-08-04T15:10:00.000Z' }, error: null },
+    { error: null },
+  ];
+  const supabase = {
+    from() {
+      const chain = builder(results.shift());
+      chain.insert = (value) => {
+        insertedAction = value;
+        return chain;
+      };
+      return chain;
+    },
+  };
+  const twilioClient = {
+    verify: { v2: { services: () => ({
+      verifications: { create: async () => ({ sid: 'VEaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }) },
+    }) } },
+  };
+  const service = new CommunityVerificationService({
+    supabase,
+    twilioClient,
+    verifyServiceSid: 'VAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    signingSecret: 'test-signing-secret',
+  });
+
+  await service.start({
+    actionType: 'provider_update',
+    phone: '+506 8777 1234',
+    payload: {
+      providerId,
+      name: '  Efra   Mechanic ',
+      category: 'Mechanic',
+      description: ' Mobile repairs. ',
+      providerPhone: '00506 8888 1212',
+      website: 'https://example.com',
+      mapUrl: null,
+      imageChange: 'keep',
+    },
+    requestIp: '192.0.2.2',
+  });
+
+  assert.equal(insertedAction.action_type, 'provider_update');
+  assert.equal(insertedAction.requester_whatsapp, '+50687771234');
+  assert.deepEqual(insertedAction.payload, {
+    providerId,
+    name: 'Efra Mechanic',
+    category: 'Mechanic',
+    description: 'Mobile repairs.',
+    providerPhone: '+50688881212',
+    website: 'https://example.com/',
+    mapUrl: null,
+    imageChange: 'keep',
+  });
+});
+
+test('completes a verified provider write through the service-only RPC', async () => {
+  const imagePath = `${actionId}/11111111-1111-4111-8111-111111111111.jpg`;
+  let rpcArguments;
+  const service = new CommunityVerificationService({
+    supabase: {
+      rpc: async (name, args) => {
+        assert.equal(name, 'complete_verified_provider_write');
+        rpcArguments = args;
+        return {
+          data: {
+            id: providerId,
+            title: 'Efra Mechanic',
+            subtitle: 'Mobile repairs.',
+            category: 'Mechanic',
+            phone_number: '+50688881212',
+            website_url: null,
+            map_url: null,
+            image_url: `https://example.supabase.co/storage/v1/object/public/contact-images/${imagePath}`,
+            previous_image_url: null,
+          },
+          error: null,
+        };
+      },
+      storage: {
+        from: () => ({
+          getPublicUrl: (path) => ({
+            data: { publicUrl: `https://example.supabase.co/storage/v1/object/public/contact-images/${path}` },
+          }),
+        }),
+      },
+    },
+    twilioClient: {},
+    verifyServiceSid: 'VAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    signingSecret: 'test-signing-secret',
+  });
+  service.loadAction = async () => ({
+    id: actionId,
+    action_type: 'provider_create',
+    status: 'verified',
+    consumed_at: null,
+    payload: { imageChange: 'replace' },
+  });
+
+  const result = await service.completeProviderWrite({
+    actionId,
+    actionToken: 'verification_action_token_12345678901234567890',
+    imagePath,
+  });
+
+  assert.deepEqual(rpcArguments, {
+    p_action_id: actionId,
+    p_image_path: imagePath,
+    p_image_url: `https://example.supabase.co/storage/v1/object/public/contact-images/${imagePath}`,
+  });
+  assert.equal(result.actionType, 'provider_create');
+  assert.equal(result.provider.id, providerId);
+  assert.equal('previous_image_url' in result.provider, false);
+});
+
+test('uploads a provider logo only for a verified replacement action', async () => {
+  let uploaded;
+  const service = new CommunityVerificationService({
+    supabase: {
+      storage: {
+        from: (bucket) => {
+          assert.equal(bucket, 'contact-images');
+          return {
+            upload: async (path, bytes, options) => {
+              uploaded = { path, bytes, options };
+              return { error: null };
+            },
+          };
+        },
+      },
+    },
+    twilioClient: {},
+    verifyServiceSid: 'VAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    signingSecret: 'test-signing-secret',
+  });
+  service.loadAction = async () => ({
+    id: actionId,
+    action_type: 'provider_update',
+    status: 'verified',
+    consumed_at: null,
+    payload: { imageChange: 'replace' },
+  });
+  const bytes = Buffer.from('logo');
+
+  const result = await service.uploadProviderLogo({
+    actionId,
+    actionToken: 'verification_action_token_12345678901234567890',
+    contentType: 'image/png',
+    bytes,
+  });
+
+  assert.match(result.imagePath, new RegExp(`^${actionId}/[0-9a-f-]{36}\\.png$`));
+  assert.equal(uploaded.path, result.imagePath);
+  assert.equal(uploaded.bytes, bytes);
+  assert.deepEqual(uploaded.options, { contentType: 'image/png', upsert: false });
+});

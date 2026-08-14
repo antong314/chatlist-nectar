@@ -13,6 +13,7 @@ import { useContacts } from '@/hooks/useContacts';
 import { Contact } from '@/types/contact';
 import { trackEvent, trackPageView } from '@/utils/analytics';
 import type { ProviderDeletionRequest } from '@/features/directory/components/ProviderDeletionDialog';
+import type { ProviderWriteVerification } from '@/features/directory/components/ContactForm';
 
 const getUndoToastDuration = (undoExpiresAt: string) => {
   const remainingMilliseconds = new Date(undoExpiresAt).getTime() - Date.now();
@@ -96,9 +97,12 @@ const Index = () => {
     setIsFormOpen(true);
   }, [contacts, editProviderId, loading, setEditProviderParam]);
 
-  const handleSaveContact = async (contact: Omit<Contact, 'id'> | Contact) => {
+  const handleSaveContact = async (
+    contact: Omit<Contact, 'id'> | Contact,
+    verification: ProviderWriteVerification,
+  ) => {
     if ('id' in contact) {
-      const success = await updateContact(contact);
+      const success = await updateContact(contact, verification);
       if (success) {
         handleCloseForm();
         trackEvent('Directory', 'Update Contact', contact.name);
@@ -106,7 +110,7 @@ const Index = () => {
       return;
     }
 
-    const success = await addContact(contact);
+    const success = await addContact(contact, verification);
     if (success) {
       handleCloseForm();
       trackEvent('Directory', 'Add Contact', contact.name);

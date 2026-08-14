@@ -4,14 +4,25 @@ import { toast } from 'sonner';
 import { Contact, Category } from '@/types/contact';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase'; // Corrected import path
-import { v4 as uuidv4 } from 'uuid'; // Import uuid
 import { searchDirectoryContacts } from '@/features/directory/search/directorySearch';
 import {
   requestProviderDeletion,
   undoProviderDeletion,
 } from '@/features/provider-deletion';
+import {
+  checkWhatsappVerification,
+  completeVerifiedProviderWrite,
+  uploadVerifiedProviderLogo,
+  type WhatsappVerificationChallenge,
+} from '@/features/verification';
 
-const CONTACT_LOGOS_BUCKET = 'contact-images'; // Use the existing bucket name
+const CONTACT_LOGO_MAX_BYTES = 5 * 1024 * 1024;
+const CONTACT_LOGO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+interface ProviderWriteVerification {
+  challenge: WhatsappVerificationChallenge;
+  code: string;
+}
 
 interface DatabaseContactRow {
   id: string;
@@ -148,228 +159,65 @@ export const useContacts = () => {
     setRefreshTrigger(prev => prev + 1);
   }, []);
 
-  // Helper function to extract storage path from public URL
-  const getPathFromUrl = (url: string | null | undefined): string | null => {
-    if (!url) return null;
-    try {
-      const urlParts = new URL(url);
-      // Example path: /storage/v1/object/public/contact-logos/public/image.png
-      // We need the part after the bucket name: public/image.png
-      const pathSegments = urlParts.pathname.split('/');
-      const bucketNameIndex = pathSegments.indexOf(CONTACT_LOGOS_BUCKET);
-      if (bucketNameIndex === -1 || bucketNameIndex + 1 >= pathSegments.length) {
-        console.warn('Could not extract path from URL:', url);
-        return null;
-      }
-      return pathSegments.slice(bucketNameIndex + 1).join('/');
-    } catch (e) {
-      console.warn('Error parsing URL for path extraction:', url, e);
-      return null;
-    }
-  };
+  const uploadVerifiedLogo = useCallback(async (
+    challenge: WhatsappVerificationChallenge,
+    file?: File | null,
+  ): Promise<string | null> => {
+    if (!file) return null;
+    if (!CONTACT_LOGO_TYPES.has(file.type)) throw new Error('Logo must be a JPEG, PNG, or WebP image.');
+    if (file.size > CONTACT_LOGO_MAX_BYTES) throw new Error('Logo must be 5 MB or smaller.');
 
-  // Add a new contact to Supabase
-  const addContact = useCallback(async (newContactData: Omit<Contact, "id"> & { imageFile?: File | null }) => {
-    try {
-      let imageUrl: string | null = null;
-
-      // 1. Handle image upload if imageFile is provided
-      if (newContactData.imageFile) {
-        const file = newContactData.imageFile;
-        const fileExt = file.name.split('.').pop();
-        const uniqueFileName = `${uuidv4()}.${fileExt}`;
-        const filePath = `public/${uniqueFileName}`; // Store in a 'public' folder within the bucket
-
-        console.log(`Uploading new image to: ${filePath}`);
-        const { error: uploadError } = await supabase.storage
-          .from(CONTACT_LOGOS_BUCKET)
-          .upload(filePath, file);
-
-        if (uploadError) {
-          console.error('Error uploading image:', uploadError);
-          throw new Error(`Failed to upload image: ${uploadError.message}`);
-        }
-
-        // Get the public URL
-        const { data: urlData } = supabase.storage
-          .from(CONTACT_LOGOS_BUCKET)
-          .getPublicUrl(filePath);
-
-        if (!urlData || !urlData.publicUrl) {
-          console.error('Error getting public URL for image:', filePath);
-          // Continue without image URL, or throw error depending on requirements
-          // throw new Error('Failed to get public URL for uploaded image.'); 
-          imageUrl = null; // Or handle as critical error
-        } else {
-          imageUrl = urlData.publicUrl;
-          console.log(`Image uploaded successfully. URL: ${imageUrl}`);
-        }
-      }
-
-      const contactToInsert = {
-        title: newContactData.name.trim(),
-        category: newContactData.category,
-        subtitle: newContactData.description.trim(),
-        phone_number: newContactData.phone.trim(),
-        website_url: newContactData.website?.trim() || null,
-        map_url: newContactData.mapUrl?.trim() || null,
-        image_url: imageUrl // Use the determined image URL
-      };
-
-      // Insert into Supabase 'contacts' table
-      const { data, error: insertError } = await supabase
-        .from('contacts')
-        .insert(contactToInsert)
-        .select() // Select the newly inserted row
-        .single(); // Expecting a single row back
-
-      if (insertError) {
-        console.error('Supabase insert error:', insertError);
-        throw new Error(insertError.message || 'Error adding contact to Supabase');
-      }
-
-      if (data) {
-        // Map the newly inserted data back to the Contact type
-        const addedContact = mapDatabaseContact(data as DatabaseContactRow);
-
-        // Add new contact immediately to local state and maintain alphabetical sorting
-        setContacts(prev => sortContactsAlphabetically([...prev, addedContact]));
-        toast.success("Contact added successfully");
-        return true;
-      } else {
-        // Should not happen if insert was successful and .single() was used, but handle defensively
-        throw new Error('Failed to retrieve added contact data from Supabase');
-      }
-
-    } catch (err: unknown) {
-      console.error('Error adding contact:', err);
-      toast.error(`Error adding contact: ${getErrorMessage(err, 'Please try again.')}`);
-      return false;
-    }
+    return uploadVerifiedProviderLogo(challenge, file);
   }, []);
 
-  // Update an existing contact in Supabase
-  const updateContact = useCallback(async (updatedContactData: Contact & { imageFile?: File | null, removeLogo?: boolean }) => {
+  const completeProviderWrite = useCallback(async (
+    contactData: (Omit<Contact, 'id'> | Contact) & { imageFile?: File | null },
+    verification: ProviderWriteVerification,
+  ) => {
+    await checkWhatsappVerification(verification.challenge, verification.code);
+    const uploadedImagePath = await uploadVerifiedLogo(verification.challenge, contactData.imageFile);
+    const result = await completeVerifiedProviderWrite(verification.challenge, uploadedImagePath);
+    return mapDatabaseContact(result.provider as unknown as DatabaseContactRow);
+  }, [uploadVerifiedLogo]);
+
+  // Create a provider only after the server accepts the WhatsApp-bound action.
+  const addContact = useCallback(async (
+    newContactData: Omit<Contact, 'id'> & { imageFile?: File | null },
+    verification: ProviderWriteVerification,
+  ) => {
     try {
-      // Validate that we have an ID
-      if (!updatedContactData.id) {
-        throw new Error('Contact ID is required for updates');
-      }
-
-      const existingImageUrl = updatedContactData.image_url
-        || updatedContactData.logoUrl
-        || updatedContactData.avatarUrl
-        || null;
-      let newImageUrl: string | null = existingImageUrl;
-      const currentImagePath = getPathFromUrl(existingImageUrl);
-
-      // 1. Handle new image upload
-      if (updatedContactData.imageFile) {
-        const file = updatedContactData.imageFile;
-        const fileExt = file.name.split('.').pop();
-        const uniqueFileName = `${uuidv4()}.${fileExt}`;
-        const newFilePath = `public/${uniqueFileName}`;
-
-        // Delete old image first if it exists
-        if (currentImagePath) {
-          console.log(`Removing old image: ${currentImagePath}`);
-          const { error: deleteError } = await supabase.storage
-            .from(CONTACT_LOGOS_BUCKET)
-            .remove([currentImagePath]);
-          if (deleteError) {
-            // Log warning but continue, maybe the file was already deleted
-            console.warn(`Could not delete old image (${currentImagePath}):`, deleteError.message);
-          }
-        }
-
-        // Upload new image
-        console.log(`Uploading new image to: ${newFilePath}`);
-        const { error: uploadError } = await supabase.storage
-          .from(CONTACT_LOGOS_BUCKET)
-          .upload(newFilePath, file);
-
-        if (uploadError) {
-          console.error('Error uploading new image:', uploadError);
-          throw new Error(`Failed to upload new image: ${uploadError.message}`);
-        }
-
-        // Get the public URL for the new image
-        const { data: urlData } = supabase.storage
-          .from(CONTACT_LOGOS_BUCKET)
-          .getPublicUrl(newFilePath);
-
-        if (!urlData || !urlData.publicUrl) {
-          console.error('Error getting public URL for new image:', newFilePath);
-          newImageUrl = null; // Or handle as critical error
-        } else {
-          newImageUrl = urlData.publicUrl;
-          console.log(`New image uploaded successfully. URL: ${newImageUrl}`);
-        }
-      }
-      // 2. Handle image removal if no new image was uploaded
-      else if (updatedContactData.removeLogo && currentImagePath) {
-        console.log(`Removing image: ${currentImagePath}`);
-        const { error: deleteError } = await supabase.storage
-          .from(CONTACT_LOGOS_BUCKET)
-          .remove([currentImagePath]);
-
-        if (deleteError) {
-          console.warn(`Could not remove image (${currentImagePath}):`, deleteError.message);
-          // Don't clear newImageUrl yet, maybe removal failed
-        } else {
-          console.log(`Image removed successfully.`);
-          newImageUrl = null; // Set URL to null after successful removal
-        }
-      }
-      // 3. If neither upload nor remove, newImageUrl remains the original image_url
-
-      const contactToUpdate = {
-        title: updatedContactData.name.trim(),
-        category: updatedContactData.category,
-        subtitle: updatedContactData.description.trim(),
-        phone_number: updatedContactData.phone.trim(),
-        website_url: updatedContactData.website?.trim() || null, // Keep existing field mappings
-        map_url: updatedContactData.mapUrl?.trim() || null,
-        image_url: newImageUrl // Set the determined image URL
-      };
-
-      // Update the record in Supabase
-      const { data, error: updateError } = await supabase
-        .from('contacts')
-        .update(contactToUpdate)
-        .eq('id', updatedContactData.id) // Match the contact by ID
-        .select() // Select the updated row
-        .single(); // Expecting a single row back
-
-      if (updateError) {
-        console.error('Supabase update error:', updateError);
-        throw new Error(updateError.message || 'Error updating contact in Supabase');
-      }
-
-      if (data) {
-        // Map the updated data back to the Contact type
-        const updatedContact = mapDatabaseContact(data as DatabaseContactRow);
-
-        // Update the contacts state with the updated contact and maintain sorting
-        setContacts(prev => {
-          const updatedList = prev.map(contact =>
-            contact.id === updatedContact.id ? updatedContact : contact
-          );
-          return sortContactsAlphabetically(updatedList);
-        });
-
-        toast.success("Contact updated successfully");
-        return true;
-      } else {
-        throw new Error('Failed to retrieve updated contact data from Supabase');
-      }
-
-    } catch (err: unknown) {
-      console.error('Error updating contact:', err);
-      toast.error(`Error updating contact: ${getErrorMessage(err, 'Please try again.')}`);
-      return false;
+      const addedContact = await completeProviderWrite(newContactData, verification);
+      setContacts((previous) => sortContactsAlphabetically([...previous, addedContact]));
+      toast.success('Provider added successfully');
+      return true;
+    } catch (error) {
+      const message = getErrorMessage(error, 'Please try again.');
+      console.error('Error adding provider:', error);
+      toast.error(`Could not add provider: ${message}`);
+      throw error instanceof Error ? error : new Error(message);
     }
-  }, []);
+  }, [completeProviderWrite]);
+
+  // Update a provider only after the server accepts the WhatsApp-bound action.
+  const updateContact = useCallback(async (
+    updatedContactData: Contact & { imageFile?: File | null; removeLogo?: boolean },
+    verification: ProviderWriteVerification,
+  ) => {
+    try {
+      if (!updatedContactData.id) throw new Error('Contact ID is required for updates');
+      const updatedContact = await completeProviderWrite(updatedContactData, verification);
+      setContacts((previous) => sortContactsAlphabetically(previous.map((contact) =>
+        contact.id === updatedContact.id ? updatedContact : contact
+      )));
+      toast.success('Provider updated successfully');
+      return true;
+    } catch (error) {
+      const message = getErrorMessage(error, 'Please try again.');
+      console.error('Error updating provider:', error);
+      toast.error(`Could not update provider: ${message}`);
+      throw error instanceof Error ? error : new Error(message);
+    }
+  }, [completeProviderWrite]);
 
   // Complete a recoverable deletion only after WhatsApp OTP verification.
   const deleteContact = useCallback(async (

@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { toast } from 'sonner';
 import { countryCodes, extractCountryCode } from '@/features/directory/data/countryCodes';
 import { categoryIconMap } from '@/features/directory/data/categoryIcons';
 import { Contact, Category } from '@/features/directory/types/contact';
@@ -8,19 +7,35 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Shapes, X, Upload, Trash2 } from 'lucide-react';
+import { Loader2, LockKeyhole, Shapes, X, Upload, Trash2 } from 'lucide-react';
 import { AvatarFallback } from '@/components/ui/avatar-fallback';
 import { normalizeWebsiteUrl } from '@/lib/urls';
 import { getDirectoryCategoryLabel } from '@/features/directory/data/categories';
+import { normalizeWhatsappNumber } from '@/features/reviews/validation';
+import {
+  startWhatsappVerification,
+  type WhatsappVerificationChallenge,
+} from '@/features/verification';
 import {
   ProviderDeletionDialog,
   ProviderDeletionRequest,
 } from './ProviderDeletionDialog';
 
+const PROVIDER_LOGO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const PROVIDER_LOGO_MAX_BYTES = 5 * 1024 * 1024;
+
+export interface ProviderWriteVerification {
+  challenge: WhatsappVerificationChallenge;
+  code: string;
+}
+
 interface ContactFormProps {
   contact?: Contact;
   categories: Category[];
-  onSave: (contact: Omit<Contact, 'id'> | Contact) => void;
+  onSave: (
+    contact: Omit<Contact, 'id'> | Contact,
+    verification: ProviderWriteVerification,
+  ) => Promise<unknown>;
   onCancel: () => void;
   onDelete?: (request: ProviderDeletionRequest) => Promise<void>;
 }
@@ -47,6 +62,10 @@ export function ContactForm({
   const [logoRemoved, setLogoRemoved] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [requesterWhatsapp, setRequesterWhatsapp] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [verificationChallenge, setVerificationChallenge] = useState<WhatsappVerificationChallenge | null>(null);
+  const [verificationError, setVerificationError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const effectRan = useRef(false);
   
@@ -98,6 +117,21 @@ export function ContactForm({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (!PROVIDER_LOGO_TYPES.has(file.type)) {
+      setErrors((current) => ({ ...current, logo: 'Logo must be a JPEG, PNG, or WebP image.' }));
+      e.target.value = '';
+      return;
+    }
+    if (file.size > PROVIDER_LOGO_MAX_BYTES) {
+      setErrors((current) => ({ ...current, logo: 'Logo must be 5 MB or smaller.' }));
+      e.target.value = '';
+      return;
+    }
+    setErrors((current) => {
+      const { logo: _logoError, ...remainingErrors } = current;
+      return remainingErrors;
+    });
+
     // Reset logo removed flag if user selects a new logo
     if (logoRemoved) setLogoRemoved(false);
 
@@ -136,11 +170,21 @@ export function ContactForm({
     
     if (!validate()) return;
     
-    // Set loading state to true
+    let normalizedRequesterWhatsapp = verificationChallenge?.phone;
+    if (!verificationChallenge) {
+      try {
+        normalizedRequesterWhatsapp = normalizeWhatsappNumber(requesterWhatsapp);
+      } catch (error) {
+        setVerificationError(error instanceof Error ? error.message : 'Enter a valid WhatsApp number.');
+        return;
+      }
+    } else if (!verificationCode.trim()) {
+      setVerificationError('Enter the confirmation code sent to WhatsApp.');
+      return;
+    }
+
     setIsSubmitting(true);
-    
-    // Show a loading toast notification
-    const toastId = toast.loading(contact ? 'Saving contact...' : 'Adding new contact...');
+    setVerificationError('');
     
     // Base contact data excluding ID and image-related fields handled separately
     const baseContactData: Omit<Contact, 'id' | 'image_url' | 'imageFile'> = {
@@ -172,19 +216,39 @@ export function ContactForm({
         };
     
     try {
-      // Pass the data to the parent component
-      // The type assertion might be needed if TS complains, but `onSave` in useContacts expects this shape now.
-      await onSave(finalContactData);
-      // Dismiss the loading toast and show success
-      toast.dismiss(toastId);
-      // The success toast is already shown in the useContacts hook
+      if (!verificationChallenge) {
+        const imageChange = logoFile
+          ? 'replace'
+          : contact?.id
+            ? (logoRemoved ? 'remove' : 'keep')
+            : 'none';
+        const challenge = await startWhatsappVerification({
+          actionType: contact?.id ? 'provider_update' : 'provider_create',
+          phone: normalizedRequesterWhatsapp!,
+          payload: {
+            ...(contact?.id ? { providerId: contact.id } : {}),
+            name: baseContactData.name,
+            category: baseContactData.category,
+            description: baseContactData.description,
+            providerPhone: baseContactData.phone,
+            website: baseContactData.website ?? null,
+            mapUrl: baseContactData.mapUrl ?? null,
+            imageChange,
+          },
+        });
+        setVerificationChallenge(challenge);
+        setVerificationCode('');
+        return;
+      }
+
+      await onSave(finalContactData, {
+        challenge: verificationChallenge,
+        code: verificationCode.trim(),
+      });
     } catch (error) {
       console.error('Error saving contact:', error);
-      // Dismiss the loading toast and show error
-      toast.dismiss(toastId);
-      toast.error('Failed to save contact');
+      setVerificationError(error instanceof Error ? error.message : 'Failed to save provider.');
     } finally {
-      // Reset loading state regardless of success or failure
       setIsSubmitting(false);
     }
   };
@@ -233,6 +297,7 @@ export function ContactForm({
               value={name}
               onChange={(e) => setName(e.target.value)}
               className={errors.name ? 'border-red-500' : ''}
+              disabled={Boolean(verificationChallenge)}
             />
             {errors.name && <p className="text-sm text-red-500 mt-1">{errors.name}</p>}
           </div>
@@ -242,6 +307,7 @@ export function ContactForm({
             <Select
               value={category}
               onValueChange={(value) => setCategory(value as Category)}
+              disabled={Boolean(verificationChallenge)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select a category">
@@ -279,6 +345,7 @@ export function ContactForm({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className={`min-h-[100px] ${errors.description ? 'border-red-500' : ''}`}
+              disabled={Boolean(verificationChallenge)}
             />
             {errors.description && <p className="text-sm text-red-500 mt-1">{errors.description}</p>}
           </div>
@@ -289,6 +356,7 @@ export function ContactForm({
               <Select
                 value={countryCode}
                 onValueChange={(value) => setCountryCode(value)}
+                disabled={Boolean(verificationChallenge)}
               >
                 <SelectTrigger className="w-[120px]">
                   <SelectValue placeholder="Code" />
@@ -308,6 +376,7 @@ export function ContactForm({
                 className={errors.phone ? 'border-red-500' : ''}
                 placeholder="Local number"
                 inputMode="tel"
+                disabled={Boolean(verificationChallenge)}
               />
             </div>
             <input type="hidden" id="phone" value={phone} />
@@ -320,6 +389,7 @@ export function ContactForm({
               id="website"
               value={website}
               onChange={(e) => setWebsite(e.target.value)}
+              disabled={Boolean(verificationChallenge)}
             />
           </div>
           
@@ -330,6 +400,7 @@ export function ContactForm({
               value={mapUrl}
               onChange={(e) => setMapUrl(e.target.value)}
               placeholder="https://maps.google.com/..."
+              disabled={Boolean(verificationChallenge)}
             />
           </div>
 
@@ -352,8 +423,9 @@ export function ContactForm({
                   id="form-logo"
                   ref={fileInputRef}
                   onChange={handleLogoChange}
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/webp"
                   className="hidden"
+                  disabled={Boolean(verificationChallenge)}
                 />
                 <input 
                   type="hidden"
@@ -369,6 +441,7 @@ export function ContactForm({
                     variant="outline" 
                     onClick={triggerFileInput}
                     className="flex items-center justify-center flex-1"
+                    disabled={Boolean(verificationChallenge)}
                   >
                     <Upload className="w-4 h-4 mr-2" />
                     {logoPreview ? 'Change Logo' : 'Upload Logo'}
@@ -381,15 +454,73 @@ export function ContactForm({
                       variant="destructive"
                       onClick={removeLogo}
                       className="flex items-center justify-center"
+                      disabled={Boolean(verificationChallenge)}
                     >
                       <Trash2 className="w-4 h-4 mr-2" />
                       Remove Logo
                     </Button>
                   ) : <div className="w-0"></div>}
                 </div>
+                {errors.logo && <p className="text-sm text-red-500" role="alert">{errors.logo}</p>}
               </div>
             </div>
           </div>
+
+          <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+            <Label htmlFor="provider-editor-whatsapp">WhatsApp number for verification</Label>
+            <Input
+              autoComplete="tel"
+              disabled={Boolean(verificationChallenge)}
+              id="provider-editor-whatsapp"
+              inputMode="tel"
+              maxLength={32}
+              onChange={(event) => setRequesterWhatsapp(event.target.value)}
+              placeholder="Include country code, e.g. +506 8888 8888"
+              required
+              type="tel"
+              value={requesterWhatsapp}
+            />
+            <p className="flex items-center gap-1.5 text-xs leading-relaxed text-gray-600">
+              <LockKeyhole aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+              We’ll send a one-time code before {contact ? 'saving these changes' : 'adding this provider'}. Your number stays private.
+            </p>
+
+            {verificationChallenge && (
+              <div className="space-y-2 pt-1">
+                <Label htmlFor="provider-write-verification-code">WhatsApp confirmation code</Label>
+                <Input
+                  autoComplete="one-time-code"
+                  id="provider-write-verification-code"
+                  inputMode="numeric"
+                  maxLength={10}
+                  onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, ''))}
+                  placeholder="Enter the code"
+                  required
+                  value={verificationCode}
+                />
+                <p className="text-xs leading-relaxed text-gray-600">
+                  We sent a verification code to {verificationChallenge.phone}.
+                </p>
+                <Button
+                  className="h-auto p-0 text-xs"
+                  disabled={isSubmitting}
+                  onClick={() => {
+                    setVerificationChallenge(null);
+                    setVerificationCode('');
+                    setVerificationError('');
+                  }}
+                  type="button"
+                  variant="link"
+                >
+                  Change number or request a new code
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {verificationError && (
+            <p className="text-sm font-medium text-red-600" role="alert">{verificationError}</p>
+          )}
           
           <div className="flex justify-between pt-4">
             {contact && onDelete ? (
@@ -418,11 +549,13 @@ export function ContactForm({
               >
                 {isSubmitting ? (
                   <>
-                    <span className="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-solid border-current border-r-transparent"></span>
-                    {contact ? 'Saving...' : 'Adding...'}
+                    <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />
+                    {verificationChallenge ? 'Verifying…' : 'Sending code…'}
                   </>
                 ) : (
-                  contact ? 'Save changes' : 'Add provider'
+                  verificationChallenge
+                    ? (contact ? 'Verify & save changes' : 'Verify & add provider')
+                    : 'Send WhatsApp code'
                 )}
               </Button>
             </div>

@@ -1,11 +1,19 @@
-import { createHash, createHmac, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const E164_PATTERN = /^\+[1-9][0-9]{7,14}$/;
 const ACTION_SECRET_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
 const CODE_PATTERN = /^[0-9]{4,10}$/;
 const REVIEW_IMAGE_PATH_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(?:jpg|jpeg|png|webp)$/i;
+const PROVIDER_IMAGE_PATH_PATTERN = /^([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(?:jpg|jpeg|png|webp)$/i;
 const DELETION_REASONS = new Set(['outdated', 'duplicate', 'closed', 'incorrect', 'other']);
+const PROVIDER_IMAGE_CHANGES = new Set(['none', 'keep', 'remove', 'replace']);
+const PROVIDER_IMAGE_EXTENSIONS = new Map([
+  ['image/jpeg', 'jpg'],
+  ['image/png', 'png'],
+  ['image/webp', 'webp'],
+]);
+const PROVIDER_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 const ACTION_TTL_MINUTES = 10;
 const PHONE_ATTEMPTS_PER_HOUR = 5;
 const IP_ATTEMPTS_PER_HOUR = 20;
@@ -36,6 +44,21 @@ const normalizeMultilineText = (value, maxLength) => {
   return normalized || null;
 };
 
+const normalizeOptionalUrl = (value) => {
+  const normalized = compactText(value ?? '', 2048);
+  if (!normalized) return null;
+  let parsed;
+  try {
+    parsed = new URL(normalized);
+  } catch {
+    throw new VerificationHttpError(400, 'Enter valid provider links.');
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new VerificationHttpError(400, 'Provider links must use http or https.');
+  }
+  return parsed.toString();
+};
+
 export const normalizeE164 = (value) => {
   let normalized = String(value ?? '').trim().replace(/[\s().-]+/g, '');
   if (normalized.startsWith('00')) normalized = `+${normalized.slice(2)}`;
@@ -64,6 +87,36 @@ const normalizeActionPayload = (actionType, payload) => {
       throw new VerificationHttpError(400, 'Complete the provider removal details.');
     }
     return { providerId, providerNameConfirmation, reason };
+  }
+
+  if (actionType === 'provider_create' || actionType === 'provider_update') {
+    const providerId = actionType === 'provider_update'
+      ? requireUuid(payload.providerId, 'A valid provider is required.')
+      : null;
+    const name = compactText(payload.name, 160);
+    const category = compactText(payload.category, 80);
+    const description = normalizeMultilineText(payload.description, 2000);
+    const providerPhone = normalizeE164(payload.providerPhone);
+    const website = normalizeOptionalUrl(payload.website);
+    const mapUrl = normalizeOptionalUrl(payload.mapUrl);
+    const imageChange = compactText(payload.imageChange, 16).toLowerCase();
+    const allowedImageChanges = actionType === 'provider_create'
+      ? new Set(['none', 'replace'])
+      : new Set(['keep', 'remove', 'replace']);
+    if (!name || !category || !description || !PROVIDER_IMAGE_CHANGES.has(imageChange)
+      || !allowedImageChanges.has(imageChange)) {
+      throw new VerificationHttpError(400, 'Complete the provider details.');
+    }
+    return {
+      ...(providerId ? { providerId } : {}),
+      name,
+      category,
+      description,
+      providerPhone,
+      website,
+      mapUrl,
+      imageChange,
+    };
   }
 
   if (actionType === 'provider_review') {
@@ -245,6 +298,95 @@ export class CommunityVerificationService {
     };
   }
 
+  async completeProviderWrite({ actionId, actionToken, imagePath: imagePathInput = null }) {
+    const action = await this.loadAction(actionId, actionToken);
+    if (!['provider_create', 'provider_update'].includes(action.action_type)
+      || action.status !== 'verified' || action.consumed_at) {
+      throw new VerificationHttpError(409, 'This provider verification is not ready to complete.');
+    }
+
+    const imageChange = action.payload?.imageChange;
+    const imagePath = imagePathInput == null ? null : String(imagePathInput).trim();
+    if (imageChange === 'replace') {
+      const match = imagePath?.match(PROVIDER_IMAGE_PATH_PATTERN);
+      if (!match || match[1].toLowerCase() !== action.id.toLowerCase()) {
+        throw new VerificationHttpError(400, 'The provider logo path is invalid.');
+      }
+    } else if (imagePath) {
+      throw new VerificationHttpError(400, 'This provider action does not include a new logo.');
+    }
+
+    const imageUrl = imagePath
+      ? this.supabase.storage.from('contact-images').getPublicUrl(imagePath).data.publicUrl
+      : null;
+    const { data, error } = await this.supabase.rpc('complete_verified_provider_write', {
+      p_action_id: action.id,
+      p_image_path: imagePath,
+      p_image_url: imageUrl,
+    });
+    if (error) {
+      console.error('Verified provider write completion failed:', error);
+      if (imagePath) {
+        try {
+          await this.supabase.storage.from('contact-images').remove([imagePath]);
+        } catch (cleanupError) {
+          console.warn('Could not remove an uncommitted provider logo:', cleanupError);
+        }
+      }
+      const notFound = error.code === 'P0002' || error.message?.includes('Provider not found');
+      throw new VerificationHttpError(notFound ? 404 : 400, notFound
+        ? 'This provider is no longer available.'
+        : 'The provider could not be saved. Please check the details and try again.');
+    }
+
+    const provider = firstRow(data);
+    if (!provider?.id) throw new VerificationHttpError(500, 'The provider could not be saved.');
+
+    const previousImageUrl = provider.previous_image_url;
+    if (previousImageUrl && previousImageUrl !== provider.image_url) {
+      try {
+        const marker = '/storage/v1/object/public/contact-images/';
+        const markerIndex = previousImageUrl.indexOf(marker);
+        if (markerIndex >= 0) {
+          const previousPath = decodeURIComponent(previousImageUrl.slice(markerIndex + marker.length));
+          if (/^(?:public\/)?[0-9a-f/-]+\.(?:jpg|jpeg|png|webp)$/i.test(previousPath)) {
+            await this.supabase.storage.from('contact-images').remove([previousPath]);
+          }
+        }
+      } catch (error) {
+        console.warn('Could not remove the previous provider logo:', error);
+      }
+    }
+
+    const { previous_image_url: _previousImageUrl, ...publicProvider } = provider;
+    return { status: 'approved', actionType: action.action_type, provider: publicProvider };
+  }
+
+  async uploadProviderLogo({ actionId, actionToken, contentType, bytes }) {
+    const action = await this.loadAction(actionId, actionToken);
+    if (!['provider_create', 'provider_update'].includes(action.action_type)
+      || action.status !== 'verified' || action.consumed_at
+      || action.payload?.imageChange !== 'replace') {
+      throw new VerificationHttpError(409, 'This provider verification does not allow a logo upload.');
+    }
+    const extension = PROVIDER_IMAGE_EXTENSIONS.get(String(contentType ?? '').toLowerCase());
+    if (!extension) throw new VerificationHttpError(415, 'Logo must be a JPEG, PNG, or WebP image.');
+    if (!Buffer.isBuffer(bytes) || bytes.length === 0 || bytes.length > PROVIDER_IMAGE_MAX_BYTES) {
+      throw new VerificationHttpError(400, 'Logo must be a non-empty image no larger than 5 MB.');
+    }
+
+    const imagePath = `${action.id}/${randomUUID()}.${extension}`;
+    const { error } = await this.supabase.storage.from('contact-images').upload(imagePath, bytes, {
+      contentType,
+      upsert: false,
+    });
+    if (error) {
+      console.error('Verified provider logo upload failed:', error);
+      throw new VerificationHttpError(500, 'The provider logo could not be uploaded. Please try again.');
+    }
+    return { imagePath };
+  }
+
   async check({ actionId, actionToken, code: codeInput }) {
     let action = await this.loadAction(actionId, actionToken);
     if (action.status === 'completed' || action.consumed_at) {
@@ -283,6 +425,9 @@ export class CommunityVerificationService {
     if (action.action_type === 'provider_delete') return this.completeDeletion(action);
     if (action.action_type === 'provider_review' && Number(action.payload?.imageCount ?? 0) === 0) {
       return this.completeReview({ action, imagePaths: [] });
+    }
+    if (['provider_create', 'provider_update'].includes(action.action_type)) {
+      return { status: 'approved', actionType: action.action_type, requiresCompletion: true };
     }
     return { status: 'approved', actionType: action.action_type, requiresCompletion: true };
   }
