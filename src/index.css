@@ -382,4 +382,52 @@
   .form-panel {
     @apply my-2 max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-xl animate-slide-in sm:my-0 sm:p-6;
   }
+
+  .provider-form-panel {
+    @apply my-0 max-w-3xl p-4 sm:p-5;
+  }
+
+  .provider-form-header {
+    @apply mb-3;
+  }
+
+  .provider-form {
+    @apply space-y-3;
+  }
+
+  .provider-form-grid {
+    @apply grid gap-3 md:grid-cols-2 md:gap-5;
+  }
+
+  .provider-form-column {
+    @apply min-w-0 space-y-3;
+  }
+
+  .provider-form-actions {
+    @apply sticky bottom-0 -mx-4 -mb-4 flex flex-col gap-2 border-t border-stone-200 bg-white/95 px-4 py-3 backdrop-blur sm:-mx-5 sm:-mb-5 sm:px-5 md:static md:m-0 md:flex-row md:items-center md:justify-between md:border-0 md:bg-transparent md:p-0 md:pt-1 md:backdrop-blur-none;
+  }
+
+  .provider-form-delete > button,
+  .provider-form-primary-actions > button {
+    @apply w-full;
+  }
+
+  .provider-form-delete {
+    @apply order-2 md:order-1;
+  }
+
+  .provider-form-primary-actions {
+    @apply order-1 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end md:order-2;
+  }
+
+  @media (min-width: 768px) {
+    .provider-form-column textarea {
+      min-height: 5.5rem;
+    }
+
+    .provider-form-delete > button,
+    .provider-form-primary-actions > button {
+      width: auto;
+    }
+  }
 }

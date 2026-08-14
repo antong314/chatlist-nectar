@@ -269,27 +269,29 @@ export function ContactForm({
   return (
     <div className="form-container">
       <div
-        className="form-panel"
+        className="form-panel provider-form-panel"
         role="dialog"
         aria-modal="true"
         aria-labelledby="provider-form-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex justify-between items-center mb-4">
+        <div className="provider-form-header flex items-center justify-between">
           <h2 id="provider-form-title" className="font-header text-xl font-semibold text-[var(--directory-ink)]">
             {contact ? 'Edit provider' : 'Recommend a provider'}
           </h2>
           <button
             type="button"
             onClick={onCancel}
-            className="p-1 rounded-full hover:bg-gray-100 transition-colors"
+            className="-mr-2 inline-flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-gray-100"
             aria-label="Close provider form"
           >
             <X className="w-5 h-5 text-gray-500" />
           </button>
         </div>
         
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="provider-form">
+          <div className="provider-form-grid">
+            <div className="provider-form-column">
           <div>
             <Label htmlFor="name">Provider or business name</Label>
             <Input
@@ -382,7 +384,10 @@ export function ContactForm({
             <input type="hidden" id="phone" value={phone} />
             {errors.phone && <p className="text-sm text-red-500 mt-1">{errors.phone}</p>}
           </div>
-          
+
+            </div>
+
+            <div className="provider-form-column">
           <div>
             <Label htmlFor="website">Website (optional)</Label>
             <Input
@@ -518,22 +523,27 @@ export function ContactForm({
             )}
           </div>
 
+            </div>
+          </div>
+
           {verificationError && (
             <p className="text-sm font-medium text-red-600" role="alert">{verificationError}</p>
           )}
           
-          <div className="flex justify-between pt-4">
+          <div className="provider-form-actions">
             {contact && onDelete ? (
-              <ProviderDeletionDialog
-                onDelete={onDelete}
-                providerId={contact.id}
-                providerName={contact.name}
-              />
+              <div className="provider-form-delete">
+                <ProviderDeletionDialog
+                  onDelete={onDelete}
+                  providerId={contact.id}
+                  providerName={contact.name}
+                />
+              </div>
             ) : (
               <div></div>
             )}
             
-            <div className="space-x-2">
+            <div className="provider-form-primary-actions">
               <Button
                 type="button"
                 variant="outline"
