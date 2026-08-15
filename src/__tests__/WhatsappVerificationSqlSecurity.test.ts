@@ -9,6 +9,10 @@ const inboundApprovalSql = readFileSync(
   resolve(process.cwd(), 'supabase/migrations/20260814133000_whatsapp_inbound_approval.sql'),
   'utf8',
 );
+const trustedSessionSql = readFileSync(
+  resolve(process.cwd(), 'supabase/migrations/20260815003000_trusted_whatsapp_sessions_and_audit.sql'),
+  'utf8',
+);
 
 describe('WhatsApp step-up verification SQL contract', () => {
   test('keeps pending actions and private numbers inaccessible to public roles', () => {
@@ -38,5 +42,16 @@ describe('WhatsApp step-up verification SQL contract', () => {
     expect(inboundApprovalSql).toMatch(/complete_verified_provider_deletion[\s\S]*verification_method = v_action\.verification_method/i);
     expect(inboundApprovalSql).toMatch(/complete_verified_provider_review[\s\S]*v_action\.verification_method/i);
     expect(inboundApprovalSql).toMatch(/GRANT EXECUTE ON FUNCTION public\.complete_verified_provider_deletion[\s\S]*TO service_role/i);
+  });
+
+  test('keeps remembered identities private and audits provider changes by phone', () => {
+    expect(trustedSessionSql).toMatch(/CREATE TABLE public\.community_verified_sessions/i);
+    expect(trustedSessionSql).toMatch(/token_hash TEXT NOT NULL UNIQUE/i);
+    expect(trustedSessionSql).toMatch(/REVOKE ALL ON TABLE public\.community_verified_sessions FROM PUBLIC, anon, authenticated/i);
+    expect(trustedSessionSql).toMatch(/CREATE TABLE public\.provider_change_events[\s\S]*requester_whatsapp TEXT NOT NULL/i);
+    expect(trustedSessionSql).toMatch(/before_snapshot JSONB[\s\S]*after_snapshot JSONB NOT NULL/i);
+    expect(trustedSessionSql).toMatch(/REVOKE ALL ON TABLE public\.provider_change_events FROM PUBLIC, anon, authenticated/i);
+    expect(trustedSessionSql).toMatch(/INSERT INTO public\.provider_change_events[\s\S]*v_action\.requester_whatsapp[\s\S]*v_action\.verification_method/i);
+    expect(trustedSessionSql).toMatch(/trusted_session/i);
   });
 });

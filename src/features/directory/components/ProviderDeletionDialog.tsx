@@ -20,6 +20,8 @@ import {
   type RequestProviderDeletionInput,
 } from '@/features/provider-deletion';
 import {
+  useVerifiedWhatsappSession,
+  VerifiedWhatsappNotice,
   WhatsappApprovalPanel,
   type WhatsappVerificationChallenge,
 } from '@/features/verification';
@@ -65,11 +67,13 @@ export function ProviderDeletionDialog({
   const [verificationChallenge, setVerificationChallenge] = useState<WhatsappVerificationChallenge | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const { session, isLoading: isLoadingSession, forget: forgetSession } = useVerifiedWhatsappSession();
 
   const nameMatches = normalizeName(nameConfirmation) === normalizeName(providerName);
   const canSubmit = nameMatches
     && Boolean(reason)
-    && Boolean(requesterWhatsapp.trim())
+    && (session.authenticated || Boolean(requesterWhatsapp.trim()))
+    && !isLoadingSession
     && !isSubmitting;
 
   const resetForm = () => {
@@ -100,9 +104,13 @@ export function ProviderDeletionDialog({
         providerId,
         providerNameConfirmation: normalizeConfirmation(nameConfirmation),
         reason,
-        requesterWhatsapp: requesterWhatsapp.trim(),
+        requesterWhatsapp: session.authenticated ? undefined : requesterWhatsapp.trim(),
       });
-      setVerificationChallenge(challenge);
+      if (challenge.requiresWhatsappApproval) {
+        setVerificationChallenge(challenge);
+      } else {
+        await completeApprovedDeletion(challenge);
+      }
     } catch (error) {
       setSubmitError(getErrorMessage(error));
     } finally {
@@ -110,11 +118,11 @@ export function ProviderDeletionDialog({
     }
   };
 
-  const completeApprovedDeletion = async () => {
+  const completeApprovedDeletion = async (challenge = verificationChallenge!) => {
     await onDelete({
       providerId,
-      actionId: verificationChallenge!.actionId,
-      actionToken: verificationChallenge!.actionToken,
+      actionId: challenge.actionId,
+      actionToken: challenge.actionToken,
     });
   };
 
@@ -138,7 +146,9 @@ export function ProviderDeletionDialog({
           <DialogTitle>Remove this provider?</DialogTitle>
           <DialogDescription className="leading-6">
             This will hide the listing from the public directory. It remains recoverable for a short time after removal.
-            No login is required. You’ll send Machu a ready-made WhatsApp message before we remove it.
+            {' '}No login is required. {session.authenticated
+              ? 'Your verified WhatsApp identity will be recorded privately with this action.'
+              : 'You’ll send Machu a ready-made WhatsApp message before we remove it.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -184,28 +194,43 @@ export function ProviderDeletionDialog({
             </select>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="delete-requester-whatsapp">Your WhatsApp number</Label>
-            <Input
-              aria-describedby="delete-requester-whatsapp-hint"
-              autoComplete="tel"
-              id="delete-requester-whatsapp"
-              inputMode="tel"
-              onChange={(event) => setRequesterWhatsapp(event.target.value)}
-              required
-              disabled={Boolean(verificationChallenge)}
-              type="tel"
-              value={requesterWhatsapp}
+          {isLoadingSession ? (
+            <p className="text-sm text-muted-foreground">Checking this device’s WhatsApp verification…</p>
+          ) : session.authenticated ? (
+            <VerifiedWhatsappNotice
+              onForget={async () => {
+                try {
+                  await forgetSession();
+                } catch (error) {
+                  setSubmitError(getErrorMessage(error));
+                }
+              }}
+              session={session}
             />
-            <p className="text-xs leading-5 text-muted-foreground" id="delete-requester-whatsapp-hint">
-              Kept private as an audit contact. Your message to Machu confirms that you control this WhatsApp number.
-            </p>
-          </div>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor="delete-requester-whatsapp">Your WhatsApp number</Label>
+              <Input
+                aria-describedby="delete-requester-whatsapp-hint"
+                autoComplete="tel"
+                id="delete-requester-whatsapp"
+                inputMode="tel"
+                onChange={(event) => setRequesterWhatsapp(event.target.value)}
+                required
+                disabled={Boolean(verificationChallenge)}
+                type="tel"
+                value={requesterWhatsapp}
+              />
+              <p className="text-xs leading-5 text-muted-foreground" id="delete-requester-whatsapp-hint">
+                You’ll verify with Machu once, and this device will be remembered for 30 days. Your number is recorded privately for moderation and is never shown publicly.
+              </p>
+            </div>
+          )}
 
           {verificationChallenge && (
             <WhatsappApprovalPanel
               challenge={verificationChallenge}
-              onApproved={completeApprovedDeletion}
+              onApproved={() => completeApprovedDeletion(verificationChallenge)}
               onReset={() => {
                 setVerificationChallenge(null);
                 setSubmitError(null);
@@ -227,7 +252,13 @@ export function ProviderDeletionDialog({
             </DialogClose>
             {!verificationChallenge && (
               <Button disabled={!canSubmit} type="submit" variant="destructive">
-                {isSubmitting ? 'Preparing WhatsApp…' : 'Continue with WhatsApp'}
+                {isLoadingSession
+                  ? 'Checking verification…'
+                  : isSubmitting
+                    ? (session.authenticated ? 'Removing…' : 'Preparing WhatsApp…')
+                    : session.authenticated
+                      ? 'Remove provider'
+                      : 'Continue with WhatsApp'}
               </Button>
             )}
           </DialogFooter>

@@ -4,6 +4,10 @@ import {
   startProviderDeletionVerification,
   undoProviderDeletion,
 } from '@/features/provider-deletion';
+import {
+  forgetVerifiedWhatsappSession,
+  getVerifiedWhatsappSession,
+} from '@/features/verification';
 
 jest.mock('@/lib/supabase', () => ({
   supabase: { functions: { invoke: jest.fn() } },
@@ -34,6 +38,8 @@ describe('provider deletion verification API', () => {
       actionToken,
       expiresAt: '2026-08-04T14:10:00.000Z',
       phone: '+50688881212',
+      requiresWhatsappApproval: true,
+      verificationMethod: 'whatsapp_inbound',
       whatsappUrl: 'https://wa.me/15204473525?text=VERIFY',
     }));
 
@@ -56,6 +62,25 @@ describe('provider deletion verification API', () => {
         },
       }),
     }));
+  });
+
+  test('reads and forgets the private trusted-device session', async () => {
+    fetchMock
+      .mockReturnValueOnce(jsonResponse({
+        authenticated: true,
+        phoneEnding: '1212',
+        expiresAt: '2026-09-14T00:00:00.000Z',
+      }))
+      .mockReturnValueOnce(jsonResponse({ authenticated: false }));
+
+    await expect(getVerifiedWhatsappSession()).resolves.toEqual(expect.objectContaining({
+      authenticated: true,
+      phoneEnding: '1212',
+    }));
+    await expect(forgetVerifiedWhatsappSession()).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/bot/verify/session', { cache: 'no-store' });
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/bot/verify/session/forget', { method: 'POST' });
   });
 
   test('completes an inbound-approved deletion and returns short-lived undo data', async () => {

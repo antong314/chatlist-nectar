@@ -9,7 +9,10 @@ import type { Contact } from '@/types/contact';
 import Index from '@/pages/Index';
 import { useContacts } from '@/hooks/useContacts';
 import { startProviderDeletionVerification } from '@/features/provider-deletion';
-import { getWhatsappVerificationStatus } from '@/features/verification/verificationApi';
+import {
+  getVerifiedWhatsappSession,
+  getWhatsappVerificationStatus,
+} from '@/features/verification/verificationApi';
 
 jest.mock('@/hooks/useContacts', () => ({
   useContacts: jest.fn(),
@@ -22,6 +25,7 @@ jest.mock('@/features/provider-deletion', () => ({
 
 jest.mock('@/features/verification/verificationApi', () => ({
   ...jest.requireActual('@/features/verification/verificationApi'),
+  getVerifiedWhatsappSession: jest.fn(),
   getWhatsappVerificationStatus: jest.fn(),
 }));
 
@@ -57,6 +61,8 @@ const verificationChallenge = {
   actionToken: 'verification_action_token_12345678901234567890',
   expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
   phone: '+50687771234',
+  requiresWhatsappApproval: true,
+  verificationMethod: 'whatsapp_inbound' as const,
   whatsappUrl: 'https://wa.me/15204473525?text=VERIFY',
 };
 
@@ -93,6 +99,7 @@ describe('provider deletion request flow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (startProviderDeletionVerification as jest.Mock).mockResolvedValue(verificationChallenge);
+    (getVerifiedWhatsappSession as jest.Mock).mockResolvedValue({ authenticated: false });
     (getWhatsappVerificationStatus as jest.Mock).mockResolvedValue({
       status: 'waiting',
       expiresAt: verificationChallenge.expiresAt,
@@ -115,7 +122,7 @@ describe('provider deletion request flow', () => {
     expect(screen.getByText(/hide the listing from the public directory/i)).toBeInTheDocument();
     expect(screen.getByText(/recoverable for a short time/i)).toBeInTheDocument();
     expect(screen.getAllByText(/send Machu a ready-made WhatsApp message/i)).not.toHaveLength(0);
-    expect(screen.getByText(/kept private as an audit contact/i)).toBeInTheDocument();
+    expect(screen.getByText(/recorded privately for moderation/i)).toBeInTheDocument();
 
     confirmSpy.mockRestore();
   });
@@ -167,6 +174,44 @@ describe('provider deletion request flow', () => {
         actionToken: verificationChallenge.actionToken,
       });
     });
+  });
+
+  test('removes directly from a trusted device while retaining the verified actor', async () => {
+    const user = userEvent.setup();
+    const onDelete = jest.fn().mockResolvedValue(undefined);
+    const trustedChallenge = {
+      ...verificationChallenge,
+      requiresWhatsappApproval: false,
+      verificationMethod: 'trusted_session' as const,
+      whatsappUrl: null,
+    };
+    (getVerifiedWhatsappSession as jest.Mock).mockResolvedValue({
+      authenticated: true,
+      phoneEnding: '1234',
+      expiresAt: '2026-09-14T00:00:00.000Z',
+    });
+    (startProviderDeletionVerification as jest.Mock).mockResolvedValue(trustedChallenge);
+
+    renderContactForm(onDelete);
+    await openDeletionDialog(user);
+    expect((await screen.findAllByText(/number ending in 1234/i)).length).toBeGreaterThan(0);
+    expect(screen.queryByLabelText(/your whatsapp number/i)).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText(/type sample provider to confirm/i), provider.name);
+    await user.selectOptions(screen.getByLabelText(/why should this listing be removed/i), 'duplicate');
+    await user.click(screen.getByRole('button', { name: /^remove provider$/i }));
+
+    expect(startProviderDeletionVerification).toHaveBeenCalledWith({
+      providerId: provider.id,
+      providerNameConfirmation: provider.name,
+      reason: 'duplicate',
+      requesterWhatsapp: undefined,
+    });
+    await waitFor(() => expect(onDelete).toHaveBeenCalledWith({
+      providerId: provider.id,
+      actionId: trustedChallenge.actionId,
+      actionToken: trustedChallenge.actionToken,
+    }));
+    expect(screen.queryByRole('link', { name: /open machu in whatsapp/i })).not.toBeInTheDocument();
   });
 
   test('prevents duplicate submissions and keeps backend errors in the dialog', async () => {

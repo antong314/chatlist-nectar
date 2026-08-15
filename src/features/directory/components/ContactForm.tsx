@@ -14,6 +14,8 @@ import { getDirectoryCategoryLabel } from '@/features/directory/data/categories'
 import { normalizeWhatsappNumber } from '@/features/reviews/validation';
 import {
   startWhatsappVerification,
+  useVerifiedWhatsappSession,
+  VerifiedWhatsappNotice,
   WhatsappApprovalPanel,
   type WhatsappVerificationChallenge,
 } from '@/features/verification';
@@ -65,6 +67,7 @@ export function ContactForm({
   const [requesterWhatsapp, setRequesterWhatsapp] = useState('');
   const [verificationChallenge, setVerificationChallenge] = useState<WhatsappVerificationChallenge | null>(null);
   const [verificationError, setVerificationError] = useState('');
+  const { session, isLoading: isLoadingSession, forget: forgetSession } = useVerifiedWhatsappSession();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const effectRan = useRef(false);
   
@@ -197,8 +200,8 @@ export function ContactForm({
     
     if (!validate()) return;
     
-    let normalizedRequesterWhatsapp = verificationChallenge?.phone;
-    if (!verificationChallenge) {
+    let normalizedRequesterWhatsapp: string | undefined;
+    if (!session.authenticated) {
       try {
         normalizedRequesterWhatsapp = normalizeWhatsappNumber(requesterWhatsapp);
       } catch (error) {
@@ -210,7 +213,7 @@ export function ContactForm({
     setIsSubmitting(true);
     setVerificationError('');
     
-    const { baseContactData } = buildContactData();
+    const { baseContactData, finalContactData } = buildContactData();
     
     try {
       if (verificationChallenge) return;
@@ -221,7 +224,7 @@ export function ContactForm({
           : 'none';
       const challenge = await startWhatsappVerification({
         actionType: contact?.id ? 'provider_update' : 'provider_create',
-        phone: normalizedRequesterWhatsapp!,
+        phone: normalizedRequesterWhatsapp,
         payload: {
           ...(contact?.id ? { providerId: contact.id } : {}),
           name: baseContactData.name,
@@ -233,7 +236,11 @@ export function ContactForm({
           imageChange,
         },
       });
-      setVerificationChallenge(challenge);
+      if (challenge.requiresWhatsappApproval) {
+        setVerificationChallenge(challenge);
+      } else {
+        await onSave(finalContactData, { challenge });
+      }
     } catch (error) {
       console.error('Error saving contact:', error);
       setVerificationError(error instanceof Error ? error.message : 'Failed to save provider.');
@@ -242,9 +249,9 @@ export function ContactForm({
     }
   };
 
-  const completeApprovedProviderWrite = async () => {
+  const completeApprovedProviderWrite = async (challenge = verificationChallenge!) => {
     const { finalContactData } = buildContactData();
-    await onSave(finalContactData, { challenge: verificationChallenge! });
+    await onSave(finalContactData, { challenge });
   };
 
   // Click outside to close
@@ -466,28 +473,45 @@ export function ContactForm({
           </div>
 
           <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-            <Label htmlFor="provider-editor-whatsapp">WhatsApp number for verification</Label>
-            <Input
-              autoComplete="tel"
-              disabled={Boolean(verificationChallenge)}
-              id="provider-editor-whatsapp"
-              inputMode="tel"
-              maxLength={32}
-              onChange={(event) => setRequesterWhatsapp(event.target.value)}
-              placeholder="Include country code, e.g. +506 8888 8888"
-              required
-              type="tel"
-              value={requesterWhatsapp}
-            />
-            <p className="flex items-center gap-1.5 text-xs leading-relaxed text-gray-600">
-              <LockKeyhole aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-              You’ll send Machu a ready-made WhatsApp message before {contact ? 'saving these changes' : 'adding this provider'}. Your number stays private.
-            </p>
+            {isLoadingSession ? (
+              <p className="text-sm text-gray-600">Checking this device’s WhatsApp verification…</p>
+            ) : session.authenticated ? (
+              <VerifiedWhatsappNotice
+                onForget={async () => {
+                  try {
+                    await forgetSession();
+                  } catch (error) {
+                    setVerificationError(error instanceof Error ? error.message : 'We could not change the verified number.');
+                  }
+                }}
+                session={session}
+              />
+            ) : (
+              <>
+                <Label htmlFor="provider-editor-whatsapp">WhatsApp number for verification</Label>
+                <Input
+                  autoComplete="tel"
+                  disabled={Boolean(verificationChallenge)}
+                  id="provider-editor-whatsapp"
+                  inputMode="tel"
+                  maxLength={32}
+                  onChange={(event) => setRequesterWhatsapp(event.target.value)}
+                  placeholder="Include country code, e.g. +506 8888 8888"
+                  required
+                  type="tel"
+                  value={requesterWhatsapp}
+                />
+                <p className="flex items-center gap-1.5 text-xs leading-relaxed text-gray-600">
+                  <LockKeyhole aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                  You’ll verify with Machu once, and this device will be remembered for 30 days. Your number stays private and is never shown publicly.
+                </p>
+              </>
+            )}
 
             {verificationChallenge && (
               <WhatsappApprovalPanel
                 challenge={verificationChallenge}
-                onApproved={completeApprovedProviderWrite}
+                onApproved={() => completeApprovedProviderWrite(verificationChallenge)}
                 onReset={() => {
                   setVerificationChallenge(null);
                   setVerificationError('');
@@ -528,11 +552,17 @@ export function ContactForm({
                 <Button
                   type="submit"
                   variant="default"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isLoadingSession}
                   className={isSubmitting ? 'opacity-70 cursor-not-allowed' : ''}
                 >
                   {isSubmitting && <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />}
-                  {isSubmitting ? 'Preparing WhatsApp…' : 'Continue with WhatsApp'}
+                  {isLoadingSession
+                    ? 'Checking verification…'
+                    : isSubmitting
+                      ? (session.authenticated ? 'Saving…' : 'Preparing WhatsApp…')
+                      : session.authenticated
+                        ? (contact ? 'Save changes' : 'Add provider')
+                        : 'Continue with WhatsApp'}
                 </Button>
               )}
             </div>

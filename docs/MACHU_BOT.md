@@ -23,6 +23,9 @@ Node process serves the existing Vite build and the bot webhook at `POST /bot`.
   WhatsApp with a signed approval message addressed to Machu. After the user
   sends it from the submitted number, Machu approves the pending action and
   introduces its other capabilities in the reply.
+- After that first approval, the browser receives a secure, HttpOnly trusted-
+  device session lasting 30 days. Later website actions skip WhatsApp while the
+  server still binds each action to the previously verified phone number.
 - Every search result sends a visible summary containing the description,
   category, community rating, available website/map links, and the full
   directory listing, followed immediately by its native WhatsApp contact card.
@@ -61,6 +64,8 @@ JavaScript during the frontend build.
 
 - `POST /bot` — Twilio inbound-message webhook; validates `X-Twilio-Signature`
 - `POST /bot/verify/start` — creates an expiring action and a signed WhatsApp approval link
+- `GET /bot/verify/session` — reports whether this browser has a current trusted-device session, exposing only the phone's last four digits
+- `POST /bot/verify/session/forget` — revokes the current trusted-device session and clears its cookie
 - `POST /bot/verify/status` — reports whether Machu has received the approval message
 - `POST /bot/verify/check` — completes an approved action without photos
 - `POST /bot/verify/review/complete` — finishes a verified review after photo upload
@@ -88,6 +93,25 @@ approval as a distinct verification method and carries it into deletion audit
 events. Approval messages contain a short-lived HMAC-bound action identifier;
 the server accepts one only when the Twilio-signed webhook sender matches the
 phone number stored on that action.
+
+Migration `20260815003000_trusted_whatsapp_sessions_and_audit.sql` adds private,
+hashed trusted-device sessions and a private `provider_change_events` ledger.
+Every trusted-session action still creates a short-lived, payload-bound
+`community_verification_actions` row containing the verified phone. Reviews
+store it in `reviewer_whatsapp`, deletions store it in `requester_whatsapp`, and
+provider additions/edits store it with before/after snapshots in the new
+ledger. None of those phone fields are available through public RPCs or RLS.
+
+## Private administrator audit
+
+Administrators can identify the verified actor in Supabase using service-role
+or dashboard access:
+
+- `provider_change_events` for provider additions and edits;
+- `provider_deletion_events` for removals and Undo state;
+- `provider_reviews` for the current review and its private reviewer number;
+- `community_verification_actions` for the complete per-action source trail,
+  including `whatsapp_inbound` versus `trusted_session`.
 
 ## Local verification
 

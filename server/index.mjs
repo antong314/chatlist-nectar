@@ -35,6 +35,8 @@ const publicBaseUrl = (process.env.PUBLIC_BASE_URL || 'https://www.sanmateo.love
 const webhookUrl = process.env.TWILIO_WEBHOOK_URL || `${publicBaseUrl}/bot`;
 const signingSecret = process.env.BOT_SIGNING_SECRET || process.env.TWILIO_AUTH_TOKEN;
 const validateTwilioSignatures = process.env.TWILIO_VALIDATE_SIGNATURE !== 'false';
+const verifiedSessionCookie = 'machu_verified_session';
+const verifiedSessionMaxAgeMs = 30 * 24 * 60 * 60 * 1000;
 
 const store = new DirectoryStore();
 const ai = new OpenAIProvider();
@@ -93,22 +95,75 @@ app.get('/bot', (_request, response) => {
 const verificationRoute = (handler) => async (request, response) => {
   response.set('Cache-Control', 'no-store');
   try {
-    response.status(200).json(await handler(request));
+    response.status(200).json(await handler(request, response));
   } catch (error) {
     const failure = verificationJsonError(error);
     response.status(failure.status).json({ error: failure.message });
   }
 };
 
+const readCookie = (request, name) => {
+  const match = String(request.get('cookie') || '')
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`));
+  if (!match) return '';
+  try {
+    return decodeURIComponent(match.slice(name.length + 1));
+  } catch {
+    return '';
+  }
+};
+
+const verifiedSessionCookieOptions = (request) => ({
+  httpOnly: true,
+  maxAge: verifiedSessionMaxAgeMs,
+  path: '/',
+  sameSite: 'strict',
+  secure: request.secure || process.env.NODE_ENV === 'production',
+});
+
+const clearVerifiedSessionCookie = (request, response) => {
+  const { maxAge: _maxAge, ...options } = verifiedSessionCookieOptions(request);
+  response.clearCookie(verifiedSessionCookie, options);
+};
+
+app.get(
+  '/bot/verify/session',
+  verificationRoute(async (request, response) => {
+    const sessionToken = readCookie(request, verifiedSessionCookie);
+    const session = await communityVerification.getVerifiedSession(sessionToken);
+    if (!session && sessionToken) {
+      clearVerifiedSessionCookie(request, response);
+    }
+    return communityVerification.publicSession(session);
+  }),
+);
+
+app.post(
+  '/bot/verify/session/forget',
+  verificationRoute(async (request, response) => {
+    await communityVerification.revokeVerifiedSession(readCookie(request, verifiedSessionCookie));
+    clearVerifiedSessionCookie(request, response);
+    return { authenticated: false };
+  }),
+);
+
 app.post(
   '/bot/verify/start',
   express.json({ limit: '16kb', type: 'application/json' }),
-  verificationRoute((request) => communityVerification.start({
-    actionType: request.body?.actionType,
-    phone: request.body?.phone,
-    payload: request.body?.payload,
-    requestIp: request.ip,
-  })),
+  verificationRoute(async (request) => {
+    const verifiedSession = await communityVerification.getVerifiedSession(
+      readCookie(request, verifiedSessionCookie),
+    );
+    return communityVerification.start({
+      actionType: request.body?.actionType,
+      phone: request.body?.phone,
+      payload: request.body?.payload,
+      requestIp: request.ip,
+      verifiedSession,
+    });
+  }),
 );
 
 app.post(
@@ -123,10 +178,24 @@ app.post(
 app.post(
   '/bot/verify/status',
   express.json({ limit: '8kb', type: 'application/json' }),
-  verificationRoute((request) => communityVerification.status({
-    actionId: request.body?.actionId,
-    actionToken: request.body?.actionToken,
-  })),
+  verificationRoute(async (request, response) => {
+    const status = await communityVerification.status({
+      actionId: request.body?.actionId,
+      actionToken: request.body?.actionToken,
+    });
+    if (status.status === 'verified' || status.status === 'completed') {
+      const { sessionToken } = await communityVerification.createVerifiedSessionForAction({
+        actionId: request.body?.actionId,
+        actionToken: request.body?.actionToken,
+      });
+      response.cookie(
+        verifiedSessionCookie,
+        sessionToken,
+        verifiedSessionCookieOptions(request),
+      );
+    }
+    return status;
+  }),
 );
 
 app.post(

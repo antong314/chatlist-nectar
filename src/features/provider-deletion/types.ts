@@ -12,7 +12,7 @@ export interface StartProviderDeletionVerificationInput {
   providerId: string;
   providerNameConfirmation: string;
   reason: ProviderDeletionReason;
-  requesterWhatsapp: string;
+  requesterWhatsapp?: string;
 }
 
 export interface RequestProviderDeletionInput {

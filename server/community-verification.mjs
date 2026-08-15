@@ -15,6 +15,7 @@ const PROVIDER_IMAGE_EXTENSIONS = new Map([
 ]);
 const PROVIDER_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 const ACTION_TTL_MINUTES = 10;
+const VERIFIED_SESSION_TTL_DAYS = 30;
 const PHONE_ATTEMPTS_PER_HOUR = 5;
 const IP_ATTEMPTS_PER_HOUR = 20;
 
@@ -204,24 +205,31 @@ export class CommunityVerificationService {
     }
   }
 
-  async start({ actionType, phone: phoneInput, payload, requestIp }) {
-    const phone = normalizeE164(phoneInput);
+  async start({ actionType, phone: phoneInput, payload, requestIp, verifiedSession = null }) {
+    const phone = verifiedSession?.verified_whatsapp
+      ? normalizeE164(verifiedSession.verified_whatsapp)
+      : normalizeE164(phoneInput);
     const normalizedPayload = normalizeActionPayload(actionType, payload);
     const requestIpHash = this.ipHash(requestIp);
     await this.assertRateLimit(phone, requestIpHash);
 
     const clientSecret = randomToken();
     const expiresAt = new Date(Date.now() + ACTION_TTL_MINUTES * 60 * 1000).toISOString();
+    const usesTrustedSession = Boolean(verifiedSession?.verified_whatsapp);
+    const verifiedAt = usesTrustedSession ? new Date().toISOString() : null;
     const { data: action, error: insertError } = await this.supabase
       .from('community_verification_actions')
       .insert({
         action_type: actionType,
         requester_whatsapp: phone,
         payload: normalizedPayload,
-        verification_method: 'whatsapp_inbound',
+        verification_method: usesTrustedSession ? 'trusted_session' : 'whatsapp_inbound',
         client_secret_hash: sha256(clientSecret),
         request_ip_hash: requestIpHash,
         expires_at: expiresAt,
+        status: usesTrustedSession ? 'verified' : 'pending',
+        verified_at: verifiedAt,
+        trusted_session_id: usesTrustedSession ? verifiedSession.id : null,
       })
       .select('id, expires_at')
       .single();
@@ -232,7 +240,74 @@ export class CommunityVerificationService {
       actionToken: clientSecret,
       expiresAt: action.expires_at,
       phone,
-      whatsappUrl: this.approvalUrl(action.id),
+      requiresWhatsappApproval: !usesTrustedSession,
+      verificationMethod: usesTrustedSession ? 'trusted_session' : 'whatsapp_inbound',
+      whatsappUrl: usesTrustedSession ? null : this.approvalUrl(action.id),
+    };
+  }
+
+  async getVerifiedSession(sessionTokenInput) {
+    const sessionToken = String(sessionTokenInput ?? '').trim();
+    if (!ACTION_SECRET_PATTERN.test(sessionToken)) return null;
+
+    const { data: session, error } = await this.supabase
+      .from('community_verified_sessions')
+      .select('id, verified_whatsapp, expires_at, revoked_at')
+      .eq('token_hash', sha256(sessionToken))
+      .maybeSingle();
+    if (error) throw databaseError('Verified WhatsApp session is temporarily unavailable.', error);
+    if (!session || session.revoked_at || new Date(session.expires_at).getTime() <= Date.now()) return null;
+
+    const { error: touchError } = await this.supabase
+      .from('community_verified_sessions')
+      .update({ last_used_at: new Date().toISOString() })
+      .eq('id', session.id)
+      .is('revoked_at', null);
+    if (touchError) throw databaseError('Verified WhatsApp session is temporarily unavailable.', touchError);
+    return session;
+  }
+
+  async createVerifiedSessionForAction({ actionId, actionToken }) {
+    const action = await this.loadAction(actionId, actionToken);
+    if (!['verified', 'completed'].includes(action.status)) {
+      throw new VerificationHttpError(409, 'Approve this request with Machu before trusting this device.');
+    }
+
+    const sessionToken = randomToken();
+    const expiresAt = new Date(
+      Date.now() + VERIFIED_SESSION_TTL_DAYS * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const { data: session, error } = await this.supabase
+      .from('community_verified_sessions')
+      .insert({
+        token_hash: sha256(sessionToken),
+        verified_whatsapp: action.requester_whatsapp,
+        source_action_id: action.id,
+        expires_at: expiresAt,
+      })
+      .select('id, verified_whatsapp, expires_at')
+      .single();
+    if (error || !session) throw databaseError('This device could not be remembered.', error);
+    return { sessionToken, session };
+  }
+
+  async revokeVerifiedSession(sessionTokenInput) {
+    const sessionToken = String(sessionTokenInput ?? '').trim();
+    if (!ACTION_SECRET_PATTERN.test(sessionToken)) return;
+    const { error } = await this.supabase
+      .from('community_verified_sessions')
+      .update({ revoked_at: new Date().toISOString() })
+      .eq('token_hash', sha256(sessionToken))
+      .is('revoked_at', null);
+    if (error) throw databaseError('This device could not be forgotten.', error);
+  }
+
+  publicSession(session) {
+    if (!session) return { authenticated: false };
+    return {
+      authenticated: true,
+      phoneEnding: String(session.verified_whatsapp).slice(-4),
+      expiresAt: session.expires_at,
     };
   }
 

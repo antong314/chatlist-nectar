@@ -1,6 +1,7 @@
 import type {
   VerificationActionType,
   VerificationApproval,
+  VerifiedWhatsappSession,
   WhatsappVerificationChallenge,
   WhatsappVerificationStatus,
 } from './types';
@@ -28,9 +29,20 @@ const postJson = async <T>(url: string, body: unknown): Promise<T> => {
 
 export const startWhatsappVerification = async (input: {
   actionType: VerificationActionType;
-  phone: string;
+  phone?: string;
   payload: Record<string, unknown>;
 }): Promise<WhatsappVerificationChallenge> => postJson('/bot/verify/start', input);
+
+export const getVerifiedWhatsappSession = async (): Promise<VerifiedWhatsappSession> => {
+  const response = await fetch('/bot/verify/session', { cache: 'no-store' });
+  if (!response.ok) throw new Error('We could not check this device’s WhatsApp verification.');
+  return response.json() as Promise<VerifiedWhatsappSession>;
+};
+
+export const forgetVerifiedWhatsappSession = async (): Promise<void> => {
+  const response = await fetch('/bot/verify/session/forget', { method: 'POST' });
+  if (!response.ok) throw new Error('We could not forget the verified WhatsApp number.');
+};
 
 export const checkWhatsappVerification = async (
   challenge: Pick<WhatsappVerificationChallenge, 'actionId' | 'actionToken'>,

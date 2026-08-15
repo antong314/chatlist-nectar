@@ -8,6 +8,7 @@ import {
 
 const providerId = '7bf39fa3-2c3e-4248-8ef4-6377274e44d1';
 const actionId = '7a279684-13b7-4df4-b0e0-ac68d41cd656';
+const sessionId = '315dfdb8-454c-4318-a08a-19a44b5f6005';
 
 const builder = (result) => {
   const chain = {
@@ -62,6 +63,8 @@ test('starts an inbound WhatsApp approval with separate browser and message toke
 
   assert.equal(result.actionId, actionId);
   assert.equal(result.phone, '+50687184331');
+  assert.equal(result.requiresWhatsappApproval, true);
+  assert.equal(result.verificationMethod, 'whatsapp_inbound');
   assert.match(result.actionToken, /^[A-Za-z0-9_-]{32,128}$/);
   assert.match(result.whatsappUrl, /^https:\/\/wa\.me\/15204473525\?text=/);
   assert.match(decodeURIComponent(result.whatsappUrl), /VERIFY 7a279684-13b7-4df4-b0e0-ac68d41cd656\.[A-Za-z0-9_-]{43}/);
@@ -70,6 +73,100 @@ test('starts an inbound WhatsApp approval with separate browser and message toke
     'community_verification_actions',
     'community_verification_actions',
   ]);
+});
+
+test('starts an already-verified action from the trusted device phone', async () => {
+  let insertedAction;
+  const results = [
+    { count: 0, error: null },
+    { count: 0, error: null },
+    { data: { id: actionId, expires_at: '2026-08-15T01:10:00.000Z' }, error: null },
+  ];
+  const service = new CommunityVerificationService({
+    supabase: {
+      from() {
+        const chain = builder(results.shift());
+        chain.insert = (value) => {
+          insertedAction = value;
+          return chain;
+        };
+        return chain;
+      },
+    },
+    signingSecret: 'test-signing-secret',
+    whatsappFrom: '+15204473525',
+  });
+
+  const result = await service.start({
+    actionType: 'provider_review',
+    payload: { providerId, rating: 4, imageCount: 0 },
+    requestIp: '192.0.2.3',
+    verifiedSession: {
+      id: sessionId,
+      verified_whatsapp: '+50687771234',
+    },
+  });
+
+  assert.equal(result.phone, '+50687771234');
+  assert.equal(result.requiresWhatsappApproval, false);
+  assert.equal(result.verificationMethod, 'trusted_session');
+  assert.equal(result.whatsappUrl, null);
+  assert.equal(insertedAction.requester_whatsapp, '+50687771234');
+  assert.equal(insertedAction.verification_method, 'trusted_session');
+  assert.equal(insertedAction.status, 'verified');
+  assert.equal(insertedAction.trusted_session_id, sessionId);
+  assert.match(insertedAction.verified_at, /^\d{4}-\d{2}-\d{2}T/);
+});
+
+test('stores only a hash for a remembered device and returns only masked identity publicly', async () => {
+  let insertedSession;
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const session = {
+    id: sessionId,
+    verified_whatsapp: '+50687771234',
+    expires_at: expiresAt,
+    revoked_at: null,
+  };
+  const results = [
+    { data: session, error: null },
+    { error: null },
+  ];
+  const service = new CommunityVerificationService({
+    supabase: {
+      from() {
+        const result = results.shift() ?? { data: { ...session, expires_at: expiresAt }, error: null };
+        const chain = builder(result);
+        chain.insert = (value) => {
+          insertedSession = value;
+          return chain;
+        };
+        return chain;
+      },
+    },
+    signingSecret: 'test-signing-secret',
+    whatsappFrom: '+15204473525',
+  });
+
+  const loaded = await service.getVerifiedSession('trusted_device_token_123456789012345678901');
+  assert.equal(loaded.verified_whatsapp, '+50687771234');
+  assert.deepEqual(service.publicSession(loaded), {
+    authenticated: true,
+    phoneEnding: '1234',
+    expiresAt,
+  });
+
+  service.loadAction = async () => ({
+    id: actionId,
+    status: 'verified',
+    requester_whatsapp: '+50687771234',
+    expires_at: new Date(Date.now() + 60_000).toISOString(),
+  });
+  const issued = await service.createVerifiedSessionForAction({ actionId, actionToken: 'unused' });
+  assert.match(issued.sessionToken, /^[A-Za-z0-9_-]{32,128}$/);
+  assert.notEqual(insertedSession.token_hash, issued.sessionToken);
+  assert.match(insertedSession.token_hash, /^[0-9a-f]{64}$/);
+  assert.equal(insertedSession.verified_whatsapp, '+50687771234');
+  assert.equal(insertedSession.source_action_id, actionId);
 });
 
 test('accepts a signed inbound message only from the action phone', async () => {

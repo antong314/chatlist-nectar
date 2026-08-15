@@ -107,7 +107,7 @@ export function WhatsappApprovalPanel({
       </div>
 
       <Button asChild className="w-full bg-[#167c3a] hover:bg-green-800">
-        <a href={challenge.whatsappUrl} onClick={() => window.setTimeout(() => void checkStatus(), 500)} rel="noreferrer" target="_blank">
+        <a href={challenge.whatsappUrl ?? undefined} onClick={() => window.setTimeout(() => void checkStatus(), 500)} rel="noreferrer" target="_blank">
           <MessageCircle aria-hidden="true" className="h-4 w-4" />
           Open Machu in WhatsApp
           <ExternalLink aria-hidden="true" className="h-4 w-4" />

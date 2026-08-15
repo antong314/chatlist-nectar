@@ -13,6 +13,8 @@ import {
 import { StarRating } from './StarRating';
 import {
   startWhatsappVerification,
+  useVerifiedWhatsappSession,
+  VerifiedWhatsappNotice,
   WhatsappApprovalPanel,
   type WhatsappVerificationChallenge,
 } from '@/features/verification';
@@ -52,6 +54,7 @@ export function ReviewForm({ providerId, isSubmitting = false, onSubmit }: Revie
   const [submitted, setSubmitted] = useState(false);
   const [isStartingVerification, setIsStartingVerification] = useState(false);
   const [verificationChallenge, setVerificationChallenge] = useState<WhatsappVerificationChallenge | null>(null);
+  const { session, isLoading: isLoadingSession, forget: forgetSession } = useVerifiedWhatsappSession();
   const imageInputRef = useRef<HTMLInputElement>(null);
   const previewUrlsRef = useRef(new Set<string>());
 
@@ -120,26 +123,28 @@ export function ReviewForm({ providerId, isSubmitting = false, onSubmit }: Revie
       return;
     }
 
-    if (!whatsappNumber.trim()) {
+    if (!session.authenticated && !whatsappNumber.trim()) {
       setFormError('Enter your WhatsApp number.');
       return;
     }
 
     setFormError('');
 
-    let normalizedWhatsapp: string;
-    try {
-      normalizedWhatsapp = normalizeWhatsappNumber(whatsappNumber);
-    } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'Enter a valid WhatsApp number.');
-      return;
+    let normalizedWhatsapp: string | undefined;
+    if (!session.authenticated) {
+      try {
+        normalizedWhatsapp = normalizeWhatsappNumber(whatsappNumber);
+      } catch (error) {
+        setFormError(error instanceof Error ? error.message : 'Enter a valid WhatsApp number.');
+        return;
+      }
     }
 
     const values = {
         rating,
         comment: comment.trim() || undefined,
         reviewerName: reviewerName.trim() || undefined,
-        whatsappNumber: normalizedWhatsapp,
+        whatsappNumber: normalizedWhatsapp ?? '',
         images: selectedImages.map(({ file }) => file),
       };
 
@@ -148,7 +153,7 @@ export function ReviewForm({ providerId, isSubmitting = false, onSubmit }: Revie
       setIsStartingVerification(true);
       const challenge = await startWhatsappVerification({
         actionType: 'provider_review',
-        phone: values.whatsappNumber,
+        phone: normalizedWhatsapp,
         payload: {
           providerId,
           rating: values.rating,
@@ -157,7 +162,11 @@ export function ReviewForm({ providerId, isSubmitting = false, onSubmit }: Revie
           imageCount: values.images.length,
         },
       });
-      setVerificationChallenge(challenge);
+      if (challenge.requiresWhatsappApproval) {
+        setVerificationChallenge(challenge);
+      } else {
+        await completeApprovedReview(challenge);
+      }
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Your review could not be submitted. Please try again.');
     } finally {
@@ -165,15 +174,15 @@ export function ReviewForm({ providerId, isSubmitting = false, onSubmit }: Revie
     }
   };
 
-  const completeApprovedReview = async () => {
+  const completeApprovedReview = async (challenge = verificationChallenge!) => {
     const values: ReviewFormValues = {
       rating,
       comment: comment.trim() || undefined,
       reviewerName: reviewerName.trim() || undefined,
-      whatsappNumber: normalizeWhatsappNumber(whatsappNumber),
+      whatsappNumber: challenge.phone,
       images: selectedImages.map(({ file }) => file),
     };
-    await onSubmit(values, verificationChallenge!);
+    await onSubmit(values, challenge);
     setRating(0);
     setComment('');
     setReviewerName('');
@@ -273,30 +282,45 @@ export function ReviewForm({ providerId, isSubmitting = false, onSubmit }: Revie
         />
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="reviewer-whatsapp">WhatsApp number</Label>
-        <Input
-          autoComplete="tel"
-          id="reviewer-whatsapp"
-          inputMode="tel"
-          maxLength={32}
-          onChange={(event) => setWhatsappNumber(event.target.value)}
-          disabled={Boolean(verificationChallenge)}
-          placeholder="Include country code, e.g. +506 8888 8888"
-          required
-          type="tel"
-          value={whatsappNumber}
+      {isLoadingSession ? (
+        <p className="text-sm text-gray-500">Checking this device’s WhatsApp verification…</p>
+      ) : session.authenticated ? (
+        <VerifiedWhatsappNotice
+          onForget={async () => {
+            try {
+              await forgetSession();
+            } catch (error) {
+              setFormError(error instanceof Error ? error.message : 'We could not change the verified number.');
+            }
+          }}
+          session={session}
         />
-        <p className="flex items-center gap-1.5 text-xs leading-relaxed text-gray-500">
-          <LockKeyhole aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-          You’ll send Machu a ready-made WhatsApp message to verify your review. Your number stays private and is never shown.
-        </p>
-      </div>
+      ) : (
+        <div className="space-y-2">
+          <Label htmlFor="reviewer-whatsapp">WhatsApp number</Label>
+          <Input
+            autoComplete="tel"
+            id="reviewer-whatsapp"
+            inputMode="tel"
+            maxLength={32}
+            onChange={(event) => setWhatsappNumber(event.target.value)}
+            disabled={Boolean(verificationChallenge)}
+            placeholder="Include country code, e.g. +506 8888 8888"
+            required
+            type="tel"
+            value={whatsappNumber}
+          />
+          <p className="flex items-center gap-1.5 text-xs leading-relaxed text-gray-500">
+            <LockKeyhole aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+            You’ll verify with Machu once, and this device will be remembered for 30 days. Your number stays private and is never shown publicly.
+          </p>
+        </div>
+      )}
 
       {verificationChallenge && (
         <WhatsappApprovalPanel
           challenge={verificationChallenge}
-          onApproved={completeApprovedReview}
+          onApproved={() => completeApprovedReview(verificationChallenge)}
           onReset={() => {
             setVerificationChallenge(null);
             setFormError('');
@@ -310,9 +334,15 @@ export function ReviewForm({ providerId, isSubmitting = false, onSubmit }: Revie
       </div>
 
       {!verificationChallenge && (
-        <Button className="h-12 w-full rounded-xl text-base" disabled={isSubmitting || isStartingVerification} type="submit">
+        <Button className="h-12 w-full rounded-xl text-base" disabled={isSubmitting || isStartingVerification || isLoadingSession} type="submit">
           {(isSubmitting || isStartingVerification) && <Loader2 aria-hidden="true" className="animate-spin" />}
-          {isStartingVerification ? 'Preparing WhatsApp…' : 'Continue with WhatsApp'}
+          {isLoadingSession
+            ? 'Checking verification…'
+            : isStartingVerification
+              ? (session.authenticated ? 'Posting review…' : 'Preparing WhatsApp…')
+              : session.authenticated
+                ? 'Submit review'
+                : 'Continue with WhatsApp'}
         </Button>
       )}
     </form>

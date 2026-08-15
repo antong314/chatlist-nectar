@@ -11,7 +11,10 @@ import { Contact } from '@/features/directory/types/contact';
 import { supabase } from '@/lib/supabase';
 import * as ReviewsModule from '@/features/reviews';
 import * as VerificationModule from '@/features/verification';
-import { getWhatsappVerificationStatus } from '@/features/verification/verificationApi';
+import {
+  getVerifiedWhatsappSession,
+  getWhatsappVerificationStatus,
+} from '@/features/verification/verificationApi';
 
 jest.mock('@/lib/supabase', () => ({
   supabase: { from: jest.fn() },
@@ -32,6 +35,7 @@ jest.mock('@/features/verification', () => ({
 
 jest.mock('@/features/verification/verificationApi', () => ({
   ...jest.requireActual('@/features/verification/verificationApi'),
+  getVerifiedWhatsappSession: jest.fn(),
   getWhatsappVerificationStatus: jest.fn(),
 }));
 
@@ -41,6 +45,8 @@ const verificationChallenge = {
   actionToken: 'verification_action_token_12345678901234567890',
   expiresAt: '2026-08-04T14:10:00.000Z',
   phone: '+50687771234',
+  requiresWhatsappApproval: true,
+  verificationMethod: 'whatsapp_inbound' as const,
   whatsappUrl: 'https://wa.me/15204473525?text=VERIFY',
 };
 
@@ -69,6 +75,7 @@ describe('Provider experience', () => {
     jest.clearAllMocks();
     (URL.createObjectURL as jest.Mock).mockImplementation((file: File) => `blob:${file.name}`);
     (VerificationModule.startWhatsappVerification as jest.Mock).mockResolvedValue(verificationChallenge);
+    (getVerifiedWhatsappSession as jest.Mock).mockResolvedValue({ authenticated: false });
     (getWhatsappVerificationStatus as jest.Mock).mockResolvedValue({
       status: 'verified',
       expiresAt: verificationChallenge.expiresAt,
@@ -150,7 +157,7 @@ describe('Provider experience', () => {
 
     render(<ReviewForm onSubmit={onSubmit} providerId={providerId} />);
 
-    expect(screen.getByText(/ready-made WhatsApp message to verify your review/i)).toBeInTheDocument();
+    expect(await screen.findByText(/remembered for 30 days/i)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
     expect(screen.getByRole('alert')).toHaveTextContent(/choose a star rating/i);
 
@@ -169,6 +176,41 @@ describe('Provider experience', () => {
       }, verificationChallenge);
     });
     expect(screen.getByText(/review is now part of the community rating/i)).toBeInTheDocument();
+  });
+
+  test('reuses a verified device and records the trusted phone without opening WhatsApp', async () => {
+    const user = userEvent.setup();
+    const onSubmit = jest.fn().mockResolvedValue(undefined);
+    const trustedChallenge = {
+      ...verificationChallenge,
+      requiresWhatsappApproval: false,
+      verificationMethod: 'trusted_session' as const,
+      whatsappUrl: null,
+    };
+    (getVerifiedWhatsappSession as jest.Mock).mockResolvedValue({
+      authenticated: true,
+      phoneEnding: '1234',
+      expiresAt: '2026-09-14T00:00:00.000Z',
+    });
+    (VerificationModule.startWhatsappVerification as jest.Mock).mockResolvedValue(trustedChallenge);
+
+    render(<ReviewForm onSubmit={onSubmit} providerId={providerId} />);
+
+    expect(await screen.findByText(/number ending in 1234/i)).toBeInTheDocument();
+    expect(screen.getByText(/privately recorded with this action/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/whatsapp number/i)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('radio', { name: '5 stars' }));
+    await user.click(screen.getByRole('button', { name: /^submit review$/i }));
+
+    expect(VerificationModule.startWhatsappVerification).toHaveBeenCalledWith(expect.objectContaining({
+      actionType: 'provider_review',
+      phone: undefined,
+    }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ whatsappNumber: trustedChallenge.phone }),
+      trustedChallenge,
+    ));
+    expect(screen.queryByRole('link', { name: /open machu in whatsapp/i })).not.toBeInTheDocument();
   });
 
   test('previews, removes, and submits optional review photos', async () => {
@@ -241,7 +283,7 @@ describe('Provider experience', () => {
       />,
     );
 
-    await user.type(screen.getByLabelText(/whatsapp number for verification/i), '+506 8777 1234');
+    await user.type(await screen.findByLabelText(/whatsapp number for verification/i), '+506 8777 1234');
     await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
 
     expect(VerificationModule.startWhatsappVerification).toHaveBeenCalledWith({
@@ -264,6 +306,46 @@ describe('Provider experience', () => {
         { challenge: verificationChallenge },
       );
     });
+  });
+
+  test('saves provider edits directly from a trusted device', async () => {
+    const user = userEvent.setup();
+    const onSave = jest.fn().mockResolvedValue(undefined);
+    const trustedChallenge = {
+      ...verificationChallenge,
+      requiresWhatsappApproval: false,
+      verificationMethod: 'trusted_session' as const,
+      whatsappUrl: null,
+    };
+    (getVerifiedWhatsappSession as jest.Mock).mockResolvedValue({
+      authenticated: true,
+      phoneEnding: '1234',
+      expiresAt: '2026-09-14T00:00:00.000Z',
+    });
+    (VerificationModule.startWhatsappVerification as jest.Mock).mockResolvedValue(trustedChallenge);
+
+    render(
+      <ContactForm
+        categories={['Mechanic']}
+        contact={contact}
+        onCancel={jest.fn()}
+        onSave={onSave}
+      />,
+    );
+
+    expect(await screen.findByText(/number ending in 1234/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/whatsapp number for verification/i)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^save changes$/i }));
+
+    expect(VerificationModule.startWhatsappVerification).toHaveBeenCalledWith(expect.objectContaining({
+      actionType: 'provider_update',
+      phone: undefined,
+    }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ id: contact.id }),
+      { challenge: trustedChallenge },
+    ));
+    expect(screen.queryByRole('link', { name: /open machu in whatsapp/i })).not.toBeInTheDocument();
   });
 
   test('requires verification before creating a new provider', async () => {
