@@ -13,6 +13,10 @@ const trustedSessionSql = readFileSync(
   resolve(process.cwd(), 'supabase/migrations/20260815003000_trusted_whatsapp_sessions_and_audit.sql'),
   'utf8',
 );
+const inboundSenderSql = readFileSync(
+  resolve(process.cwd(), 'supabase/migrations/20260815013000_inbound_sender_identity.sql'),
+  'utf8',
+);
 
 describe('WhatsApp step-up verification SQL contract', () => {
   test('keeps pending actions and private numbers inaccessible to public roles', () => {
@@ -53,5 +57,12 @@ describe('WhatsApp step-up verification SQL contract', () => {
     expect(trustedSessionSql).toMatch(/REVOKE ALL ON TABLE public\.provider_change_events FROM PUBLIC, anon, authenticated/i);
     expect(trustedSessionSql).toMatch(/INSERT INTO public\.provider_change_events[\s\S]*v_action\.requester_whatsapp[\s\S]*v_action\.verification_method/i);
     expect(trustedSessionSql).toMatch(/trusted_session/i);
+  });
+
+  test('allows only unverified inbound actions to wait for Machu to supply the actor', () => {
+    expect(inboundSenderSql).toMatch(/ALTER COLUMN requester_whatsapp DROP NOT NULL/i);
+    expect(inboundSenderSql).toMatch(/requester_whatsapp IS NOT NULL[\s\S]*verification_method = 'whatsapp_inbound'/i);
+    expect(inboundSenderSql).toMatch(/status IN \('pending', 'sent', 'failed', 'expired'\)/i);
+    expect(inboundSenderSql).toMatch(/Twilio-signed WhatsApp sender/i);
   });
 });

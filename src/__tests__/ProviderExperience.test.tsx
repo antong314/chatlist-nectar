@@ -44,7 +44,6 @@ const verificationChallenge = {
   actionId: '7a279684-13b7-4df4-b0e0-ac68d41cd656',
   actionToken: 'verification_action_token_12345678901234567890',
   expiresAt: '2026-08-04T14:10:00.000Z',
-  phone: '+50687771234',
   requiresWhatsappApproval: true,
   verificationMethod: 'whatsapp_inbound' as const,
   whatsappUrl: 'https://wa.me/15204473525?text=VERIFY',
@@ -158,12 +157,12 @@ describe('Provider experience', () => {
     render(<ReviewForm onSubmit={onSubmit} providerId={providerId} />);
 
     expect(await screen.findByText(/remembered for 30 days/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/whatsapp number/i)).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
     expect(screen.getByRole('alert')).toHaveTextContent(/choose a star rating/i);
 
     await user.click(screen.getByRole('radio', { name: '5 stars' }));
     await user.type(screen.getByLabelText(/your experience/i), 'Showed up quickly and did great work.');
-    await user.type(screen.getByLabelText(/whatsapp number/i), '+506 8777 1234');
     await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
 
     await waitFor(() => {
@@ -171,7 +170,6 @@ describe('Provider experience', () => {
         rating: 5,
         comment: 'Showed up quickly and did great work.',
         reviewerName: undefined,
-        whatsappNumber: '+50687771234',
         images: [],
       }, verificationChallenge);
     });
@@ -204,10 +202,9 @@ describe('Provider experience', () => {
 
     expect(VerificationModule.startWhatsappVerification).toHaveBeenCalledWith(expect.objectContaining({
       actionType: 'provider_review',
-      phone: undefined,
     }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ whatsappNumber: trustedChallenge.phone }),
+      expect.objectContaining({ rating: 5, images: [] }),
       trustedChallenge,
     ));
     expect(screen.queryByRole('link', { name: /open machu in whatsapp/i })).not.toBeInTheDocument();
@@ -230,7 +227,6 @@ describe('Provider experience', () => {
     expect(screen.queryByRole('img', { name: /before.jpg/i })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('radio', { name: '5 stars' }));
-    await user.type(screen.getByLabelText(/whatsapp number/i), '+506 8777 1234');
     await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
 
     await waitFor(() => {
@@ -283,12 +279,11 @@ describe('Provider experience', () => {
       />,
     );
 
-    await user.type(await screen.findByLabelText(/whatsapp number for verification/i), '+506 8777 1234');
+    expect(await screen.findByText(/sending number will be privately recorded/i)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
 
     expect(VerificationModule.startWhatsappVerification).toHaveBeenCalledWith({
       actionType: 'provider_update',
-      phone: '+50687771234',
       payload: expect.objectContaining({
         providerId,
         name: contact.name,
@@ -339,7 +334,6 @@ describe('Provider experience', () => {
 
     expect(VerificationModule.startWhatsappVerification).toHaveBeenCalledWith(expect.objectContaining({
       actionType: 'provider_update',
-      phone: undefined,
     }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(
       expect.objectContaining({ id: contact.id }),
@@ -363,12 +357,10 @@ describe('Provider experience', () => {
     await user.type(screen.getByLabelText(/provider or business name/i), 'New Neighbor Service');
     await user.type(screen.getByLabelText(/what do they help with/i), 'Friendly local repairs.');
     await user.type(screen.getByPlaceholderText(/local number/i), '88881212');
-    await user.type(screen.getByLabelText(/whatsapp number for verification/i), '+506 8777 1234');
     await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
 
     expect(VerificationModule.startWhatsappVerification).toHaveBeenCalledWith({
       actionType: 'provider_create',
-      phone: '+50687771234',
       payload: expect.objectContaining({
         name: 'New Neighbor Service',
         description: 'Friendly local repairs.',
@@ -465,7 +457,6 @@ describe('Provider experience', () => {
 
     await user.upload(screen.getByLabelText(/photos/i), reviewImage);
     await user.click(screen.getByRole('radio', { name: '5 stars' }));
-    await user.type(screen.getByLabelText(/whatsapp number/i), '+506 8777 1234');
     await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
 
     await waitFor(() => {
@@ -523,16 +514,6 @@ describe('Provider experience', () => {
     await screen.findByRole('heading', { name: 'Efra Mechanic', level: 1 });
     await user.upload(screen.getByLabelText(/photos/i), reviewImage);
     await user.click(screen.getByRole('radio', { name: '5 stars' }));
-    const whatsappInput = screen.getByLabelText(/whatsapp number/i);
-    await user.type(whatsappInput, 'not-a-number');
-    await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(/WhatsApp number with country code/i);
-    expect(ReviewsModule.uploadReviewImages).not.toHaveBeenCalled();
-    expect(VerificationModule.checkWhatsappVerification).not.toHaveBeenCalled();
-
-    await user.clear(whatsappInput);
-    await user.type(whatsappInput, '+506 8777 1234');
     await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/photos could not be uploaded/i);

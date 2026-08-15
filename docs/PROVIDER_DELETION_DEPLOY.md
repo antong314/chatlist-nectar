@@ -30,8 +30,8 @@ private to `service_role`.
    Twilio receives and authenticates Machu's WhatsApp webhook; Twilio Verify is
    not used. Never expose any of these values through a `VITE_` variable.
 
-4. Deploy the Node service/frontend. Test the WhatsApp deep link, approval from
-   the matching number, rejection from a different number, expired actions,
+4. Deploy the Node service/frontend. Test the WhatsApp deep link, sender-number
+   capture from Machu, rejection of a second sender after an action is claimed, expired actions,
    the 30-day trusted-device notice and bypass, changing the remembered number,
    verified deletion, Undo, verified reviews with and without photos, and
    repeat reviews from the same WhatsApp number.
@@ -41,8 +41,9 @@ private to `service_role`.
 - Approval actions expire after ten minutes and are single-use.
 - The service durably rate-limits requests by canonical phone number and hashed
   IP.
-- A valid approval requires both a signed action token and a matching WhatsApp
-  sender on a webhook whose Twilio signature has been validated.
+- A valid approval requires both a signed action token and a WhatsApp sender on
+  a webhook whose Twilio signature has been validated. The first valid sender
+  atomically becomes the action's private actor.
 - The trusted-device cookie contains only a random credential. Its hash and the
   full verified phone are stored in the private database session table.
 - Every deletion still gets its own action and deletion-event record containing

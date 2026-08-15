@@ -11,7 +11,6 @@ import { Loader2, LockKeyhole, Shapes, X, Upload, Trash2 } from 'lucide-react';
 import { AvatarFallback } from '@/components/ui/avatar-fallback';
 import { normalizeWebsiteUrl } from '@/lib/urls';
 import { getDirectoryCategoryLabel } from '@/features/directory/data/categories';
-import { normalizeWhatsappNumber } from '@/features/reviews/validation';
 import {
   startWhatsappVerification,
   useVerifiedWhatsappSession,
@@ -64,7 +63,6 @@ export function ContactForm({
   const [logoRemoved, setLogoRemoved] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [requesterWhatsapp, setRequesterWhatsapp] = useState('');
   const [verificationChallenge, setVerificationChallenge] = useState<WhatsappVerificationChallenge | null>(null);
   const [verificationError, setVerificationError] = useState('');
   const { session, isLoading: isLoadingSession, forget: forgetSession } = useVerifiedWhatsappSession();
@@ -200,16 +198,6 @@ export function ContactForm({
     
     if (!validate()) return;
     
-    let normalizedRequesterWhatsapp: string | undefined;
-    if (!session.authenticated) {
-      try {
-        normalizedRequesterWhatsapp = normalizeWhatsappNumber(requesterWhatsapp);
-      } catch (error) {
-        setVerificationError(error instanceof Error ? error.message : 'Enter a valid WhatsApp number.');
-        return;
-      }
-    }
-
     setIsSubmitting(true);
     setVerificationError('');
     
@@ -224,7 +212,6 @@ export function ContactForm({
           : 'none';
       const challenge = await startWhatsappVerification({
         actionType: contact?.id ? 'provider_update' : 'provider_create',
-        phone: normalizedRequesterWhatsapp,
         payload: {
           ...(contact?.id ? { providerId: contact.id } : {}),
           name: baseContactData.name,
@@ -473,7 +460,7 @@ export function ContactForm({
           </div>
 
           <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-            {isLoadingSession ? (
+            {!verificationChallenge && (isLoadingSession ? (
               <p className="text-sm text-gray-600">Checking this device’s WhatsApp verification…</p>
             ) : session.authenticated ? (
               <VerifiedWhatsappNotice
@@ -487,26 +474,14 @@ export function ContactForm({
                 session={session}
               />
             ) : (
-              <>
-                <Label htmlFor="provider-editor-whatsapp">WhatsApp number for verification</Label>
-                <Input
-                  autoComplete="tel"
-                  disabled={Boolean(verificationChallenge)}
-                  id="provider-editor-whatsapp"
-                  inputMode="tel"
-                  maxLength={32}
-                  onChange={(event) => setRequesterWhatsapp(event.target.value)}
-                  placeholder="Include country code, e.g. +506 8888 8888"
-                  required
-                  type="tel"
-                  value={requesterWhatsapp}
-                />
+              <div className="space-y-1.5">
+                <p className="text-sm font-semibold text-emerald-950">Verify with Machu in WhatsApp</p>
                 <p className="flex items-center gap-1.5 text-xs leading-relaxed text-gray-600">
                   <LockKeyhole aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-                  You’ll verify with Machu once, and this device will be remembered for 30 days. Your number stays private and is never shown publicly.
+                  Send Machu the ready-made message. The sending number will be privately recorded with this action, and this device will be remembered for 30 days.
                 </p>
-              </>
-            )}
+              </div>
+            ))}
 
             {verificationChallenge && (
               <WhatsappApprovalPanel

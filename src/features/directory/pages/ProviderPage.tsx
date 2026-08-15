@@ -149,7 +149,6 @@ export function ProviderPage() {
         rating: values.rating,
         comment: values.comment,
         reviewerName: values.reviewerName,
-        reviewerWhatsapp: values.whatsappNumber,
         imagePaths: [],
       });
       await checkWhatsappVerification(challenge);

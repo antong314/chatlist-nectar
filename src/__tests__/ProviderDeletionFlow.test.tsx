@@ -60,7 +60,6 @@ const verificationChallenge = {
   actionId: '7a279684-13b7-4df4-b0e0-ac68d41cd656',
   actionToken: 'verification_action_token_12345678901234567890',
   expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
-  phone: '+50687771234',
   requiresWhatsappApproval: true,
   verificationMethod: 'whatsapp_inbound' as const,
   whatsappUrl: 'https://wa.me/15204473525?text=VERIFY',
@@ -87,7 +86,6 @@ const fillDeletionForm = async (
 ) => {
   await user.type(screen.getByLabelText(/type sample provider to confirm/i), name);
   await user.selectOptions(screen.getByLabelText(/why should this listing be removed/i), 'duplicate');
-  await user.type(screen.getByLabelText(/your whatsapp number/i), '+506 8777 1234');
 };
 
 const startDeletionApproval = async (user: ReturnType<typeof userEvent.setup>) => {
@@ -122,7 +120,8 @@ describe('provider deletion request flow', () => {
     expect(screen.getByText(/hide the listing from the public directory/i)).toBeInTheDocument();
     expect(screen.getByText(/recoverable for a short time/i)).toBeInTheDocument();
     expect(screen.getAllByText(/send Machu a ready-made WhatsApp message/i)).not.toHaveLength(0);
-    expect(screen.getByText(/recorded privately for moderation/i)).toBeInTheDocument();
+    expect(screen.getByText(/sending number will be privately recorded with this removal/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/your whatsapp number/i)).not.toBeInTheDocument();
 
     confirmSpy.mockRestore();
   });
@@ -156,7 +155,6 @@ describe('provider deletion request flow', () => {
       providerId: provider.id,
       providerNameConfirmation: provider.name,
       reason: 'duplicate',
-      requesterWhatsapp: '+506 8777 1234',
     });
     expect(onDelete).not.toHaveBeenCalled();
     expect(whatsappLink).toHaveAttribute('href', verificationChallenge.whatsappUrl);
@@ -204,7 +202,6 @@ describe('provider deletion request flow', () => {
       providerId: provider.id,
       providerNameConfirmation: provider.name,
       reason: 'duplicate',
-      requesterWhatsapp: undefined,
     });
     await waitFor(() => expect(onDelete).toHaveBeenCalledWith({
       providerId: provider.id,

@@ -67,14 +67,12 @@ export const startProviderDeletionVerification = async (
 ): Promise<WhatsappVerificationChallenge> => {
   const providerId = requireUuid(input.providerId, 'A valid provider is required.');
   const providerNameConfirmation = input.providerNameConfirmation.trim();
-  const requesterWhatsapp = input.requesterWhatsapp?.trim();
   if (!providerNameConfirmation) throw new Error('Type the provider name to confirm removal.');
   if (!PROVIDER_DELETION_REASONS.includes(input.reason)) {
     throw new Error('Select a valid reason for removing this provider.');
   }
   return startWhatsappVerification({
     actionType: 'provider_delete',
-    phone: requesterWhatsapp || undefined,
     payload: {
       providerId,
       providerNameConfirmation,

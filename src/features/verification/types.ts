@@ -2,7 +2,6 @@ export interface WhatsappVerificationChallenge {
   actionId: string;
   actionToken: string;
   expiresAt: string;
-  phone: string;
   requiresWhatsappApproval: boolean;
   verificationMethod: 'whatsapp_inbound' | 'trusted_session';
   whatsappUrl: string | null;

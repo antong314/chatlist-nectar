@@ -12,10 +12,9 @@ export const REVIEW_IMAGE_ALLOWED_MIME_TYPES = [
 ] as const;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const WHATSAPP_PATTERN = /^\+[1-9][0-9]{7,14}$/;
 const REVIEW_IMAGE_PATH_SUFFIX_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(jpg|jpeg|png|webp)$/;
 
-export type ReviewField = 'providerId' | 'rating' | 'comment' | 'reviewerName' | 'reviewerWhatsapp' | 'imagePaths' | 'images';
+export type ReviewField = 'providerId' | 'rating' | 'comment' | 'reviewerName' | 'imagePaths' | 'images';
 
 export class ReviewValidationError extends Error {
   readonly field: ReviewField;
@@ -54,24 +53,9 @@ export const normalizeReviewComment = (value?: string | null): string | undefine
   return normalized;
 };
 
-export const normalizeWhatsappNumber = (value: string): string => {
-  let normalized = value.trim().replace(/[\s().-]+/g, '');
-  if (normalized.startsWith('00')) {
-    normalized = `+${normalized.slice(2)}`;
-  }
-  if (!WHATSAPP_PATTERN.test(normalized)) {
-    throw new ReviewValidationError(
-      'reviewerWhatsapp',
-      'Enter your WhatsApp number with country code, for example +506 8888 8888.',
-    );
-  }
-  return normalized;
-};
-
 export interface NormalizedSubmitReviewInput {
   providerId: string;
   rating: ReviewRating;
-  reviewerWhatsapp: string;
   comment?: string;
   reviewerName?: string;
   imagePaths: string[];
@@ -156,7 +140,6 @@ export const normalizeSubmitReviewInput = (input: SubmitReviewInput): Normalized
   return {
     providerId,
     rating: input.rating as ReviewRating,
-    reviewerWhatsapp: normalizeWhatsappNumber(input.reviewerWhatsapp),
     comment: normalizeReviewComment(input.comment),
     reviewerName: normalizeReviewerName(input.reviewerName),
     imagePaths: normalizeReviewImagePaths(providerId, input.imagePaths),

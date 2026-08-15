@@ -21,7 +21,8 @@ Node process serves the existing Vite build and the bot webhook at `POST /bot`.
   providers merely because they share a broad category.
 - Submit a provider change, review, or deletion on the website: the site opens
   WhatsApp with a signed approval message addressed to Machu. After the user
-  sends it from the submitted number, Machu approves the pending action and
+  sends it, Machu records the authenticated webhook sender as the private actor,
+  approves the pending action, and
   introduces its other capabilities in the reply.
 - After that first approval, the browser receives a secure, HttpOnly trusted-
   device session lasting 30 days. Later website actions skip WhatsApp while the
@@ -91,8 +92,12 @@ granted, and their keys are unguessable server-generated HMACs.
 Migration `20260814133000_whatsapp_inbound_approval.sql` records inbound Machu
 approval as a distinct verification method and carries it into deletion audit
 events. Approval messages contain a short-lived HMAC-bound action identifier;
-the server accepts one only when the Twilio-signed webhook sender matches the
-phone number stored on that action.
+the server accepts one only through the Twilio-signed webhook.
+
+Migration `20260815013000_inbound_sender_identity.sql` removes the redundant
+verification-number prompt. A new inbound action starts without an actor; the
+first valid sender atomically claims it, and verified/completed actions remain
+database-constrained to have a canonical WhatsApp actor.
 
 Migration `20260815003000_trusted_whatsapp_sessions_and_audit.sql` adds private,
 hashed trusted-device sessions and a private `provider_change_events` ledger.

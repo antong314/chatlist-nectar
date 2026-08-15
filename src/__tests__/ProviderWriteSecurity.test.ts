@@ -42,7 +42,6 @@ describe('verified provider write security', () => {
       actionId: '7a279684-13b7-4df4-b0e0-ac68d41cd656',
       actionToken: 'verification_action_token_12345678901234567890',
       expiresAt: '2026-08-14T12:10:00.000Z',
-      phone: '+50687771234',
     }));
     const payload = {
       name: 'Efra Mechanic',
@@ -56,13 +55,12 @@ describe('verified provider write security', () => {
 
     await startWhatsappVerification({
       actionType: 'provider_create',
-      phone: '+50687771234',
       payload,
     });
 
     expect(fetchMock).toHaveBeenCalledWith('/bot/verify/start', expect.objectContaining({
       method: 'POST',
-      body: JSON.stringify({ actionType: 'provider_create', phone: '+50687771234', payload }),
+      body: JSON.stringify({ actionType: 'provider_create', payload }),
     }));
   });
 

@@ -37,15 +37,20 @@ test('requires and canonicalizes an international WhatsApp number', () => {
 
 test('starts an inbound WhatsApp approval with separate browser and message tokens', async () => {
   const calls = [];
+  let insertedAction;
   const results = [
-    { count: 0, error: null },
     { count: 0, error: null },
     { data: { id: actionId, expires_at: '2026-08-04T15:10:00.000Z' }, error: null },
   ];
   const supabase = {
     from(table) {
       calls.push(table);
-      return builder(results.shift());
+      const chain = builder(results.shift());
+      chain.insert = (value) => {
+        insertedAction = value;
+        return chain;
+      };
+      return chain;
     },
   };
   const service = new CommunityVerificationService({
@@ -56,20 +61,19 @@ test('starts an inbound WhatsApp approval with separate browser and message toke
 
   const result = await service.start({
     actionType: 'provider_review',
-    phone: '00506 8718 4331',
     payload: { providerId, rating: 5, imageCount: 0 },
     requestIp: '192.0.2.1',
   });
 
   assert.equal(result.actionId, actionId);
-  assert.equal(result.phone, '+50687184331');
+  assert.equal('phone' in result, false);
   assert.equal(result.requiresWhatsappApproval, true);
   assert.equal(result.verificationMethod, 'whatsapp_inbound');
   assert.match(result.actionToken, /^[A-Za-z0-9_-]{32,128}$/);
   assert.match(result.whatsappUrl, /^https:\/\/wa\.me\/15204473525\?text=/);
   assert.match(decodeURIComponent(result.whatsappUrl), /VERIFY 7a279684-13b7-4df4-b0e0-ac68d41cd656\.[A-Za-z0-9_-]{43}/);
+  assert.equal(insertedAction.requester_whatsapp, null);
   assert.deepEqual(calls, [
-    'community_verification_actions',
     'community_verification_actions',
     'community_verification_actions',
   ]);
@@ -107,7 +111,7 @@ test('starts an already-verified action from the trusted device phone', async ()
     },
   });
 
-  assert.equal(result.phone, '+50687771234');
+  assert.equal('phone' in result, false);
   assert.equal(result.requiresWhatsappApproval, false);
   assert.equal(result.verificationMethod, 'trusted_session');
   assert.equal(result.whatsappUrl, null);
@@ -169,24 +173,36 @@ test('stores only a hash for a remembered device and returns only masked identit
   assert.equal(insertedSession.source_action_id, actionId);
 });
 
-test('accepts a signed inbound message only from the action phone', async () => {
+test('atomically claims a signed inbound action with the actual sender phone', async () => {
   const action = {
     id: actionId,
     action_type: 'provider_review',
-    requester_whatsapp: '+50687184331',
+    requester_whatsapp: null,
     payload: { providerId, rating: 5, imageCount: 0 },
     status: 'pending',
     check_attempts: 0,
     consumed_at: null,
     expires_at: new Date(Date.now() + 60_000).toISOString(),
   };
+  const claimedAction = { ...action, requester_whatsapp: '+50687184331', status: 'verified' };
+  let verificationUpdate;
   const results = [
     { data: action, error: null },
+    { count: 0, error: null },
     { data: { action_type: 'provider_review' }, error: null },
-    { data: action, error: null },
+    { data: claimedAction, error: null },
   ];
   const service = new CommunityVerificationService({
-    supabase: { from: () => builder(results.shift()) },
+    supabase: {
+      from: () => {
+        const chain = builder(results.shift());
+        chain.update = (value) => {
+          verificationUpdate = value;
+          return chain;
+        };
+        return chain;
+      },
+    },
     signingSecret: 'test-signing-secret',
     whatsappFrom: '+15204473525',
   });
@@ -197,6 +213,7 @@ test('accepts a signed inbound message only from the action phone', async () => 
     actionType: 'provider_review',
     alreadyApproved: false,
   });
+  assert.equal(verificationUpdate.requester_whatsapp, '+50687184331');
   assert.deepEqual(await service.approveInbound({ body, senderPhone: '50688880000' }), {
     approved: false,
     reason: 'phone',
@@ -270,7 +287,6 @@ test('normalizes and binds provider edits to the verification action payload', a
   let insertedAction;
   const results = [
     { count: 0, error: null },
-    { count: 0, error: null },
     { data: { id: actionId, expires_at: '2026-08-04T15:10:00.000Z' }, error: null },
   ];
   const supabase = {
@@ -291,7 +307,6 @@ test('normalizes and binds provider edits to the verification action payload', a
 
   await service.start({
     actionType: 'provider_update',
-    phone: '+506 8777 1234',
     payload: {
       providerId,
       name: '  Efra   Mechanic ',
@@ -306,7 +321,7 @@ test('normalizes and binds provider edits to the verification action payload', a
   });
 
   assert.equal(insertedAction.action_type, 'provider_update');
-  assert.equal(insertedAction.requester_whatsapp, '+50687771234');
+  assert.equal(insertedAction.requester_whatsapp, null);
   assert.equal(insertedAction.verification_method, 'whatsapp_inbound');
   assert.deepEqual(insertedAction.payload, {
     providerId,

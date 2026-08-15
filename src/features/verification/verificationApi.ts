@@ -29,7 +29,6 @@ const postJson = async <T>(url: string, body: unknown): Promise<T> => {
 
 export const startWhatsappVerification = async (input: {
   actionType: VerificationActionType;
-  phone?: string;
   payload: Record<string, unknown>;
 }): Promise<WhatsappVerificationChallenge> => postJson('/bot/verify/start', input);
 

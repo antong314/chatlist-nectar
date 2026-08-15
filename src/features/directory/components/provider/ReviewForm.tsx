@@ -8,7 +8,6 @@ import {
   REVIEW_IMAGE_ALLOWED_MIME_TYPES,
   REVIEW_IMAGE_MAX_BYTES,
   REVIEW_IMAGE_MAX_COUNT,
-  normalizeWhatsappNumber,
 } from '@/features/reviews/validation';
 import { StarRating } from './StarRating';
 import {
@@ -23,7 +22,6 @@ export interface ReviewFormValues {
   rating: number;
   comment?: string;
   reviewerName?: string;
-  whatsappNumber: string;
   images: File[];
 }
 
@@ -47,7 +45,6 @@ export function ReviewForm({ providerId, isSubmitting = false, onSubmit }: Revie
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
   const [reviewerName, setReviewerName] = useState('');
-  const [whatsappNumber, setWhatsappNumber] = useState('');
   const [selectedImages, setSelectedImages] = useState<SelectedReviewImage[]>([]);
   const [imageError, setImageError] = useState('');
   const [formError, setFormError] = useState('');
@@ -123,28 +120,12 @@ export function ReviewForm({ providerId, isSubmitting = false, onSubmit }: Revie
       return;
     }
 
-    if (!session.authenticated && !whatsappNumber.trim()) {
-      setFormError('Enter your WhatsApp number.');
-      return;
-    }
-
     setFormError('');
-
-    let normalizedWhatsapp: string | undefined;
-    if (!session.authenticated) {
-      try {
-        normalizedWhatsapp = normalizeWhatsappNumber(whatsappNumber);
-      } catch (error) {
-        setFormError(error instanceof Error ? error.message : 'Enter a valid WhatsApp number.');
-        return;
-      }
-    }
 
     const values = {
         rating,
         comment: comment.trim() || undefined,
         reviewerName: reviewerName.trim() || undefined,
-        whatsappNumber: normalizedWhatsapp ?? '',
         images: selectedImages.map(({ file }) => file),
       };
 
@@ -153,7 +134,6 @@ export function ReviewForm({ providerId, isSubmitting = false, onSubmit }: Revie
       setIsStartingVerification(true);
       const challenge = await startWhatsappVerification({
         actionType: 'provider_review',
-        phone: normalizedWhatsapp,
         payload: {
           providerId,
           rating: values.rating,
@@ -179,14 +159,12 @@ export function ReviewForm({ providerId, isSubmitting = false, onSubmit }: Revie
       rating,
       comment: comment.trim() || undefined,
       reviewerName: reviewerName.trim() || undefined,
-      whatsappNumber: challenge.phone,
       images: selectedImages.map(({ file }) => file),
     };
     await onSubmit(values, challenge);
     setRating(0);
     setComment('');
     setReviewerName('');
-    setWhatsappNumber('');
     clearImages();
     setVerificationChallenge(null);
     setSubmitted(true);
@@ -282,7 +260,7 @@ export function ReviewForm({ providerId, isSubmitting = false, onSubmit }: Revie
         />
       </div>
 
-      {isLoadingSession ? (
+      {!verificationChallenge && (isLoadingSession ? (
         <p className="text-sm text-gray-500">Checking this device’s WhatsApp verification…</p>
       ) : session.authenticated ? (
         <VerifiedWhatsappNotice
@@ -296,26 +274,14 @@ export function ReviewForm({ providerId, isSubmitting = false, onSubmit }: Revie
           session={session}
         />
       ) : (
-        <div className="space-y-2">
-          <Label htmlFor="reviewer-whatsapp">WhatsApp number</Label>
-          <Input
-            autoComplete="tel"
-            id="reviewer-whatsapp"
-            inputMode="tel"
-            maxLength={32}
-            onChange={(event) => setWhatsappNumber(event.target.value)}
-            disabled={Boolean(verificationChallenge)}
-            placeholder="Include country code, e.g. +506 8888 8888"
-            required
-            type="tel"
-            value={whatsappNumber}
-          />
+        <div className="space-y-1.5 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+          <p className="text-sm font-semibold text-emerald-950">Verify with Machu in WhatsApp</p>
           <p className="flex items-center gap-1.5 text-xs leading-relaxed text-gray-500">
             <LockKeyhole aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-            You’ll verify with Machu once, and this device will be remembered for 30 days. Your number stays private and is never shown publicly.
+            Send Machu the ready-made message. The sending number will be privately recorded with this review, and this device will be remembered for 30 days.
           </p>
         </div>
-      )}
+      ))}
 
       {verificationChallenge && (
         <WhatsappApprovalPanel

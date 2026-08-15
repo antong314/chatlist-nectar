@@ -118,14 +118,14 @@ export function WhatsappApprovalPanel({
         {phase === 'completing'
           ? 'WhatsApp approved. Finishing your request…'
           : phase === 'waiting'
-            ? `Waiting for the message from ${challenge.phone}…`
+            ? 'Waiting for your message to Machu…'
             : null}
         {error && <p className="font-medium text-red-700" role="alert">{error}</p>}
       </div>
 
       <div className="flex flex-wrap justify-between gap-2">
         <Button className="h-auto p-0 text-xs" onClick={onReset} type="button" variant="link">
-          Change WhatsApp number
+          Start over
         </Button>
         {phase === 'error' && (
           <Button className="h-auto p-0 text-xs" onClick={retry} type="button" variant="link">

@@ -27,7 +27,6 @@ export interface SubmitReviewInput {
   // Kept as a number so star controls can pass their natural state value.
   // Runtime validation narrows this to ReviewRating before persistence.
   rating: number;
-  reviewerWhatsapp: string;
   comment?: string | null;
   reviewerName?: string | null;
   /** Paths returned by uploadReviewImages; pass [] when the review has no images. */

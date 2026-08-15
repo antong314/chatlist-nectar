@@ -37,7 +37,6 @@ describe('provider deletion verification API', () => {
       actionId,
       actionToken,
       expiresAt: '2026-08-04T14:10:00.000Z',
-      phone: '+50688881212',
       requiresWhatsappApproval: true,
       verificationMethod: 'whatsapp_inbound',
       whatsappUrl: 'https://wa.me/15204473525?text=VERIFY',
@@ -47,14 +46,12 @@ describe('provider deletion verification API', () => {
       providerId,
       providerNameConfirmation: '  Efra Mechanic  ',
       reason: 'closed',
-      requesterWhatsapp: ' +506 8888 1212 ',
     })).resolves.toEqual(expect.objectContaining({ actionId, actionToken }));
 
     expect(fetchMock).toHaveBeenCalledWith('/bot/verify/start', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({
         actionType: 'provider_delete',
-        phone: '+506 8888 1212',
         payload: {
           providerId,
           providerNameConfirmation: 'Efra Mechanic',
@@ -130,7 +127,6 @@ describe('provider deletion verification API', () => {
       providerId: 'not-a-uuid',
       providerNameConfirmation: 'Efra Mechanic',
       reason: 'other',
-      requesterWhatsapp: '+50688881212',
     })).rejects.toThrow('valid provider');
     await expect(undoProviderDeletion({ eventId, undoToken: '   ' }))
       .rejects.toThrow('undo link is invalid');

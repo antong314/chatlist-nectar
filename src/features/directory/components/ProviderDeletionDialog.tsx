@@ -63,7 +63,6 @@ export function ProviderDeletionDialog({
   const [isOpen, setIsOpen] = useState(false);
   const [nameConfirmation, setNameConfirmation] = useState('');
   const [reason, setReason] = useState<ProviderDeletionReason | ''>('');
-  const [requesterWhatsapp, setRequesterWhatsapp] = useState('');
   const [verificationChallenge, setVerificationChallenge] = useState<WhatsappVerificationChallenge | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -72,14 +71,12 @@ export function ProviderDeletionDialog({
   const nameMatches = normalizeName(nameConfirmation) === normalizeName(providerName);
   const canSubmit = nameMatches
     && Boolean(reason)
-    && (session.authenticated || Boolean(requesterWhatsapp.trim()))
     && !isLoadingSession
     && !isSubmitting;
 
   const resetForm = () => {
     setNameConfirmation('');
     setReason('');
-    setRequesterWhatsapp('');
     setVerificationChallenge(null);
     setSubmitError(null);
   };
@@ -104,7 +101,6 @@ export function ProviderDeletionDialog({
         providerId,
         providerNameConfirmation: normalizeConfirmation(nameConfirmation),
         reason,
-        requesterWhatsapp: session.authenticated ? undefined : requesterWhatsapp.trim(),
       });
       if (challenge.requiresWhatsappApproval) {
         setVerificationChallenge(challenge);
@@ -194,7 +190,7 @@ export function ProviderDeletionDialog({
             </select>
           </div>
 
-          {isLoadingSession ? (
+          {!verificationChallenge && (isLoadingSession ? (
             <p className="text-sm text-muted-foreground">Checking this device’s WhatsApp verification…</p>
           ) : session.authenticated ? (
             <VerifiedWhatsappNotice
@@ -208,24 +204,13 @@ export function ProviderDeletionDialog({
               session={session}
             />
           ) : (
-            <div className="space-y-2">
-              <Label htmlFor="delete-requester-whatsapp">Your WhatsApp number</Label>
-              <Input
-                aria-describedby="delete-requester-whatsapp-hint"
-                autoComplete="tel"
-                id="delete-requester-whatsapp"
-                inputMode="tel"
-                onChange={(event) => setRequesterWhatsapp(event.target.value)}
-                required
-                disabled={Boolean(verificationChallenge)}
-                type="tel"
-                value={requesterWhatsapp}
-              />
-              <p className="text-xs leading-5 text-muted-foreground" id="delete-requester-whatsapp-hint">
-                You’ll verify with Machu once, and this device will be remembered for 30 days. Your number is recorded privately for moderation and is never shown publicly.
+            <div className="space-y-1.5 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+              <p className="text-sm font-semibold text-emerald-950">Verify with Machu in WhatsApp</p>
+              <p className="text-xs leading-5 text-muted-foreground">
+                Send Machu the ready-made message. The sending number will be privately recorded with this removal, and this device will be remembered for 30 days.
               </p>
             </div>
-          )}
+          ))}
 
           {verificationChallenge && (
             <WhatsappApprovalPanel

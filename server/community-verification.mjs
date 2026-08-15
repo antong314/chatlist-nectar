@@ -184,11 +184,13 @@ export class CommunityVerificationService {
 
   async assertRateLimit(phone, requestIpHash) {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    const phoneQuery = this.supabase
-      .from('community_verification_actions')
-      .select('id', { count: 'exact', head: true })
-      .eq('requester_whatsapp', phone)
-      .gte('created_at', oneHourAgo);
+    const phoneQuery = phone
+      ? this.supabase
+          .from('community_verification_actions')
+          .select('id', { count: 'exact', head: true })
+          .eq('requester_whatsapp', phone)
+          .gte('created_at', oneHourAgo)
+      : Promise.resolve({ count: 0, error: null });
     const ipQuery = requestIpHash
       ? this.supabase
           .from('community_verification_actions')
@@ -205,10 +207,10 @@ export class CommunityVerificationService {
     }
   }
 
-  async start({ actionType, phone: phoneInput, payload, requestIp, verifiedSession = null }) {
+  async start({ actionType, payload, requestIp, verifiedSession = null }) {
     const phone = verifiedSession?.verified_whatsapp
       ? normalizeE164(verifiedSession.verified_whatsapp)
-      : normalizeE164(phoneInput);
+      : null;
     const normalizedPayload = normalizeActionPayload(actionType, payload);
     const requestIpHash = this.ipHash(requestIp);
     await this.assertRateLimit(phone, requestIpHash);
@@ -239,7 +241,6 @@ export class CommunityVerificationService {
       actionId: action.id,
       actionToken: clientSecret,
       expiresAt: action.expires_at,
-      phone,
       requiresWhatsappApproval: !usesTrustedSession,
       verificationMethod: usesTrustedSession ? 'trusted_session' : 'whatsapp_inbound',
       whatsappUrl: usesTrustedSession ? null : this.approvalUrl(action.id),
@@ -343,24 +344,45 @@ export class CommunityVerificationService {
         .is('consumed_at', null);
       return { approved: false, reason: 'expired' };
     }
-    if (action.requester_whatsapp !== senderPhone) {
+    if (action.requester_whatsapp && action.requester_whatsapp !== senderPhone) {
       return { approved: false, reason: 'phone' };
     }
     if (action.status === 'completed' || action.consumed_at) {
+      if (!action.requester_whatsapp) return { approved: false, reason: 'unavailable' };
       return { approved: true, actionType: action.action_type, alreadyApproved: true };
     }
     if (action.status === 'verified') {
+      if (!action.requester_whatsapp) return { approved: false, reason: 'unavailable' };
       return { approved: true, actionType: action.action_type, alreadyApproved: true };
     }
     if (action.status !== 'pending') return { approved: false, reason: 'unavailable' };
 
+    if (!action.requester_whatsapp) {
+      try {
+        await this.assertRateLimit(senderPhone, null);
+      } catch (rateLimitError) {
+        if (rateLimitError instanceof VerificationHttpError && rateLimitError.status === 429) {
+          return { approved: false, reason: 'rate_limit' };
+        }
+        throw rateLimitError;
+      }
+    }
+
     const verifiedAt = new Date().toISOString();
-    const { data: verified, error: updateError } = await this.supabase
+    let verificationUpdate = this.supabase
       .from('community_verification_actions')
-      .update({ status: 'verified', verified_at: verifiedAt })
+      .update({
+        status: 'verified',
+        verified_at: verifiedAt,
+        requester_whatsapp: senderPhone,
+      })
       .eq('id', action.id)
       .eq('status', 'pending')
-      .is('consumed_at', null)
+      .is('consumed_at', null);
+    verificationUpdate = action.requester_whatsapp
+      ? verificationUpdate.eq('requester_whatsapp', senderPhone)
+      : verificationUpdate.is('requester_whatsapp', null);
+    const { data: verified, error: updateError } = await verificationUpdate
       .select('action_type')
       .maybeSingle();
     if (updateError) throw databaseError('WhatsApp approval could not be completed.', updateError);

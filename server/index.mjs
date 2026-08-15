@@ -158,7 +158,6 @@ app.post(
     );
     return communityVerification.start({
       actionType: request.body?.actionType,
-      phone: request.body?.phone,
       payload: request.body?.payload,
       requestIp: request.ip,
       verifiedSession,
@@ -261,7 +260,9 @@ app.post('/bot', express.urlencoded({ extended: false, limit: '256kb' }), async 
               'You can also chat with me anytime: send a contact card to recommend a provider, or ask me to find local services.',
             ].join('\n');
       } else if (approval.reason === 'phone') {
-        body = 'This request belongs to a different WhatsApp number. Return to San Mateo Love and enter this number instead.';
+        body = 'This request was already verified by a different WhatsApp number. Return to San Mateo Love and start a new request.';
+      } else if (approval.reason === 'rate_limit') {
+        body = 'Too many requests were verified from this number recently. Please wait and try again later.';
       } else if (approval.reason === 'expired') {
         body = 'That verification request has expired. Return to San Mateo Love and start it again.';
       } else {
