@@ -2,6 +2,7 @@ import type {
   VerificationActionType,
   VerificationApproval,
   WhatsappVerificationChallenge,
+  WhatsappVerificationStatus,
 } from './types';
 
 const postJson = async <T>(url: string, body: unknown): Promise<T> => {
@@ -33,11 +34,16 @@ export const startWhatsappVerification = async (input: {
 
 export const checkWhatsappVerification = async (
   challenge: Pick<WhatsappVerificationChallenge, 'actionId' | 'actionToken'>,
-  code: string,
 ): Promise<VerificationApproval & Record<string, unknown>> => postJson('/bot/verify/check', {
   actionId: challenge.actionId,
   actionToken: challenge.actionToken,
-  code,
+});
+
+export const getWhatsappVerificationStatus = async (
+  challenge: Pick<WhatsappVerificationChallenge, 'actionId' | 'actionToken'>,
+): Promise<WhatsappVerificationStatus> => postJson('/bot/verify/status', {
+  actionId: challenge.actionId,
+  actionToken: challenge.actionToken,
 });
 
 export const completeVerifiedReview = async (

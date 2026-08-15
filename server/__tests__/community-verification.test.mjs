@@ -34,13 +34,12 @@ test('requires and canonicalizes an international WhatsApp number', () => {
   );
 });
 
-test('starts a WhatsApp Verify action with only a hashed browser token in storage', async () => {
+test('starts an inbound WhatsApp approval with separate browser and message tokens', async () => {
   const calls = [];
   const results = [
     { count: 0, error: null },
     { count: 0, error: null },
     { data: { id: actionId, expires_at: '2026-08-04T15:10:00.000Z' }, error: null },
-    { error: null },
   ];
   const supabase = {
     from(table) {
@@ -48,22 +47,10 @@ test('starts a WhatsApp Verify action with only a hashed browser token in storag
       return builder(results.shift());
     },
   };
-  const twilioClient = {
-    verify: { v2: { services: () => ({
-      verifications: { create: async (input) => {
-        assert.deepEqual(input, {
-          to: '+50687184331',
-          channel: 'whatsapp',
-        });
-        return { sid: 'VEaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' };
-      } },
-    }) } },
-  };
   const service = new CommunityVerificationService({
     supabase,
-    twilioClient,
-    verifyServiceSid: 'VAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     signingSecret: 'test-signing-secret',
+    whatsappFrom: 'whatsapp:+15204473525',
   });
 
   const result = await service.start({
@@ -76,41 +63,100 @@ test('starts a WhatsApp Verify action with only a hashed browser token in storag
   assert.equal(result.actionId, actionId);
   assert.equal(result.phone, '+50687184331');
   assert.match(result.actionToken, /^[A-Za-z0-9_-]{32,128}$/);
+  assert.match(result.whatsappUrl, /^https:\/\/wa\.me\/15204473525\?text=/);
+  assert.match(decodeURIComponent(result.whatsappUrl), /VERIFY 7a279684-13b7-4df4-b0e0-ac68d41cd656\.[A-Za-z0-9_-]{43}/);
   assert.deepEqual(calls, [
-    'community_verification_actions',
     'community_verification_actions',
     'community_verification_actions',
     'community_verification_actions',
   ]);
 });
 
-test('accepts an approved Twilio code and completes a no-photo review', async () => {
+test('accepts a signed inbound message only from the action phone', async () => {
   const action = {
     id: actionId,
     action_type: 'provider_review',
     requester_whatsapp: '+50687184331',
     payload: { providerId, rating: 5, imageCount: 0 },
-    status: 'sent',
+    status: 'pending',
     check_attempts: 0,
     consumed_at: null,
     expires_at: new Date(Date.now() + 60_000).toISOString(),
   };
-  const twilioClient = {
-    verify: { v2: { services: () => ({
-      verificationChecks: { create: async (input) => {
-        assert.deepEqual(input, { to: '+50687184331', code: '123456' });
-        return { status: 'approved' };
-      } },
-    }) } },
+  const results = [
+    { data: action, error: null },
+    { data: { action_type: 'provider_review' }, error: null },
+    { data: action, error: null },
+  ];
+  const service = new CommunityVerificationService({
+    supabase: { from: () => builder(results.shift()) },
+    signingSecret: 'test-signing-secret',
+    whatsappFrom: '+15204473525',
+  });
+  const body = `Please verify\nVERIFY ${service.approvalToken(actionId)}`;
+
+  assert.deepEqual(await service.approveInbound({ body, senderPhone: '50687184331' }), {
+    approved: true,
+    actionType: 'provider_review',
+    alreadyApproved: false,
+  });
+  assert.deepEqual(await service.approveInbound({ body, senderPhone: '50688880000' }), {
+    approved: false,
+    reason: 'phone',
+  });
+});
+
+test('rejects an inbound approval whose action signature was changed', async () => {
+  const service = new CommunityVerificationService({
+    supabase: { from: () => { throw new Error('Invalid signatures must not query the database.'); } },
+    signingSecret: 'test-signing-secret',
+    whatsappFrom: '+15204473525',
+  });
+  const token = service.approvalToken(actionId);
+  const tamperedToken = `${token.slice(0, -1)}${token.endsWith('A') ? 'B' : 'A'}`;
+
+  assert.deepEqual(await service.approveInbound({
+    body: `VERIFY ${tamperedToken}`,
+    senderPhone: '50687184331',
+  }), { approved: false, reason: 'invalid' });
+});
+
+test('reports waiting and verified states without completing the action', async () => {
+  const service = new CommunityVerificationService({
+    supabase: { from: () => builder({ error: null }) },
+    signingSecret: 'test-signing-secret',
+    whatsappFrom: '+15204473525',
+  });
+  const expiresAt = new Date(Date.now() + 60_000).toISOString();
+  service.loadAction = async () => ({ status: 'pending', expires_at: expiresAt });
+  assert.deepEqual(await service.status({ actionId, actionToken: 'unused' }), {
+    status: 'waiting',
+    expiresAt,
+  });
+
+  service.loadAction = async () => ({ status: 'verified', expires_at: expiresAt });
+  assert.deepEqual(await service.status({ actionId, actionToken: 'unused' }), {
+    status: 'verified',
+    expiresAt,
+  });
+});
+
+test('completes a no-photo review only after inbound approval', async () => {
+  const action = {
+    id: actionId,
+    action_type: 'provider_review',
+    requester_whatsapp: '+50687184331',
+    payload: { providerId, rating: 5, imageCount: 0 },
+    status: 'verified',
+    consumed_at: null,
+    expires_at: new Date(Date.now() + 60_000).toISOString(),
   };
   const service = new CommunityVerificationService({
     supabase: { from: () => builder({ error: null }) },
-    twilioClient,
-    verifyServiceSid: 'VAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     signingSecret: 'test-signing-secret',
+    whatsappFrom: '+15204473525',
   });
   service.loadAction = async () => action;
-  service.markVerified = async () => ({ ...action, status: 'verified', verified_at: new Date().toISOString() });
   service.completeReview = async ({ action: verifiedAction, imagePaths }) => {
     assert.equal(verifiedAction.status, 'verified');
     assert.deepEqual(imagePaths, []);
@@ -120,7 +166,6 @@ test('accepts an approved Twilio code and completes a no-photo review', async ()
   assert.deepEqual(await service.check({
     actionId,
     actionToken: 'verification_action_token_12345678901234567890',
-    code: '123456',
   }), { status: 'approved', actionType: 'provider_review' });
 });
 
@@ -130,7 +175,6 @@ test('normalizes and binds provider edits to the verification action payload', a
     { count: 0, error: null },
     { count: 0, error: null },
     { data: { id: actionId, expires_at: '2026-08-04T15:10:00.000Z' }, error: null },
-    { error: null },
   ];
   const supabase = {
     from() {
@@ -142,16 +186,10 @@ test('normalizes and binds provider edits to the verification action payload', a
       return chain;
     },
   };
-  const twilioClient = {
-    verify: { v2: { services: () => ({
-      verifications: { create: async () => ({ sid: 'VEaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }) },
-    }) } },
-  };
   const service = new CommunityVerificationService({
     supabase,
-    twilioClient,
-    verifyServiceSid: 'VAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     signingSecret: 'test-signing-secret',
+    whatsappFrom: '+15204473525',
   });
 
   await service.start({
@@ -172,6 +210,7 @@ test('normalizes and binds provider edits to the verification action payload', a
 
   assert.equal(insertedAction.action_type, 'provider_update');
   assert.equal(insertedAction.requester_whatsapp, '+50687771234');
+  assert.equal(insertedAction.verification_method, 'whatsapp_inbound');
   assert.deepEqual(insertedAction.payload, {
     providerId,
     name: 'Efra Mechanic',
@@ -215,9 +254,8 @@ test('completes a verified provider write through the service-only RPC', async (
         }),
       },
     },
-    twilioClient: {},
-    verifyServiceSid: 'VAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     signingSecret: 'test-signing-secret',
+    whatsappFrom: '+15204473525',
   });
   service.loadAction = async () => ({
     id: actionId,
@@ -259,9 +297,8 @@ test('uploads a provider logo only for a verified replacement action', async () 
         },
       },
     },
-    twilioClient: {},
-    verifyServiceSid: 'VAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     signingSecret: 'test-signing-secret',
+    whatsappFrom: '+15204473525',
   });
   service.loadAction = async () => ({
     id: actionId,

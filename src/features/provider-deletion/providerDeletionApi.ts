@@ -48,7 +48,7 @@ export const requestProviderDeletion = async (
   const result = await checkWhatsappVerification({
     actionId: input.actionId,
     actionToken: input.actionToken,
-  }, input.code) as Partial<RequestProviderDeletionResult> | null;
+  }) as Partial<RequestProviderDeletionResult> | null;
   if (!result || !UUID_PATTERN.test(result.eventId ?? '')
     || typeof result.undoToken !== 'string' || !result.undoToken
     || typeof result.undoExpiresAt !== 'string' || !result.undoExpiresAt) {

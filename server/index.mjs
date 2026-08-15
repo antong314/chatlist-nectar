@@ -20,7 +20,6 @@ const requiredEnvironment = [
   'TWILIO_ACCOUNT_SID',
   'TWILIO_AUTH_TOKEN',
   'TWILIO_WHATSAPP_FROM',
-  'TWILIO_VERIFY_SERVICE_SID',
   'VITE_SUPABASE_URL',
   'VITE_SUPABASE_ANON_KEY',
   'SUPABASE_SERVICE_ROLE_KEY',
@@ -39,7 +38,6 @@ const validateTwilioSignatures = process.env.TWILIO_VALIDATE_SIGNATURE !== 'fals
 
 const store = new DirectoryStore();
 const ai = new OpenAIProvider();
-const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 const adminSupabase = createClient(
   process.env.VITE_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -47,9 +45,8 @@ const adminSupabase = createClient(
 );
 const communityVerification = new CommunityVerificationService({
   supabase: adminSupabase,
-  twilioClient,
-  verifyServiceSid: process.env.TWILIO_VERIFY_SERVICE_SID,
   signingSecret,
+  whatsappFrom: process.env.TWILIO_WHATSAPP_FROM,
 });
 
 const fetchTwilioMedia = async (url) => {
@@ -120,7 +117,15 @@ app.post(
   verificationRoute((request) => communityVerification.check({
     actionId: request.body?.actionId,
     actionToken: request.body?.actionToken,
-    code: request.body?.code,
+  })),
+);
+
+app.post(
+  '/bot/verify/status',
+  express.json({ limit: '8kb', type: 'application/json' }),
+  verificationRoute((request) => communityVerification.status({
+    actionId: request.body?.actionId,
+    actionToken: request.body?.actionToken,
   })),
 );
 
@@ -163,6 +168,38 @@ app.post('/bot', express.urlencoded({ extended: false, limit: '256kb' }), async 
         response.status(403).type('text/plain').send('Invalid Twilio signature');
         return;
       }
+    }
+
+    const approval = await communityVerification.approveInbound({
+      body: request.body?.Body,
+      senderPhone: request.body?.WaId || request.body?.From,
+    });
+    if (approval) {
+      const actionLabels = {
+        provider_create: 'provider recommendation',
+        provider_update: 'provider update',
+        provider_delete: 'provider removal',
+        provider_review: 'review',
+      };
+      let body;
+      if (approval.approved) {
+        const label = actionLabels[approval.actionType] || 'request';
+        body = approval.alreadyApproved
+          ? `Your ${label} is already verified 🌿 Return to San Mateo Love to finish.`
+          : [
+              `Verified 🌿 Return to San Mateo Love and your ${label} will finish automatically.`,
+              '',
+              'You can also chat with me anytime: send a contact card to recommend a provider, or ask me to find local services.',
+            ].join('\n');
+      } else if (approval.reason === 'phone') {
+        body = 'This request belongs to a different WhatsApp number. Return to San Mateo Love and enter this number instead.';
+      } else if (approval.reason === 'expired') {
+        body = 'That verification request has expired. Return to San Mateo Love and start it again.';
+      } else {
+        body = 'I could not verify that request. Return to San Mateo Love and create a new verification message.';
+      }
+      response.type('text/xml').send(messagesToTwiml(bot.withDirectoryFooter([{ body }])));
+      return;
     }
 
     const messages = await bot.handle(request.body);

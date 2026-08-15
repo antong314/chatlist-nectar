@@ -1,9 +1,9 @@
-import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const E164_PATTERN = /^\+[1-9][0-9]{7,14}$/;
 const ACTION_SECRET_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
-const CODE_PATTERN = /^[0-9]{4,10}$/;
+const INBOUND_APPROVAL_PATTERN = /(?:^|\s)VERIFY\s+([0-9a-f-]{36})\.([A-Za-z0-9_-]{43})(?:\s|$)/i;
 const REVIEW_IMAGE_PATH_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(?:jpg|jpeg|png|webp)$/i;
 const PROVIDER_IMAGE_PATH_PATTERN = /^([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(?:jpg|jpeg|png|webp)$/i;
 const DELETION_REASONS = new Set(['outdated', 'duplicate', 'closed', 'incorrect', 'other']);
@@ -17,7 +17,6 @@ const PROVIDER_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 const ACTION_TTL_MINUTES = 10;
 const PHONE_ATTEMPTS_PER_HOUR = 5;
 const IP_ATTEMPTS_PER_HOUR = 20;
-const MAX_CODE_CHECKS = 5;
 
 export class VerificationHttpError extends Error {
   constructor(status, message) {
@@ -145,11 +144,36 @@ const databaseError = (message, error) => {
 const firstRow = (data) => Array.isArray(data) ? data[0] : data;
 
 export class CommunityVerificationService {
-  constructor({ supabase, twilioClient, verifyServiceSid, signingSecret }) {
+  constructor({ supabase, signingSecret, whatsappFrom }) {
     this.supabase = supabase;
-    this.twilioClient = twilioClient;
-    this.verifyServiceSid = verifyServiceSid;
     this.signingSecret = signingSecret;
+    this.whatsappFrom = normalizeE164(String(whatsappFrom ?? '').replace(/^whatsapp:/i, ''));
+  }
+
+  approvalSignature(actionId) {
+    return createHmac('sha256', this.signingSecret)
+      .update(`whatsapp-approval:${actionId}`)
+      .digest('base64url');
+  }
+
+  approvalToken(actionId) {
+    return `${actionId}.${this.approvalSignature(actionId)}`;
+  }
+
+  approvalUrl(actionId) {
+    const message = [
+      'Hi Machu! Please verify my San Mateo Love request.',
+      '',
+      `VERIFY ${this.approvalToken(actionId)}`,
+    ].join('\n');
+    return `https://wa.me/${this.whatsappFrom.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
+  }
+
+  hasValidApprovalSignature(actionId, signature) {
+    const expected = this.approvalSignature(actionId);
+    const actualBytes = Buffer.from(String(signature));
+    const expectedBytes = Buffer.from(expected);
+    return actualBytes.length === expectedBytes.length && timingSafeEqual(actualBytes, expectedBytes);
   }
 
   ipHash(ip) {
@@ -176,7 +200,7 @@ export class CommunityVerificationService {
       throw databaseError('Verification is temporarily unavailable.', phoneResult.error || ipResult.error);
     }
     if ((phoneResult.count ?? 0) >= PHONE_ATTEMPTS_PER_HOUR || (ipResult.count ?? 0) >= IP_ATTEMPTS_PER_HOUR) {
-      throw new VerificationHttpError(429, 'Too many codes were requested. Please wait and try again later.');
+      throw new VerificationHttpError(429, 'Too many verification requests were started. Please wait and try again later.');
     }
   }
 
@@ -194,6 +218,7 @@ export class CommunityVerificationService {
         action_type: actionType,
         requester_whatsapp: phone,
         payload: normalizedPayload,
+        verification_method: 'whatsapp_inbound',
         client_secret_hash: sha256(clientSecret),
         request_ip_hash: requestIpHash,
         expires_at: expiresAt,
@@ -202,34 +227,70 @@ export class CommunityVerificationService {
       .single();
     if (insertError || !action) throw databaseError('Verification is temporarily unavailable.', insertError);
 
-    try {
-      const verification = await this.twilioClient.verify.v2
-        .services(this.verifyServiceSid)
-        .verifications.create({
-          to: phone,
-          channel: 'whatsapp',
-        });
-      const { error: updateError } = await this.supabase
-        .from('community_verification_actions')
-        .update({ status: 'sent', twilio_verification_sid: verification.sid })
-        .eq('id', action.id)
-        .eq('status', 'pending');
-      if (updateError) throw updateError;
-    } catch (error) {
-      await this.supabase
-        .from('community_verification_actions')
-        .update({ status: 'failed' })
-        .eq('id', action.id);
-      console.error('Twilio Verify start failed:', error);
-      throw new VerificationHttpError(502, 'WhatsApp could not deliver a code right now. Please try again shortly.');
-    }
-
     return {
       actionId: action.id,
       actionToken: clientSecret,
       expiresAt: action.expires_at,
       phone,
+      whatsappUrl: this.approvalUrl(action.id),
     };
+  }
+
+  async approveInbound({ body, senderPhone: senderPhoneInput }) {
+    const match = String(body ?? '').match(INBOUND_APPROVAL_PATTERN);
+    if (!match) return null;
+
+    const actionId = match[1].toLowerCase();
+    if (!UUID_PATTERN.test(actionId) || !this.hasValidApprovalSignature(actionId, match[2])) {
+      return { approved: false, reason: 'invalid' };
+    }
+
+    let senderPhone = String(senderPhoneInput ?? '').trim().replace(/^whatsapp:/i, '');
+    if (/^[1-9][0-9]{7,14}$/.test(senderPhone)) senderPhone = `+${senderPhone}`;
+    try {
+      senderPhone = normalizeE164(senderPhone);
+    } catch {
+      return { approved: false, reason: 'sender' };
+    }
+
+    const { data: action, error } = await this.supabase
+      .from('community_verification_actions')
+      .select('*')
+      .eq('id', actionId)
+      .maybeSingle();
+    if (error) throw databaseError('WhatsApp approval is temporarily unavailable.', error);
+    if (!action) return { approved: false, reason: 'invalid' };
+    if (new Date(action.expires_at).getTime() <= Date.now()) {
+      await this.supabase
+        .from('community_verification_actions')
+        .update({ status: 'expired' })
+        .eq('id', action.id)
+        .is('consumed_at', null);
+      return { approved: false, reason: 'expired' };
+    }
+    if (action.requester_whatsapp !== senderPhone) {
+      return { approved: false, reason: 'phone' };
+    }
+    if (action.status === 'completed' || action.consumed_at) {
+      return { approved: true, actionType: action.action_type, alreadyApproved: true };
+    }
+    if (action.status === 'verified') {
+      return { approved: true, actionType: action.action_type, alreadyApproved: true };
+    }
+    if (action.status !== 'pending') return { approved: false, reason: 'unavailable' };
+
+    const verifiedAt = new Date().toISOString();
+    const { data: verified, error: updateError } = await this.supabase
+      .from('community_verification_actions')
+      .update({ status: 'verified', verified_at: verifiedAt })
+      .eq('id', action.id)
+      .eq('status', 'pending')
+      .is('consumed_at', null)
+      .select('action_type')
+      .maybeSingle();
+    if (updateError) throw databaseError('WhatsApp approval could not be completed.', updateError);
+    if (!verified) return { approved: false, reason: 'unavailable' };
+    return { approved: true, actionType: verified.action_type, alreadyApproved: false };
   }
 
   async loadAction(actionIdInput, actionTokenInput) {
@@ -252,23 +313,9 @@ export class CommunityVerificationService {
         .update({ status: 'expired' })
         .eq('id', action.id)
         .is('consumed_at', null);
-      throw new VerificationHttpError(410, 'This code has expired. Request a new one.');
+      throw new VerificationHttpError(410, 'This verification request has expired. Start a new one.');
     }
     return action;
-  }
-
-  async markVerified(action) {
-    const verifiedAt = new Date().toISOString();
-    const { data, error } = await this.supabase
-      .from('community_verification_actions')
-      .update({ status: 'verified', verified_at: verifiedAt })
-      .eq('id', action.id)
-      .in('status', ['sent', 'verified'])
-      .is('consumed_at', null)
-      .select('*')
-      .single();
-    if (error || !data) throw databaseError('Verification could not be completed.', error);
-    return data;
   }
 
   async completeDeletion(action) {
@@ -387,39 +434,13 @@ export class CommunityVerificationService {
     return { imagePath };
   }
 
-  async check({ actionId, actionToken, code: codeInput }) {
-    let action = await this.loadAction(actionId, actionToken);
+  async check({ actionId, actionToken }) {
+    const action = await this.loadAction(actionId, actionToken);
     if (action.status === 'completed' || action.consumed_at) {
       throw new VerificationHttpError(409, 'This verified action was already completed.');
     }
-    if (!['sent', 'verified'].includes(action.status)) {
-      throw new VerificationHttpError(409, 'Request a new WhatsApp code.');
-    }
-
     if (action.status !== 'verified') {
-      const code = String(codeInput ?? '').trim();
-      if (!CODE_PATTERN.test(code)) throw new VerificationHttpError(400, 'Enter the numeric code sent to WhatsApp.');
-      if (action.check_attempts >= MAX_CODE_CHECKS) {
-        throw new VerificationHttpError(429, 'Too many incorrect codes. Request a new one.');
-      }
-      await this.supabase
-        .from('community_verification_actions')
-        .update({ check_attempts: action.check_attempts + 1 })
-        .eq('id', action.id);
-
-      let check;
-      try {
-        check = await this.twilioClient.verify.v2
-          .services(this.verifyServiceSid)
-          .verificationChecks.create({ to: action.requester_whatsapp, code });
-      } catch (error) {
-        console.error('Twilio Verify check failed:', error);
-        throw new VerificationHttpError(400, 'That code is incorrect or expired. Please try again.');
-      }
-      if (check.status !== 'approved') {
-        throw new VerificationHttpError(400, 'That code is incorrect or expired. Please try again.');
-      }
-      action = await this.markVerified(action);
+      throw new VerificationHttpError(409, 'Open WhatsApp and send the prefilled message to Machu first.');
     }
 
     if (action.action_type === 'provider_delete') return this.completeDeletion(action);
@@ -430,6 +451,16 @@ export class CommunityVerificationService {
       return { status: 'approved', actionType: action.action_type, requiresCompletion: true };
     }
     return { status: 'approved', actionType: action.action_type, requiresCompletion: true };
+  }
+
+  async status({ actionId, actionToken }) {
+    const action = await this.loadAction(actionId, actionToken);
+    return {
+      status: action.status === 'verified' || action.status === 'completed'
+        ? action.status
+        : 'waiting',
+      expiresAt: action.expires_at,
+    };
   }
 
   async completeReview({ action: providedAction, actionId, actionToken, imagePaths = [] }) {

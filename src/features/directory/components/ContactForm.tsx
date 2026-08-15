@@ -14,6 +14,7 @@ import { getDirectoryCategoryLabel } from '@/features/directory/data/categories'
 import { normalizeWhatsappNumber } from '@/features/reviews/validation';
 import {
   startWhatsappVerification,
+  WhatsappApprovalPanel,
   type WhatsappVerificationChallenge,
 } from '@/features/verification';
 import {
@@ -26,7 +27,6 @@ const PROVIDER_LOGO_MAX_BYTES = 5 * 1024 * 1024;
 
 export interface ProviderWriteVerification {
   challenge: WhatsappVerificationChallenge;
-  code: string;
 }
 
 interface ContactFormProps {
@@ -63,7 +63,6 @@ export function ContactForm({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [requesterWhatsapp, setRequesterWhatsapp] = useState('');
-  const [verificationCode, setVerificationCode] = useState('');
   const [verificationChallenge, setVerificationChallenge] = useState<WhatsappVerificationChallenge | null>(null);
   const [verificationError, setVerificationError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -165,6 +164,34 @@ export function ContactForm({
     }
   };
 
+  const buildContactData = () => {
+    const baseContactData: Omit<Contact, 'id' | 'image_url' | 'imageFile'> = {
+      name: name.trim(),
+      category,
+      description: description.trim(),
+      phone: phone.trim(),
+      website: website.trim() ? normalizeWebsiteUrl(website) : undefined,
+      mapUrl: mapUrl.trim() ? normalizeWebsiteUrl(mapUrl) : undefined,
+      logoUrl: contact?.logoUrl,
+      avatarUrl: contact?.avatarUrl,
+    };
+
+    const finalContactData = contact?.id
+      ? {
+          ...baseContactData,
+          id: contact.id,
+          image_url: contact.image_url,
+          imageFile: logoFile,
+          removeLogo: logoRemoved,
+        }
+      : {
+          ...baseContactData,
+          imageFile: logoFile,
+        };
+
+    return { baseContactData, finalContactData };
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -178,79 +205,46 @@ export function ContactForm({
         setVerificationError(error instanceof Error ? error.message : 'Enter a valid WhatsApp number.');
         return;
       }
-    } else if (!verificationCode.trim()) {
-      setVerificationError('Enter the confirmation code sent to WhatsApp.');
-      return;
     }
 
     setIsSubmitting(true);
     setVerificationError('');
     
-    // Base contact data excluding ID and image-related fields handled separately
-    const baseContactData: Omit<Contact, 'id' | 'image_url' | 'imageFile'> = {
-      name: name.trim(),
-      category,
-      description: description.trim(),
-      phone: phone.trim(),
-      website: website.trim() ? normalizeWebsiteUrl(website) : undefined,
-      mapUrl: mapUrl.trim() ? normalizeWebsiteUrl(mapUrl) : undefined,
-      // Include other non-image fields if necessary from the Contact type
-      // e.g., logoUrl and avatarUrl might still be relevant depending on full requirements
-      logoUrl: contact?.logoUrl, // Keep original logoUrl for now? Or clear if new one added? Let's stick to image_url logic primarily.
-      avatarUrl: contact?.avatarUrl, // Keep original avatarUrl?
-    };
-
-    // Prepare the contact data to be saved
-    const finalContactData = contact?.id 
-      ? { 
-          ...baseContactData, 
-          id: contact.id, 
-          image_url: contact.image_url, // Pass existing image_url for update logic
-          imageFile: logoFile, // Pass the selected file (or null)
-          removeLogo: logoRemoved // Pass the removal flag
-        }
-      : { 
-          ...baseContactData, 
-          imageFile: logoFile // Only pass file for adding new contact
-          // removeLogo is not relevant for adding
-        };
+    const { baseContactData } = buildContactData();
     
     try {
-      if (!verificationChallenge) {
-        const imageChange = logoFile
-          ? 'replace'
-          : contact?.id
-            ? (logoRemoved ? 'remove' : 'keep')
-            : 'none';
-        const challenge = await startWhatsappVerification({
-          actionType: contact?.id ? 'provider_update' : 'provider_create',
-          phone: normalizedRequesterWhatsapp!,
-          payload: {
-            ...(contact?.id ? { providerId: contact.id } : {}),
-            name: baseContactData.name,
-            category: baseContactData.category,
-            description: baseContactData.description,
-            providerPhone: baseContactData.phone,
-            website: baseContactData.website ?? null,
-            mapUrl: baseContactData.mapUrl ?? null,
-            imageChange,
-          },
-        });
-        setVerificationChallenge(challenge);
-        setVerificationCode('');
-        return;
-      }
-
-      await onSave(finalContactData, {
-        challenge: verificationChallenge,
-        code: verificationCode.trim(),
+      if (verificationChallenge) return;
+      const imageChange = logoFile
+        ? 'replace'
+        : contact?.id
+          ? (logoRemoved ? 'remove' : 'keep')
+          : 'none';
+      const challenge = await startWhatsappVerification({
+        actionType: contact?.id ? 'provider_update' : 'provider_create',
+        phone: normalizedRequesterWhatsapp!,
+        payload: {
+          ...(contact?.id ? { providerId: contact.id } : {}),
+          name: baseContactData.name,
+          category: baseContactData.category,
+          description: baseContactData.description,
+          providerPhone: baseContactData.phone,
+          website: baseContactData.website ?? null,
+          mapUrl: baseContactData.mapUrl ?? null,
+          imageChange,
+        },
       });
+      setVerificationChallenge(challenge);
     } catch (error) {
       console.error('Error saving contact:', error);
       setVerificationError(error instanceof Error ? error.message : 'Failed to save provider.');
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const completeApprovedProviderWrite = async () => {
+    const { finalContactData } = buildContactData();
+    await onSave(finalContactData, { challenge: verificationChallenge! });
   };
 
   // Click outside to close
@@ -487,39 +481,18 @@ export function ContactForm({
             />
             <p className="flex items-center gap-1.5 text-xs leading-relaxed text-gray-600">
               <LockKeyhole aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-              We’ll send a one-time code before {contact ? 'saving these changes' : 'adding this provider'}. Your number stays private.
+              You’ll send Machu a ready-made WhatsApp message before {contact ? 'saving these changes' : 'adding this provider'}. Your number stays private.
             </p>
 
             {verificationChallenge && (
-              <div className="space-y-2 pt-1">
-                <Label htmlFor="provider-write-verification-code">WhatsApp confirmation code</Label>
-                <Input
-                  autoComplete="one-time-code"
-                  id="provider-write-verification-code"
-                  inputMode="numeric"
-                  maxLength={10}
-                  onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, ''))}
-                  placeholder="Enter the code"
-                  required
-                  value={verificationCode}
-                />
-                <p className="text-xs leading-relaxed text-gray-600">
-                  We sent a verification code to {verificationChallenge.phone}.
-                </p>
-                <Button
-                  className="h-auto p-0 text-xs"
-                  disabled={isSubmitting}
-                  onClick={() => {
-                    setVerificationChallenge(null);
-                    setVerificationCode('');
-                    setVerificationError('');
-                  }}
-                  type="button"
-                  variant="link"
-                >
-                  Change number or request a new code
-                </Button>
-              </div>
+              <WhatsappApprovalPanel
+                challenge={verificationChallenge}
+                onApproved={completeApprovedProviderWrite}
+                onReset={() => {
+                  setVerificationChallenge(null);
+                  setVerificationError('');
+                }}
+              />
             )}
           </div>
 
@@ -551,23 +524,17 @@ export function ContactForm({
               >
                 Cancel
               </Button>
-              <Button 
-                type="submit" 
-                variant="default" 
-                disabled={isSubmitting}
-                className={isSubmitting ? 'opacity-70 cursor-not-allowed' : ''}
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />
-                    {verificationChallenge ? 'Verifying…' : 'Sending code…'}
-                  </>
-                ) : (
-                  verificationChallenge
-                    ? (contact ? 'Verify & save changes' : 'Verify & add provider')
-                    : 'Send WhatsApp code'
-                )}
-              </Button>
+              {!verificationChallenge && (
+                <Button
+                  type="submit"
+                  variant="default"
+                  disabled={isSubmitting}
+                  className={isSubmitting ? 'opacity-70 cursor-not-allowed' : ''}
+                >
+                  {isSubmitting && <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />}
+                  {isSubmitting ? 'Preparing WhatsApp…' : 'Continue with WhatsApp'}
+                </Button>
+              )}
             </div>
           </div>
         </form>

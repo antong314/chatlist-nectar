@@ -19,6 +19,10 @@ Node process serves the existing Vite build and the bot webhook at `POST /bot`.
   Machu expands the intent into English/Spanish professional terms, ranks name
   and description matches across the directory, and does not return unrelated
   providers merely because they share a broad category.
+- Submit a provider change, review, or deletion on the website: the site opens
+  WhatsApp with a signed approval message addressed to Machu. After the user
+  sends it from the submitted number, Machu approves the pending action and
+  introduces its other capabilities in the reply.
 - Every search result sends a visible summary containing the description,
   category, community rating, available website/map links, and the full
   directory listing, followed immediately by its native WhatsApp contact card.
@@ -38,7 +42,6 @@ These are server-only DigitalOcean runtime variables:
 - `TWILIO_ACCOUNT_SID`
 - `TWILIO_AUTH_TOKEN`
 - `TWILIO_WHATSAPP_FROM`
-- `TWILIO_VERIFY_SERVICE_SID`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `OPENAI_API_KEY`
 
@@ -57,11 +60,12 @@ JavaScript during the frontend build.
 ## Endpoints
 
 - `POST /bot` — Twilio inbound-message webhook; validates `X-Twilio-Signature`
-- `POST /bot/verify/start` — starts a WhatsApp OTP bound to a provider create/edit, review, or deletion
-- `POST /bot/verify/check` — verifies the OTP and completes actions without photos
+- `POST /bot/verify/start` — creates an expiring action and a signed WhatsApp approval link
+- `POST /bot/verify/status` — reports whether Machu has received the approval message
+- `POST /bot/verify/check` — completes an approved action without photos
 - `POST /bot/verify/review/complete` — finishes a verified review after photo upload
 - `POST /bot/verify/provider/complete` — atomically finishes a verified provider create/edit, including an optional logo
-- `POST /bot/verify/provider/logo` — uploads an action-scoped logo after the provider OTP is approved
+- `POST /bot/verify/provider/logo` — uploads an action-scoped logo after the provider action is approved
 - `GET /bot` — lightweight bot status
 - `GET /bot/contact/:id.vcf?token=...` — short-lived signed vCard media URL
 - `GET /healthz` — service health check
@@ -78,6 +82,12 @@ Migration `20260803223000_machu_whatsapp_bot.sql` adds:
 The bot intentionally uses the same anonymous Supabase access model as the
 site. Conversation rows have no direct anonymous policies; only narrow RPCs are
 granted, and their keys are unguessable server-generated HMACs.
+
+Migration `20260814133000_whatsapp_inbound_approval.sql` records inbound Machu
+approval as a distinct verification method and carries it into deletion audit
+events. Approval messages contain a short-lived HMAC-bound action identifier;
+the server accepts one only when the Twilio-signed webhook sender matches the
+phone number stored on that action.
 
 ## Local verification
 

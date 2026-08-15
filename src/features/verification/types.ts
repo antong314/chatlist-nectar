@@ -3,6 +3,12 @@ export interface WhatsappVerificationChallenge {
   actionToken: string;
   expiresAt: string;
   phone: string;
+  whatsappUrl: string;
+}
+
+export interface WhatsappVerificationStatus {
+  status: 'waiting' | 'verified' | 'completed';
+  expiresAt: string;
 }
 
 export interface VerificationApproval {

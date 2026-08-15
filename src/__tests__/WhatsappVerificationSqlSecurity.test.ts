@@ -5,6 +5,10 @@ const sql = readFileSync(
   resolve(process.cwd(), 'supabase/migrations/20260804123000_whatsapp_step_up_verification.sql'),
   'utf8',
 );
+const inboundApprovalSql = readFileSync(
+  resolve(process.cwd(), 'supabase/migrations/20260814133000_whatsapp_inbound_approval.sql'),
+  'utf8',
+);
 
 describe('WhatsApp step-up verification SQL contract', () => {
   test('keeps pending actions and private numbers inaccessible to public roles', () => {
@@ -27,5 +31,12 @@ describe('WhatsApp step-up verification SQL contract', () => {
     expect(sql).toMatch(/complete_verified_provider_review[\s\S]*status = 'completed', consumed_at = now\(\)/i);
     expect(sql).toMatch(/GRANT EXECUTE ON FUNCTION public\.complete_verified_provider_deletion[\s\S]*TO service_role/i);
     expect(sql).toMatch(/GRANT EXECUTE ON FUNCTION public\.complete_verified_provider_review[\s\S]*TO service_role/i);
+  });
+
+  test('records inbound Machu approvals through the atomic completion functions', () => {
+    expect(inboundApprovalSql).toMatch(/verification_method[\s\S]*whatsapp_inbound/i);
+    expect(inboundApprovalSql).toMatch(/complete_verified_provider_deletion[\s\S]*verification_method = v_action\.verification_method/i);
+    expect(inboundApprovalSql).toMatch(/complete_verified_provider_review[\s\S]*v_action\.verification_method/i);
+    expect(inboundApprovalSql).toMatch(/GRANT EXECUTE ON FUNCTION public\.complete_verified_provider_deletion[\s\S]*TO service_role/i);
   });
 });

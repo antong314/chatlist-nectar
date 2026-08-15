@@ -13,6 +13,7 @@ import {
 import { StarRating } from './StarRating';
 import {
   startWhatsappVerification,
+  WhatsappApprovalPanel,
   type WhatsappVerificationChallenge,
 } from '@/features/verification';
 
@@ -30,7 +31,6 @@ interface ReviewFormProps {
   onSubmit: (
     values: ReviewFormValues,
     challenge: WhatsappVerificationChallenge,
-    code: string,
   ) => Promise<void>;
 }
 
@@ -50,8 +50,7 @@ export function ReviewForm({ providerId, isSubmitting = false, onSubmit }: Revie
   const [imageError, setImageError] = useState('');
   const [formError, setFormError] = useState('');
   const [submitted, setSubmitted] = useState(false);
-  const [isRequestingCode, setIsRequestingCode] = useState(false);
-  const [verificationCode, setVerificationCode] = useState('');
+  const [isStartingVerification, setIsStartingVerification] = useState(false);
   const [verificationChallenge, setVerificationChallenge] = useState<WhatsappVerificationChallenge | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const previewUrlsRef = useRef(new Set<string>());
@@ -145,49 +144,55 @@ export function ReviewForm({ providerId, isSubmitting = false, onSubmit }: Revie
       };
 
     try {
-      if (!verificationChallenge) {
-        setIsRequestingCode(true);
-        const challenge = await startWhatsappVerification({
-          actionType: 'provider_review',
-          phone: values.whatsappNumber,
-          payload: {
-            providerId,
-            rating: values.rating,
-            comment: values.comment ?? null,
-            reviewerName: values.reviewerName ?? null,
-            imageCount: values.images.length,
-          },
-        });
-        setVerificationChallenge(challenge);
-        setVerificationCode('');
-        return;
-      }
-
-      if (!verificationCode.trim()) {
-        setFormError('Enter the confirmation code sent to WhatsApp.');
-        return;
-      }
-
-      await onSubmit(values, verificationChallenge, verificationCode.trim());
-      setRating(0);
-      setComment('');
-      setReviewerName('');
-      setWhatsappNumber('');
-      clearImages();
-      setVerificationCode('');
-      setVerificationChallenge(null);
-      setSubmitted(true);
+      if (verificationChallenge) return;
+      setIsStartingVerification(true);
+      const challenge = await startWhatsappVerification({
+        actionType: 'provider_review',
+        phone: values.whatsappNumber,
+        payload: {
+          providerId,
+          rating: values.rating,
+          comment: values.comment ?? null,
+          reviewerName: values.reviewerName ?? null,
+          imageCount: values.images.length,
+        },
+      });
+      setVerificationChallenge(challenge);
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Your review could not be submitted. Please try again.');
     } finally {
-      setIsRequestingCode(false);
+      setIsStartingVerification(false);
     }
+  };
+
+  const completeApprovedReview = async () => {
+    const values: ReviewFormValues = {
+      rating,
+      comment: comment.trim() || undefined,
+      reviewerName: reviewerName.trim() || undefined,
+      whatsappNumber: normalizeWhatsappNumber(whatsappNumber),
+      images: selectedImages.map(({ file }) => file),
+    };
+    await onSubmit(values, verificationChallenge!);
+    setRating(0);
+    setComment('');
+    setReviewerName('');
+    setWhatsappNumber('');
+    clearImages();
+    setVerificationChallenge(null);
+    setSubmitted(true);
   };
 
   return (
     <form className="space-y-5" noValidate onSubmit={handleSubmit}>
       <div>
-        <StarRating label="Your rating" onChange={setRating} size="lg" value={rating} />
+        <StarRating
+          disabled={isSubmitting || Boolean(verificationChallenge)}
+          label="Your rating"
+          onChange={setRating}
+          size="lg"
+          value={rating}
+        />
         <p className="mt-1 text-sm text-gray-500">Tap a star to rate this provider.</p>
       </div>
 
@@ -284,41 +289,19 @@ export function ReviewForm({ providerId, isSubmitting = false, onSubmit }: Revie
         />
         <p className="flex items-center gap-1.5 text-xs leading-relaxed text-gray-500">
           <LockKeyhole aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-          We’ll send a one-time code here to verify your review. Your number stays private and is never shown.
+          You’ll send Machu a ready-made WhatsApp message to verify your review. Your number stays private and is never shown.
         </p>
       </div>
 
       {verificationChallenge && (
-        <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-          <Label htmlFor="review-verification-code">WhatsApp confirmation code</Label>
-          <Input
-            aria-describedby="review-verification-code-hint"
-            autoComplete="one-time-code"
-            id="review-verification-code"
-            inputMode="numeric"
-            maxLength={10}
-            onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, ''))}
-            placeholder="Enter the code"
-            required
-            value={verificationCode}
-          />
-          <p className="text-xs leading-relaxed text-gray-500" id="review-verification-code-hint">
-            We sent a verification code to {verificationChallenge.phone}. Enter it above to post your review.
-          </p>
-          <Button
-            className="h-auto p-0 text-xs"
-            disabled={isSubmitting}
-            onClick={() => {
-              setVerificationChallenge(null);
-              setVerificationCode('');
-              setFormError('');
-            }}
-            type="button"
-            variant="link"
-          >
-            Change number or request a new code
-          </Button>
-        </div>
+        <WhatsappApprovalPanel
+          challenge={verificationChallenge}
+          onApproved={completeApprovedReview}
+          onReset={() => {
+            setVerificationChallenge(null);
+            setFormError('');
+          }}
+        />
       )}
 
       <div aria-live="polite">
@@ -326,16 +309,12 @@ export function ReviewForm({ providerId, isSubmitting = false, onSubmit }: Revie
         {submitted && <p className="mb-3 text-sm font-medium text-green-700">Thank you—your review is now part of the community rating.</p>}
       </div>
 
-      <Button className="h-12 w-full rounded-xl text-base" disabled={isSubmitting || isRequestingCode} type="submit">
-        {(isSubmitting || isRequestingCode) && <Loader2 aria-hidden="true" className="animate-spin" />}
-        {isSubmitting
-          ? 'Verifying & posting…'
-          : isRequestingCode
-            ? 'Sending code…'
-            : verificationChallenge
-              ? 'Verify & post review'
-              : 'Submit review'}
-      </Button>
+      {!verificationChallenge && (
+        <Button className="h-12 w-full rounded-xl text-base" disabled={isSubmitting || isStartingVerification} type="submit">
+          {(isSubmitting || isStartingVerification) && <Loader2 aria-hidden="true" className="animate-spin" />}
+          {isStartingVerification ? 'Preparing WhatsApp…' : 'Continue with WhatsApp'}
+        </Button>
+      )}
     </form>
   );
 }

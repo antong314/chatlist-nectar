@@ -19,7 +19,10 @@ import {
   type ProviderDeletionReason,
   type RequestProviderDeletionInput,
 } from '@/features/provider-deletion';
-import type { WhatsappVerificationChallenge } from '@/features/verification';
+import {
+  WhatsappApprovalPanel,
+  type WhatsappVerificationChallenge,
+} from '@/features/verification';
 
 export type ProviderDeletionRequest = RequestProviderDeletionInput;
 
@@ -59,7 +62,6 @@ export function ProviderDeletionDialog({
   const [nameConfirmation, setNameConfirmation] = useState('');
   const [reason, setReason] = useState<ProviderDeletionReason | ''>('');
   const [requesterWhatsapp, setRequesterWhatsapp] = useState('');
-  const [verificationCode, setVerificationCode] = useState('');
   const [verificationChallenge, setVerificationChallenge] = useState<WhatsappVerificationChallenge | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -68,14 +70,12 @@ export function ProviderDeletionDialog({
   const canSubmit = nameMatches
     && Boolean(reason)
     && Boolean(requesterWhatsapp.trim())
-    && (!verificationChallenge || Boolean(verificationCode.trim()))
     && !isSubmitting;
 
   const resetForm = () => {
     setNameConfirmation('');
     setReason('');
     setRequesterWhatsapp('');
-    setVerificationCode('');
     setVerificationChallenge(null);
     setSubmitError(null);
   };
@@ -95,28 +95,27 @@ export function ProviderDeletionDialog({
     setSubmitError(null);
 
     try {
-      if (!verificationChallenge) {
-        const challenge = await startProviderDeletionVerification({
-          providerId,
-          providerNameConfirmation: normalizeConfirmation(nameConfirmation),
-          reason,
-          requesterWhatsapp: requesterWhatsapp.trim(),
-        });
-        setVerificationChallenge(challenge);
-        setVerificationCode('');
-      } else {
-        await onDelete({
-          providerId,
-          actionId: verificationChallenge.actionId,
-          actionToken: verificationChallenge.actionToken,
-          code: verificationCode.trim(),
-        });
-      }
+      if (verificationChallenge) return;
+      const challenge = await startProviderDeletionVerification({
+        providerId,
+        providerNameConfirmation: normalizeConfirmation(nameConfirmation),
+        reason,
+        requesterWhatsapp: requesterWhatsapp.trim(),
+      });
+      setVerificationChallenge(challenge);
     } catch (error) {
       setSubmitError(getErrorMessage(error));
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const completeApprovedDeletion = async () => {
+    await onDelete({
+      providerId,
+      actionId: verificationChallenge!.actionId,
+      actionToken: verificationChallenge!.actionToken,
+    });
   };
 
   return (
@@ -139,7 +138,7 @@ export function ProviderDeletionDialog({
           <DialogTitle>Remove this provider?</DialogTitle>
           <DialogDescription className="leading-6">
             This will hide the listing from the public directory. It remains recoverable for a short time after removal.
-            No login is required. We’ll send a one-time code to your WhatsApp number before removing it.
+            No login is required. You’ll send Machu a ready-made WhatsApp message before we remove it.
           </DialogDescription>
         </DialogHeader>
 
@@ -199,40 +198,19 @@ export function ProviderDeletionDialog({
               value={requesterWhatsapp}
             />
             <p className="text-xs leading-5 text-muted-foreground" id="delete-requester-whatsapp-hint">
-              Kept private as an audit contact. The code confirms that you control this WhatsApp number.
+              Kept private as an audit contact. Your message to Machu confirms that you control this WhatsApp number.
             </p>
           </div>
 
           {verificationChallenge && (
-            <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-              <Label htmlFor="delete-verification-code">WhatsApp confirmation code</Label>
-              <Input
-                aria-describedby="delete-verification-code-hint"
-                autoComplete="one-time-code"
-                id="delete-verification-code"
-                inputMode="numeric"
-                maxLength={10}
-                onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, ''))}
-                placeholder="Enter the code"
-                required
-                value={verificationCode}
-              />
-              <p className="text-xs leading-5 text-muted-foreground" id="delete-verification-code-hint">
-                Code sent to {verificationChallenge.phone}. It expires in about 10 minutes.
-              </p>
-              <Button
-                className="h-auto p-0 text-xs"
-                onClick={() => {
-                  setVerificationChallenge(null);
-                  setVerificationCode('');
-                  setSubmitError(null);
-                }}
-                type="button"
-                variant="link"
-              >
-                Change number or request a new code
-              </Button>
-            </div>
+            <WhatsappApprovalPanel
+              challenge={verificationChallenge}
+              onApproved={completeApprovedDeletion}
+              onReset={() => {
+                setVerificationChallenge(null);
+                setSubmitError(null);
+              }}
+            />
           )}
 
           {submitError && (
@@ -247,11 +225,11 @@ export function ProviderDeletionDialog({
                 Cancel
               </Button>
             </DialogClose>
-            <Button disabled={!canSubmit} type="submit" variant="destructive">
-              {isSubmitting
-                ? (verificationChallenge ? 'Verifying…' : 'Sending code…')
-                : (verificationChallenge ? 'Verify & remove' : 'Send WhatsApp code')}
-            </Button>
+            {!verificationChallenge && (
+              <Button disabled={!canSubmit} type="submit" variant="destructive">
+                {isSubmitting ? 'Preparing WhatsApp…' : 'Continue with WhatsApp'}
+              </Button>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>

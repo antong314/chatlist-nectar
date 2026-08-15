@@ -34,6 +34,7 @@ describe('provider deletion verification API', () => {
       actionToken,
       expiresAt: '2026-08-04T14:10:00.000Z',
       phone: '+50688881212',
+      whatsappUrl: 'https://wa.me/15204473525?text=VERIFY',
     }));
 
     await expect(startProviderDeletionVerification({
@@ -57,7 +58,7 @@ describe('provider deletion verification API', () => {
     }));
   });
 
-  test('checks the one-time code and returns short-lived undo data', async () => {
+  test('completes an inbound-approved deletion and returns short-lived undo data', async () => {
     fetchMock.mockReturnValue(jsonResponse({
       status: 'approved',
       actionType: 'provider_delete',
@@ -70,7 +71,6 @@ describe('provider deletion verification API', () => {
       providerId,
       actionId,
       actionToken,
-      code: '123456',
     })).resolves.toEqual({
       eventId,
       undoToken: 'random_undo_token_12345678901234567890',
@@ -79,14 +79,14 @@ describe('provider deletion verification API', () => {
 
     expect(fetchMock).toHaveBeenCalledWith('/bot/verify/check', expect.objectContaining({
       method: 'POST',
-      body: JSON.stringify({ actionId, actionToken, code: '123456' }),
+      body: JSON.stringify({ actionId, actionToken }),
     }));
   });
 
   test('surfaces safe verification errors', async () => {
-    fetchMock.mockReturnValue(jsonResponse({ error: 'That code is incorrect or expired. Please try again.' }, 400));
-    await expect(requestProviderDeletion({ providerId, actionId, actionToken, code: '000000' }))
-      .rejects.toThrow('incorrect or expired');
+    fetchMock.mockReturnValue(jsonResponse({ error: 'Open WhatsApp and send the prefilled message to Machu first.' }, 409));
+    await expect(requestProviderDeletion({ providerId, actionId, actionToken }))
+      .rejects.toThrow('send the prefilled message');
   });
 
   test('sends only the event and single-use token for undo', async () => {

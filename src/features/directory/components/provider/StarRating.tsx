@@ -7,6 +7,7 @@ interface StarRatingProps {
   onChange?: (rating: number) => void;
   label?: string;
   size?: 'sm' | 'md' | 'lg';
+  disabled?: boolean;
 }
 
 const sizeClasses = {
@@ -20,6 +21,7 @@ export function StarRating({
   onChange,
   label = 'Rating',
   size = 'md',
+  disabled = false,
 }: StarRatingProps) {
   const roundedValue = Math.round(value);
 
@@ -47,14 +49,14 @@ export function StarRating({
   }
 
   return (
-    <fieldset>
+    <fieldset disabled={disabled}>
       <legend className="mb-2 text-sm font-semibold text-gray-900">{label}</legend>
       <div aria-label={label} className="flex gap-1" role="radiogroup">
         {[1, 2, 3, 4, 5].map((star) => (
           <button
             aria-checked={value === star}
             aria-label={`${star} ${star === 1 ? 'star' : 'stars'}`}
-            className="rounded-md p-1 text-amber-400 transition hover:scale-105 hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+            className="rounded-md p-1 text-amber-400 transition hover:scale-105 hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100 disabled:hover:bg-transparent"
             key={star}
             onClick={() => onChange(star)}
             role="radio"

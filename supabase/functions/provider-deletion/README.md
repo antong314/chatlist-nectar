@@ -1,8 +1,9 @@
 # Provider deletion Undo Edge Function
 
-New provider removals are verified through Twilio Verify and completed by the
-DigitalOcean service. This legacy Edge Function now accepts only the short-lived
-Undo token returned by a successful verified deletion.
+New provider removals are approved by sending a signed message to Machu from
+the submitted WhatsApp number, then completed by the DigitalOcean service. This
+legacy Edge Function now accepts only the short-lived Undo token returned by a
+successful verified deletion.
 
 ```sh
 supabase functions deploy provider-deletion --no-verify-jwt

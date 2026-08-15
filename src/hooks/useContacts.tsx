@@ -21,7 +21,6 @@ const CONTACT_LOGO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 interface ProviderWriteVerification {
   challenge: WhatsappVerificationChallenge;
-  code: string;
 }
 
 interface DatabaseContactRow {
@@ -174,7 +173,7 @@ export const useContacts = () => {
     contactData: (Omit<Contact, 'id'> | Contact) & { imageFile?: File | null },
     verification: ProviderWriteVerification,
   ) => {
-    await checkWhatsappVerification(verification.challenge, verification.code);
+    await checkWhatsappVerification(verification.challenge);
     const uploadedImagePath = await uploadVerifiedLogo(verification.challenge, contactData.imageFile);
     const result = await completeVerifiedProviderWrite(verification.challenge, uploadedImagePath);
     return mapDatabaseContact(result.provider as unknown as DatabaseContactRow);
@@ -219,7 +218,7 @@ export const useContacts = () => {
     }
   }, [completeProviderWrite]);
 
-  // Complete a recoverable deletion only after WhatsApp OTP verification.
+  // Complete a recoverable deletion only after the inbound WhatsApp approval.
   const deleteContact = useCallback(async (
     request: Parameters<typeof requestProviderDeletion>[0],
   ) => {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -9,6 +9,7 @@ import type { Contact } from '@/types/contact';
 import Index from '@/pages/Index';
 import { useContacts } from '@/hooks/useContacts';
 import { startProviderDeletionVerification } from '@/features/provider-deletion';
+import { getWhatsappVerificationStatus } from '@/features/verification/verificationApi';
 
 jest.mock('@/hooks/useContacts', () => ({
   useContacts: jest.fn(),
@@ -17,6 +18,11 @@ jest.mock('@/hooks/useContacts', () => ({
 jest.mock('@/features/provider-deletion', () => ({
   ...jest.requireActual('@/features/provider-deletion'),
   startProviderDeletionVerification: jest.fn(),
+}));
+
+jest.mock('@/features/verification/verificationApi', () => ({
+  ...jest.requireActual('@/features/verification/verificationApi'),
+  getWhatsappVerificationStatus: jest.fn(),
 }));
 
 jest.mock('@/lib/supabase', () => ({
@@ -51,6 +57,7 @@ const verificationChallenge = {
   actionToken: 'verification_action_token_12345678901234567890',
   expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
   phone: '+50687771234',
+  whatsappUrl: 'https://wa.me/15204473525?text=VERIFY',
 };
 
 const renderContactForm = (onDelete: (request: ProviderDeletionRequest) => Promise<void>) => render(
@@ -77,15 +84,19 @@ const fillDeletionForm = async (
   await user.type(screen.getByLabelText(/your whatsapp number/i), '+506 8777 1234');
 };
 
-const requestDeletionCode = async (user: ReturnType<typeof userEvent.setup>) => {
-  await user.click(screen.getByRole('button', { name: /send whatsapp code/i }));
-  return screen.findByLabelText(/whatsapp confirmation code/i);
+const startDeletionApproval = async (user: ReturnType<typeof userEvent.setup>) => {
+  await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
+  return screen.findByRole('link', { name: /open machu in whatsapp/i });
 };
 
 describe('provider deletion request flow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (startProviderDeletionVerification as jest.Mock).mockResolvedValue(verificationChallenge);
+    (getWhatsappVerificationStatus as jest.Mock).mockResolvedValue({
+      status: 'waiting',
+      expiresAt: verificationChallenge.expiresAt,
+    });
     (toast.success as jest.Mock).mockReturnValue('removal-toast-id');
     window.history.replaceState({}, '', '/');
   });
@@ -103,7 +114,7 @@ describe('provider deletion request flow', () => {
     expect(confirmSpy).not.toHaveBeenCalled();
     expect(screen.getByText(/hide the listing from the public directory/i)).toBeInTheDocument();
     expect(screen.getByText(/recoverable for a short time/i)).toBeInTheDocument();
-    expect(screen.getByText(/one-time code to your WhatsApp number/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/send Machu a ready-made WhatsApp message/i)).not.toHaveLength(0);
     expect(screen.getByText(/kept private as an audit contact/i)).toBeInTheDocument();
 
     confirmSpy.mockRestore();
@@ -115,7 +126,7 @@ describe('provider deletion request flow', () => {
     await openDeletionDialog(user);
     await fillDeletionForm(user, 'Wrong Provider');
 
-    const removeButton = screen.getByRole('button', { name: /send whatsapp code/i });
+    const removeButton = screen.getByRole('button', { name: /continue with whatsapp/i });
     expect(removeButton).toBeDisabled();
     expect(screen.getByText(/provider name does not match/i)).toBeInTheDocument();
 
@@ -125,14 +136,14 @@ describe('provider deletion request flow', () => {
     expect(screen.getByText(/capitalization and extra spaces do not matter/i)).toBeInTheDocument();
   });
 
-  test('sends a code before submitting a verified deletion payload', async () => {
+  test('opens Machu before submitting an approved deletion payload', async () => {
     const user = userEvent.setup();
     const onDelete = jest.fn().mockResolvedValue(undefined);
     renderContactForm(onDelete);
     await openDeletionDialog(user);
     await fillDeletionForm(user);
 
-    const codeInput = await requestDeletionCode(user);
+    const whatsappLink = await startDeletionApproval(user);
 
     expect(startProviderDeletionVerification).toHaveBeenCalledWith({
       providerId: provider.id,
@@ -141,19 +152,21 @@ describe('provider deletion request flow', () => {
       requesterWhatsapp: '+506 8777 1234',
     });
     expect(onDelete).not.toHaveBeenCalled();
+    expect(whatsappLink).toHaveAttribute('href', verificationChallenge.whatsappUrl);
 
-    await user.type(codeInput, '123456');
-    await user.click(screen.getByRole('button', { name: /verify & remove/i }));
+    (getWhatsappVerificationStatus as jest.Mock).mockResolvedValue({
+      status: 'verified',
+      expiresAt: verificationChallenge.expiresAt,
+    });
+    fireEvent.focus(window);
 
     await waitFor(() => {
       expect(onDelete).toHaveBeenCalledWith({
         providerId: provider.id,
         actionId: verificationChallenge.actionId,
         actionToken: verificationChallenge.actionToken,
-        code: '123456',
       });
     });
-    expect(codeInput).toHaveAttribute('inputmode', 'numeric');
   });
 
   test('prevents duplicate submissions and keeps backend errors in the dialog', async () => {
@@ -166,17 +179,18 @@ describe('provider deletion request flow', () => {
     await openDeletionDialog(user);
     await fillDeletionForm(user);
 
-    await requestDeletionCode(user);
-    await user.type(screen.getByLabelText(/whatsapp confirmation code/i), '000000');
-    const removeButton = screen.getByRole('button', { name: /verify & remove/i });
-    await user.click(removeButton);
-    expect(removeButton).toBeDisabled();
-    await user.click(removeButton);
-    expect(onDelete).toHaveBeenCalledTimes(1);
+    await startDeletionApproval(user);
+    (getWhatsappVerificationStatus as jest.Mock).mockResolvedValue({
+      status: 'verified',
+      expiresAt: verificationChallenge.expiresAt,
+    });
+    fireEvent.focus(window);
+    fireEvent.focus(window);
+    await waitFor(() => expect(onDelete).toHaveBeenCalledTimes(1));
 
-    rejectRequest(new Error('That code is incorrect or expired.'));
+    rejectRequest(new Error('The approved deletion could not be completed.'));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/incorrect or expired/i);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not be completed/i);
     expect(screen.getByRole('dialog', { name: /remove this provider/i })).toBeInTheDocument();
   });
 
@@ -275,9 +289,12 @@ describe('provider deletion request flow', () => {
     await user.click(screen.getByRole('button', { name: `Edit ${provider.name}` }));
     await openDeletionDialog(user);
     await fillDeletionForm(user);
-    await requestDeletionCode(user);
-    await user.type(screen.getByLabelText(/whatsapp confirmation code/i), '123456');
-    await user.click(screen.getByRole('button', { name: /verify & remove/i }));
+    await startDeletionApproval(user);
+    (getWhatsappVerificationStatus as jest.Mock).mockResolvedValue({
+      status: 'verified',
+      expiresAt: verificationChallenge.expiresAt,
+    });
+    fireEvent.focus(window);
 
     await waitFor(() => {
       expect(screen.queryByRole('dialog', { name: 'Edit provider' })).not.toBeInTheDocument();

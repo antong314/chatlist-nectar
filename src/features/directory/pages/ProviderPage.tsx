@@ -139,7 +139,6 @@ export function ProviderPage() {
   const handleReviewSubmit = async (
     values: ReviewFormValues,
     challenge: WhatsappVerificationChallenge,
-    code: string,
   ) => {
     setIsHandlingReviewSubmit(true);
     try {
@@ -153,7 +152,7 @@ export function ProviderPage() {
         reviewerWhatsapp: values.whatsappNumber,
         imagePaths: [],
       });
-      await checkWhatsappVerification(challenge, code);
+      await checkWhatsappVerification(challenge);
       if (values.images.length > 0) {
         const imagePaths = await uploadReviewImages(normalizedReview.providerId, values.images);
         await completeVerifiedReview(challenge, imagePaths);

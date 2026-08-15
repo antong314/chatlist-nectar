@@ -11,6 +11,7 @@ import { Contact } from '@/features/directory/types/contact';
 import { supabase } from '@/lib/supabase';
 import * as ReviewsModule from '@/features/reviews';
 import * as VerificationModule from '@/features/verification';
+import { getWhatsappVerificationStatus } from '@/features/verification/verificationApi';
 
 jest.mock('@/lib/supabase', () => ({
   supabase: { from: jest.fn() },
@@ -23,9 +24,15 @@ jest.mock('@/features/reviews', () => ({
 }));
 
 jest.mock('@/features/verification', () => ({
+  ...jest.requireActual('@/features/verification'),
   startWhatsappVerification: jest.fn(),
   checkWhatsappVerification: jest.fn(),
   completeVerifiedReview: jest.fn(),
+}));
+
+jest.mock('@/features/verification/verificationApi', () => ({
+  ...jest.requireActual('@/features/verification/verificationApi'),
+  getWhatsappVerificationStatus: jest.fn(),
 }));
 
 const providerId = '11111111-1111-4111-8111-111111111111';
@@ -34,6 +41,7 @@ const verificationChallenge = {
   actionToken: 'verification_action_token_12345678901234567890',
   expiresAt: '2026-08-04T14:10:00.000Z',
   phone: '+50687771234',
+  whatsappUrl: 'https://wa.me/15204473525?text=VERIFY',
 };
 
 const contact: Contact = {
@@ -61,6 +69,10 @@ describe('Provider experience', () => {
     jest.clearAllMocks();
     (URL.createObjectURL as jest.Mock).mockImplementation((file: File) => `blob:${file.name}`);
     (VerificationModule.startWhatsappVerification as jest.Mock).mockResolvedValue(verificationChallenge);
+    (getWhatsappVerificationStatus as jest.Mock).mockResolvedValue({
+      status: 'verified',
+      expiresAt: verificationChallenge.expiresAt,
+    });
     (VerificationModule.checkWhatsappVerification as jest.Mock).mockResolvedValue({
       status: 'approved',
       actionType: 'provider_review',
@@ -138,19 +150,14 @@ describe('Provider experience', () => {
 
     render(<ReviewForm onSubmit={onSubmit} providerId={providerId} />);
 
-    expect(screen.getByText(/one-time code here to verify your review/i)).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /submit review/i }));
+    expect(screen.getByText(/ready-made WhatsApp message to verify your review/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
     expect(screen.getByRole('alert')).toHaveTextContent(/choose a star rating/i);
 
     await user.click(screen.getByRole('radio', { name: '5 stars' }));
     await user.type(screen.getByLabelText(/your experience/i), 'Showed up quickly and did great work.');
     await user.type(screen.getByLabelText(/whatsapp number/i), '+506 8777 1234');
-    await user.click(screen.getByRole('button', { name: /submit review/i }));
-
-    expect(onSubmit).not.toHaveBeenCalled();
-    expect(await screen.findByText(/we sent a verification code/i)).toBeInTheDocument();
-    await user.type(await screen.findByLabelText(/whatsapp confirmation code/i), '123456');
-    await user.click(screen.getByRole('button', { name: /verify & post review/i }));
+    await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith({
@@ -159,7 +166,7 @@ describe('Provider experience', () => {
         reviewerName: undefined,
         whatsappNumber: '+50687771234',
         images: [],
-      }, verificationChallenge, '123456');
+      }, verificationChallenge);
     });
     expect(screen.getByText(/review is now part of the community rating/i)).toBeInTheDocument();
   });
@@ -182,14 +189,12 @@ describe('Provider experience', () => {
 
     await user.click(screen.getByRole('radio', { name: '5 stars' }));
     await user.type(screen.getByLabelText(/whatsapp number/i), '+506 8777 1234');
-    await user.click(screen.getByRole('button', { name: /submit review/i }));
-    await user.type(await screen.findByLabelText(/whatsapp confirmation code/i), '123456');
-    await user.click(screen.getByRole('button', { name: /verify & post review/i }));
+    await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
         images: [secondImage],
-      }), verificationChallenge, '123456');
+      }), verificationChallenge);
     });
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:after.webp');
   });
@@ -237,7 +242,7 @@ describe('Provider experience', () => {
     );
 
     await user.type(screen.getByLabelText(/whatsapp number for verification/i), '+506 8777 1234');
-    await user.click(screen.getByRole('button', { name: /send whatsapp code/i }));
+    await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
 
     expect(VerificationModule.startWhatsappVerification).toHaveBeenCalledWith({
       actionType: 'provider_update',
@@ -248,12 +253,6 @@ describe('Provider experience', () => {
         imageChange: 'keep',
       }),
     });
-    expect(onSave).not.toHaveBeenCalled();
-    expect(screen.getByLabelText(/provider or business name/i)).toBeDisabled();
-
-    await user.type(screen.getByLabelText(/whatsapp confirmation code/i), '123456');
-    await user.click(screen.getByRole('button', { name: /verify & save changes/i }));
-
     await waitFor(() => {
       expect(onSave).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -262,7 +261,7 @@ describe('Provider experience', () => {
           imageFile: null,
           removeLogo: false,
         }),
-        { challenge: verificationChallenge, code: '123456' },
+        { challenge: verificationChallenge },
       );
     });
   });
@@ -283,7 +282,7 @@ describe('Provider experience', () => {
     await user.type(screen.getByLabelText(/what do they help with/i), 'Friendly local repairs.');
     await user.type(screen.getByPlaceholderText(/local number/i), '88881212');
     await user.type(screen.getByLabelText(/whatsapp number for verification/i), '+506 8777 1234');
-    await user.click(screen.getByRole('button', { name: /send whatsapp code/i }));
+    await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
 
     expect(VerificationModule.startWhatsappVerification).toHaveBeenCalledWith({
       actionType: 'provider_create',
@@ -294,14 +293,9 @@ describe('Provider experience', () => {
         imageChange: 'none',
       }),
     });
-    expect(onSave).not.toHaveBeenCalled();
-
-    await user.type(screen.getByLabelText(/whatsapp confirmation code/i), '654321');
-    await user.click(screen.getByRole('button', { name: /verify & add provider/i }));
-
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'New Neighbor Service', imageFile: null }),
-      { challenge: verificationChallenge, code: '654321' },
+      { challenge: verificationChallenge },
     ));
   });
 
@@ -390,16 +384,11 @@ describe('Provider experience', () => {
     await user.upload(screen.getByLabelText(/photos/i), reviewImage);
     await user.click(screen.getByRole('radio', { name: '5 stars' }));
     await user.type(screen.getByLabelText(/whatsapp number/i), '+506 8777 1234');
-    await user.click(screen.getByRole('button', { name: /submit review/i }));
-    await user.type(await screen.findByLabelText(/whatsapp confirmation code/i), '123456');
-    await user.click(screen.getByRole('button', { name: /verify & post review/i }));
+    await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
 
     await waitFor(() => {
       expect(ReviewsModule.uploadReviewImages).toHaveBeenCalledWith(providerId, [reviewImage]);
-      expect(VerificationModule.checkWhatsappVerification).toHaveBeenCalledWith(
-        verificationChallenge,
-        '123456',
-      );
+      expect(VerificationModule.checkWhatsappVerification).toHaveBeenCalledWith(verificationChallenge);
       expect(VerificationModule.completeVerifiedReview).toHaveBeenCalledWith(
         verificationChallenge,
         [reviewImagePath],
@@ -454,7 +443,7 @@ describe('Provider experience', () => {
     await user.click(screen.getByRole('radio', { name: '5 stars' }));
     const whatsappInput = screen.getByLabelText(/whatsapp number/i);
     await user.type(whatsappInput, 'not-a-number');
-    await user.click(screen.getByRole('button', { name: /submit review/i }));
+    await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/WhatsApp number with country code/i);
     expect(ReviewsModule.uploadReviewImages).not.toHaveBeenCalled();
@@ -462,9 +451,7 @@ describe('Provider experience', () => {
 
     await user.clear(whatsappInput);
     await user.type(whatsappInput, '+506 8777 1234');
-    await user.click(screen.getByRole('button', { name: /submit review/i }));
-    await user.type(await screen.findByLabelText(/whatsapp confirmation code/i), '123456');
-    await user.click(screen.getByRole('button', { name: /verify & post review/i }));
+    await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/photos could not be uploaded/i);
     expect(VerificationModule.completeVerifiedReview).not.toHaveBeenCalled();

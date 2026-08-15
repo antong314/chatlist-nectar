@@ -19,7 +19,6 @@ export interface RequestProviderDeletionInput {
   providerId: string;
   actionId: string;
   actionToken: string;
-  code: string;
 }
 
 export interface RequestProviderDeletionResult {
