@@ -216,9 +216,13 @@ export class CommunityVerificationService {
     await this.assertRateLimit(phone, requestIpHash);
 
     const clientSecret = randomToken();
-    const expiresAt = new Date(Date.now() + ACTION_TTL_MINUTES * 60 * 1000).toISOString();
+    const createdAt = new Date();
+    const expiresAt = new Date(createdAt.getTime() + ACTION_TTL_MINUTES * 60 * 1000).toISOString();
     const usesTrustedSession = Boolean(verifiedSession?.verified_whatsapp);
-    const verifiedAt = usesTrustedSession ? new Date().toISOString() : null;
+    // Trusted actions are verified at creation. Keep both timestamps identical
+    // so the database's verified_at >= created_at invariant cannot be broken by
+    // clock skew between the application host and Postgres.
+    const verifiedAt = usesTrustedSession ? createdAt.toISOString() : null;
     const { data: action, error: insertError } = await this.supabase
       .from('community_verification_actions')
       .insert({
@@ -231,6 +235,7 @@ export class CommunityVerificationService {
         expires_at: expiresAt,
         status: usesTrustedSession ? 'verified' : 'pending',
         verified_at: verifiedAt,
+        ...(usesTrustedSession ? { created_at: verifiedAt } : {}),
         trusted_session_id: usesTrustedSession ? verifiedSession.id : null,
       })
       .select('id, expires_at')

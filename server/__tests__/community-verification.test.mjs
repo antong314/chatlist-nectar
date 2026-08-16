@@ -120,6 +120,8 @@ test('starts an already-verified action from the trusted device phone', async ()
   assert.equal(insertedAction.status, 'verified');
   assert.equal(insertedAction.trusted_session_id, sessionId);
   assert.match(insertedAction.verified_at, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(insertedAction.created_at, insertedAction.verified_at);
+  assert.ok(new Date(insertedAction.expires_at) > new Date(insertedAction.created_at));
 });
 
 test('stores only a hash for a remembered device and returns only masked identity publicly', async () => {
