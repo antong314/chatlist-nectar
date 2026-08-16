@@ -16,7 +16,7 @@ export function VerifiedWhatsappNotice({ session, onForget }: VerifiedWhatsappNo
         <div>
           <p className="text-sm font-semibold">WhatsApp verified on this device</p>
           <p className="mt-1 text-xs leading-5 text-emerald-900/80">
-            Your verified WhatsApp number ending in {session.phoneEnding} will be privately recorded with this action for moderation and accountability. It will not be shown publicly.
+            Your verified WhatsApp number ending in {session.phoneEnding} will be privately recorded with this action for moderation and accountability. You can save without messaging Machu again. Your number will not be shown publicly.
           </p>
         </div>
       </div>

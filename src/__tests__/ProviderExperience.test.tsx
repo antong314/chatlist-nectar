@@ -213,6 +213,7 @@ describe('Provider experience', () => {
 
     expect(await screen.findByText(/number ending in 1234/i)).toBeInTheDocument();
     expect(screen.getByText(/privately recorded with this action/i)).toBeInTheDocument();
+    expect(screen.getByText(/save without messaging Machu again/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/whatsapp number/i)).not.toBeInTheDocument();
     await user.click(screen.getByRole('radio', { name: '5 stars' }));
     await user.click(screen.getByRole('button', { name: /^submit review$/i }));
