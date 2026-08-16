@@ -65,6 +65,14 @@ const verificationChallenge = {
   whatsappUrl: 'https://wa.me/15204473525?text=VERIFY',
 };
 
+const popupReplace = jest.fn();
+const popupWindow = {
+  closed: false,
+  close: jest.fn(),
+  location: { replace: popupReplace },
+  opener: window,
+} as unknown as Window;
+
 const renderContactForm = (onDelete: (request: ProviderDeletionRequest) => Promise<void>) => render(
   <ContactForm
     categories={['Service']}
@@ -96,6 +104,11 @@ const startDeletionApproval = async (user: ReturnType<typeof userEvent.setup>) =
 describe('provider deletion request flow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    Object.defineProperty(window, 'open', {
+      configurable: true,
+      value: jest.fn(() => popupWindow),
+      writable: true,
+    });
     (startProviderDeletionVerification as jest.Mock).mockResolvedValue(verificationChallenge);
     (getVerifiedWhatsappSession as jest.Mock).mockResolvedValue({ authenticated: false });
     (getWhatsappVerificationStatus as jest.Mock).mockResolvedValue({
@@ -158,6 +171,8 @@ describe('provider deletion request flow', () => {
     });
     expect(onDelete).not.toHaveBeenCalled();
     expect(whatsappLink).toHaveAttribute('href', verificationChallenge.whatsappUrl);
+    expect(window.open).toHaveBeenCalledWith('about:blank', '_blank');
+    expect(popupReplace).toHaveBeenCalledWith(verificationChallenge.whatsappUrl);
 
     (getWhatsappVerificationStatus as jest.Mock).mockResolvedValue({
       status: 'verified',
@@ -208,6 +223,7 @@ describe('provider deletion request flow', () => {
       actionId: trustedChallenge.actionId,
       actionToken: trustedChallenge.actionToken,
     }));
+    expect(window.open).not.toHaveBeenCalled();
     expect(screen.queryByRole('link', { name: /open machu in whatsapp/i })).not.toBeInTheDocument();
   });
 

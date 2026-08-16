@@ -5,6 +5,7 @@ import { getWhatsappVerificationStatus } from './verificationApi';
 import type { WhatsappVerificationChallenge } from './types';
 
 interface WhatsappApprovalPanelProps {
+  autoLaunchFailed?: boolean;
   challenge: WhatsappVerificationChallenge;
   onApproved: () => Promise<void>;
   onReset: () => void;
@@ -13,6 +14,7 @@ interface WhatsappApprovalPanelProps {
 const POLL_INTERVAL_MS = 1_500;
 
 export function WhatsappApprovalPanel({
+  autoLaunchFailed = false,
   challenge,
   onApproved,
   onReset,
@@ -101,7 +103,9 @@ export function WhatsappApprovalPanel({
         <div>
           <p className="font-semibold text-emerald-950">Approve with Machu in WhatsApp</p>
           <p className="mt-1 text-sm leading-6 text-emerald-900/80">
-            Open WhatsApp and send the message that is ready for you. Come back here afterward—we’ll finish automatically.
+            {autoLaunchFailed
+              ? 'WhatsApp did not open automatically. Use the button below, send the ready-made message, then come back here.'
+              : 'WhatsApp opened with a ready-made message. Send it, then come back here—we’ll finish automatically.'}
           </p>
         </div>
       </div>
@@ -109,7 +113,7 @@ export function WhatsappApprovalPanel({
       <Button asChild className="w-full bg-[#167c3a] hover:bg-green-800">
         <a href={challenge.whatsappUrl ?? undefined} onClick={() => window.setTimeout(() => void checkStatus(), 500)} rel="noreferrer" target="_blank">
           <MessageCircle aria-hidden="true" className="h-4 w-4" />
-          Open Machu in WhatsApp
+          {autoLaunchFailed ? 'Open Machu in WhatsApp' : 'Open Machu in WhatsApp again'}
           <ExternalLink aria-hidden="true" className="h-4 w-4" />
         </a>
       </Button>

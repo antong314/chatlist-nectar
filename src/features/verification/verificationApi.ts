@@ -6,6 +6,44 @@ import type {
   WhatsappVerificationStatus,
 } from './types';
 
+export interface PendingWhatsappLaunch {
+  cancel: () => void;
+  open: (url: string | null) => boolean;
+}
+
+export const prepareWhatsappLaunch = (): PendingWhatsappLaunch => {
+  let popup: Window | null = null;
+  let navigated = false;
+
+  try {
+    popup = window.open('about:blank', '_blank');
+    if (popup) popup.opener = null;
+  } catch {
+    popup = null;
+  }
+
+  return {
+    cancel: () => {
+      if (!navigated && popup && !popup.closed) popup.close();
+    },
+    open: (url) => {
+      if (!url || !popup || popup.closed) {
+        if (popup && !popup.closed) popup.close();
+        return false;
+      }
+
+      try {
+        popup.location.replace(url);
+        navigated = true;
+        return true;
+      } catch {
+        popup.close();
+        return false;
+      }
+    },
+  };
+};
+
 const postJson = async <T>(url: string, body: unknown): Promise<T> => {
   const response = await fetch(url, {
     method: 'POST',

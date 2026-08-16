@@ -12,6 +12,7 @@ import { AvatarFallback } from '@/components/ui/avatar-fallback';
 import { normalizeWebsiteUrl } from '@/lib/urls';
 import { getDirectoryCategoryLabel } from '@/features/directory/data/categories';
 import {
+  prepareWhatsappLaunch,
   startWhatsappVerification,
   useVerifiedWhatsappSession,
   VerifiedWhatsappNotice,
@@ -64,6 +65,7 @@ export function ContactForm({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [verificationChallenge, setVerificationChallenge] = useState<WhatsappVerificationChallenge | null>(null);
+  const [whatsappAutoLaunchFailed, setWhatsappAutoLaunchFailed] = useState(false);
   const [verificationError, setVerificationError] = useState('');
   const { session, isLoading: isLoadingSession, forget: forgetSession } = useVerifiedWhatsappSession();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -197,14 +199,15 @@ export function ContactForm({
     e.preventDefault();
     
     if (!validate()) return;
+    if (verificationChallenge) return;
     
     setIsSubmitting(true);
     setVerificationError('');
     
     const { baseContactData, finalContactData } = buildContactData();
+    const whatsappLaunch = session.authenticated ? null : prepareWhatsappLaunch();
     
     try {
-      if (verificationChallenge) return;
       const imageChange = logoFile
         ? 'replace'
         : contact?.id
@@ -224,11 +227,14 @@ export function ContactForm({
         },
       });
       if (challenge.requiresWhatsappApproval) {
+        setWhatsappAutoLaunchFailed(!whatsappLaunch?.open(challenge.whatsappUrl));
         setVerificationChallenge(challenge);
       } else {
+        whatsappLaunch?.cancel();
         await onSave(finalContactData, { challenge });
       }
     } catch (error) {
+      whatsappLaunch?.cancel();
       console.error('Error saving contact:', error);
       setVerificationError(error instanceof Error ? error.message : 'Failed to save provider.');
     } finally {
@@ -485,10 +491,12 @@ export function ContactForm({
 
             {verificationChallenge && (
               <WhatsappApprovalPanel
+                autoLaunchFailed={whatsappAutoLaunchFailed}
                 challenge={verificationChallenge}
                 onApproved={() => completeApprovedProviderWrite(verificationChallenge)}
                 onReset={() => {
                   setVerificationChallenge(null);
+                  setWhatsappAutoLaunchFailed(false);
                   setVerificationError('');
                 }}
               />

@@ -20,6 +20,7 @@ import {
   type RequestProviderDeletionInput,
 } from '@/features/provider-deletion';
 import {
+  prepareWhatsappLaunch,
   useVerifiedWhatsappSession,
   VerifiedWhatsappNotice,
   WhatsappApprovalPanel,
@@ -64,6 +65,7 @@ export function ProviderDeletionDialog({
   const [nameConfirmation, setNameConfirmation] = useState('');
   const [reason, setReason] = useState<ProviderDeletionReason | ''>('');
   const [verificationChallenge, setVerificationChallenge] = useState<WhatsappVerificationChallenge | null>(null);
+  const [whatsappAutoLaunchFailed, setWhatsappAutoLaunchFailed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const { session, isLoading: isLoadingSession, forget: forgetSession } = useVerifiedWhatsappSession();
@@ -78,6 +80,7 @@ export function ProviderDeletionDialog({
     setNameConfirmation('');
     setReason('');
     setVerificationChallenge(null);
+    setWhatsappAutoLaunchFailed(false);
     setSubmitError(null);
   };
 
@@ -91,23 +94,27 @@ export function ProviderDeletionDialog({
     event.preventDefault();
     event.stopPropagation();
     if (!canSubmit || !reason) return;
+    if (verificationChallenge) return;
 
     setIsSubmitting(true);
     setSubmitError(null);
+    const whatsappLaunch = session.authenticated ? null : prepareWhatsappLaunch();
 
     try {
-      if (verificationChallenge) return;
       const challenge = await startProviderDeletionVerification({
         providerId,
         providerNameConfirmation: normalizeConfirmation(nameConfirmation),
         reason,
       });
       if (challenge.requiresWhatsappApproval) {
+        setWhatsappAutoLaunchFailed(!whatsappLaunch?.open(challenge.whatsappUrl));
         setVerificationChallenge(challenge);
       } else {
+        whatsappLaunch?.cancel();
         await completeApprovedDeletion(challenge);
       }
     } catch (error) {
+      whatsappLaunch?.cancel();
       setSubmitError(getErrorMessage(error));
     } finally {
       setIsSubmitting(false);
@@ -214,10 +221,12 @@ export function ProviderDeletionDialog({
 
           {verificationChallenge && (
             <WhatsappApprovalPanel
+              autoLaunchFailed={whatsappAutoLaunchFailed}
               challenge={verificationChallenge}
               onApproved={() => completeApprovedDeletion(verificationChallenge)}
               onReset={() => {
                 setVerificationChallenge(null);
+                setWhatsappAutoLaunchFailed(false);
                 setSubmitError(null);
               }}
             />

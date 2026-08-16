@@ -11,6 +11,7 @@ import {
 } from '@/features/reviews/validation';
 import { StarRating } from './StarRating';
 import {
+  prepareWhatsappLaunch,
   startWhatsappVerification,
   useVerifiedWhatsappSession,
   VerifiedWhatsappNotice,
@@ -51,6 +52,7 @@ export function ReviewForm({ providerId, isSubmitting = false, onSubmit }: Revie
   const [submitted, setSubmitted] = useState(false);
   const [isStartingVerification, setIsStartingVerification] = useState(false);
   const [verificationChallenge, setVerificationChallenge] = useState<WhatsappVerificationChallenge | null>(null);
+  const [whatsappAutoLaunchFailed, setWhatsappAutoLaunchFailed] = useState(false);
   const { session, isLoading: isLoadingSession, forget: forgetSession } = useVerifiedWhatsappSession();
   const imageInputRef = useRef<HTMLInputElement>(null);
   const previewUrlsRef = useRef(new Set<string>());
@@ -119,8 +121,10 @@ export function ReviewForm({ providerId, isSubmitting = false, onSubmit }: Revie
       setFormError('Choose a star rating before submitting.');
       return;
     }
+    if (verificationChallenge) return;
 
     setFormError('');
+    const whatsappLaunch = session.authenticated ? null : prepareWhatsappLaunch();
 
     const values = {
         rating,
@@ -130,7 +134,6 @@ export function ReviewForm({ providerId, isSubmitting = false, onSubmit }: Revie
       };
 
     try {
-      if (verificationChallenge) return;
       setIsStartingVerification(true);
       const challenge = await startWhatsappVerification({
         actionType: 'provider_review',
@@ -143,11 +146,14 @@ export function ReviewForm({ providerId, isSubmitting = false, onSubmit }: Revie
         },
       });
       if (challenge.requiresWhatsappApproval) {
+        setWhatsappAutoLaunchFailed(!whatsappLaunch?.open(challenge.whatsappUrl));
         setVerificationChallenge(challenge);
       } else {
+        whatsappLaunch?.cancel();
         await completeApprovedReview(challenge);
       }
     } catch (error) {
+      whatsappLaunch?.cancel();
       setFormError(error instanceof Error ? error.message : 'Your review could not be submitted. Please try again.');
     } finally {
       setIsStartingVerification(false);
@@ -285,10 +291,12 @@ export function ReviewForm({ providerId, isSubmitting = false, onSubmit }: Revie
 
       {verificationChallenge && (
         <WhatsappApprovalPanel
+          autoLaunchFailed={whatsappAutoLaunchFailed}
           challenge={verificationChallenge}
           onApproved={() => completeApprovedReview(verificationChallenge)}
           onReset={() => {
             setVerificationChallenge(null);
+            setWhatsappAutoLaunchFailed(false);
             setFormError('');
           }}
         />

@@ -19,8 +19,10 @@ Node process serves the existing Vite build and the bot webhook at `POST /bot`.
   Machu expands the intent into English/Spanish professional terms, ranks name
   and description matches across the directory, and does not return unrelated
   providers merely because they share a broad category.
-- Submit a provider change, review, or deletion on the website: the site opens
-  WhatsApp with a signed approval message addressed to Machu. After the user
+- Submit a provider change, review, or deletion on the website: the first action
+  button creates the secure challenge and immediately opens WhatsApp with a
+  signed approval message addressed to Machu. The waiting view keeps an explicit
+  retry link only in case the automatic launch is blocked. After the user
   sends it, Machu records the authenticated webhook sender as the private actor,
   approves the pending action, and
   introduces its other capabilities in the reply.

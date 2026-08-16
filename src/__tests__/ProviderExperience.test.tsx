@@ -58,6 +58,15 @@ const contact: Contact = {
   website: 'www.example.com',
 };
 
+const popupReplace = jest.fn();
+const popupClose = jest.fn();
+const popupWindow = {
+  closed: false,
+  close: popupClose,
+  location: { replace: popupReplace },
+  opener: window,
+} as unknown as Window;
+
 describe('Provider experience', () => {
   beforeAll(() => {
     Object.defineProperty(URL, 'createObjectURL', {
@@ -72,6 +81,11 @@ describe('Provider experience', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    Object.defineProperty(window, 'open', {
+      configurable: true,
+      value: jest.fn(() => popupWindow),
+      writable: true,
+    });
     (URL.createObjectURL as jest.Mock).mockImplementation((file: File) => `blob:${file.name}`);
     (VerificationModule.startWhatsappVerification as jest.Mock).mockResolvedValue(verificationChallenge);
     (getVerifiedWhatsappSession as jest.Mock).mockResolvedValue({ authenticated: false });
@@ -165,6 +179,9 @@ describe('Provider experience', () => {
     await user.type(screen.getByLabelText(/your experience/i), 'Showed up quickly and did great work.');
     await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
 
+    expect(window.open).toHaveBeenCalledWith('about:blank', '_blank');
+    expect(popupReplace).toHaveBeenCalledWith(verificationChallenge.whatsappUrl);
+
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith({
         rating: 5,
@@ -207,6 +224,7 @@ describe('Provider experience', () => {
       expect.objectContaining({ rating: 5, images: [] }),
       trustedChallenge,
     ));
+    expect(window.open).not.toHaveBeenCalled();
     expect(screen.queryByRole('link', { name: /open machu in whatsapp/i })).not.toBeInTheDocument();
   });
 
@@ -282,6 +300,8 @@ describe('Provider experience', () => {
     expect(await screen.findByText(/sending number will be privately recorded/i)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
 
+    expect(window.open).toHaveBeenCalledWith('about:blank', '_blank');
+    expect(popupReplace).toHaveBeenCalledWith(verificationChallenge.whatsappUrl);
     expect(VerificationModule.startWhatsappVerification).toHaveBeenCalledWith({
       actionType: 'provider_update',
       payload: expect.objectContaining({
@@ -339,7 +359,28 @@ describe('Provider experience', () => {
       expect.objectContaining({ id: contact.id }),
       { challenge: trustedChallenge },
     ));
+    expect(window.open).not.toHaveBeenCalled();
     expect(screen.queryByRole('link', { name: /open machu in whatsapp/i })).not.toBeInTheDocument();
+  });
+
+  test('keeps a WhatsApp retry link when automatic opening is blocked', async () => {
+    const user = userEvent.setup();
+    (window.open as jest.Mock).mockReturnValue(null);
+    (getWhatsappVerificationStatus as jest.Mock).mockResolvedValue({
+      status: 'waiting',
+      expiresAt: verificationChallenge.expiresAt,
+    });
+
+    render(<ReviewForm onSubmit={jest.fn()} providerId={providerId} />);
+
+    await user.click(screen.getByRole('radio', { name: '5 stars' }));
+    await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
+
+    expect(await screen.findByText(/did not open automatically/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /^open machu in whatsapp$/i })).toHaveAttribute(
+      'href',
+      verificationChallenge.whatsappUrl,
+    );
   });
 
   test('requires verification before creating a new provider', async () => {
