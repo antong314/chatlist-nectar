@@ -97,7 +97,7 @@ const fillDeletionForm = async (
 };
 
 const startDeletionApproval = async (user: ReturnType<typeof userEvent.setup>) => {
-  await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
+  await user.click(screen.getByRole('button', { name: /remove provider with whatsapp/i }));
   return screen.findByRole('link', { name: /open machu in whatsapp/i });
 };
 
@@ -133,7 +133,7 @@ describe('provider deletion request flow', () => {
     expect(screen.getByText(/hide the listing from the public directory/i)).toBeInTheDocument();
     expect(screen.getByText(/recoverable for a short time/i)).toBeInTheDocument();
     expect(screen.getAllByText(/send Machu a ready-made WhatsApp message/i)).not.toHaveLength(0);
-    expect(screen.getByText(/sending number will be privately recorded with this removal/i)).toBeInTheDocument();
+    expect(screen.getByText(/number will be privately recorded with this removal/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/your whatsapp number/i)).not.toBeInTheDocument();
 
     confirmSpy.mockRestore();
@@ -145,7 +145,7 @@ describe('provider deletion request flow', () => {
     await openDeletionDialog(user);
     await fillDeletionForm(user, 'Wrong Provider');
 
-    const removeButton = screen.getByRole('button', { name: /continue with whatsapp/i });
+    const removeButton = screen.getByRole('button', { name: /remove provider with whatsapp/i });
     expect(removeButton).toBeDisabled();
     expect(screen.getByText(/provider name does not match/i)).toBeInTheDocument();
 

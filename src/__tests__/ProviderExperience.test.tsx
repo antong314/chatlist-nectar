@@ -172,12 +172,12 @@ describe('Provider experience', () => {
 
     expect(await screen.findByText(/remembered for 30 days/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/whatsapp number/i)).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
+    await user.click(screen.getByRole('button', { name: /post review with whatsapp/i }));
     expect(screen.getByRole('alert')).toHaveTextContent(/choose a star rating/i);
 
     await user.click(screen.getByRole('radio', { name: '5 stars' }));
     await user.type(screen.getByLabelText(/your experience/i), 'Showed up quickly and did great work.');
-    await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
+    await user.click(screen.getByRole('button', { name: /post review with whatsapp/i }));
 
     expect(window.open).toHaveBeenCalledWith('about:blank', '_blank');
     expect(popupReplace).toHaveBeenCalledWith(verificationChallenge.whatsappUrl);
@@ -245,7 +245,7 @@ describe('Provider experience', () => {
     expect(screen.queryByRole('img', { name: /before.jpg/i })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('radio', { name: '5 stars' }));
-    await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
+    await user.click(screen.getByRole('button', { name: /post review with whatsapp/i }));
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
@@ -297,8 +297,8 @@ describe('Provider experience', () => {
       />,
     );
 
-    expect(await screen.findByText(/sending number will be privately recorded/i)).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
+    expect(await screen.findByText(/to save these changes/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /save changes with whatsapp/i }));
 
     expect(window.open).toHaveBeenCalledWith('about:blank', '_blank');
     expect(popupReplace).toHaveBeenCalledWith(verificationChallenge.whatsappUrl);
@@ -374,7 +374,7 @@ describe('Provider experience', () => {
     render(<ReviewForm onSubmit={jest.fn()} providerId={providerId} />);
 
     await user.click(screen.getByRole('radio', { name: '5 stars' }));
-    await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
+    await user.click(screen.getByRole('button', { name: /post review with whatsapp/i }));
 
     expect(await screen.findByText(/did not open automatically/i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /^open machu in whatsapp$/i })).toHaveAttribute(
@@ -398,7 +398,7 @@ describe('Provider experience', () => {
     await user.type(screen.getByLabelText(/provider or business name/i), 'New Neighbor Service');
     await user.type(screen.getByLabelText(/what do they help with/i), 'Friendly local repairs.');
     await user.type(screen.getByPlaceholderText(/local number/i), '88881212');
-    await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
+    await user.click(screen.getByRole('button', { name: /add provider with whatsapp/i }));
 
     expect(VerificationModule.startWhatsappVerification).toHaveBeenCalledWith({
       actionType: 'provider_create',
@@ -498,7 +498,7 @@ describe('Provider experience', () => {
 
     await user.upload(screen.getByLabelText(/photos/i), reviewImage);
     await user.click(screen.getByRole('radio', { name: '5 stars' }));
-    await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
+    await user.click(screen.getByRole('button', { name: /post review with whatsapp/i }));
 
     await waitFor(() => {
       expect(ReviewsModule.uploadReviewImages).toHaveBeenCalledWith(providerId, [reviewImage]);
@@ -555,7 +555,7 @@ describe('Provider experience', () => {
     await screen.findByRole('heading', { name: 'Efra Mechanic', level: 1 });
     await user.upload(screen.getByLabelText(/photos/i), reviewImage);
     await user.click(screen.getByRole('radio', { name: '5 stars' }));
-    await user.click(screen.getByRole('button', { name: /continue with whatsapp/i }));
+    await user.click(screen.getByRole('button', { name: /post review with whatsapp/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/photos could not be uploaded/i);
     expect(VerificationModule.completeVerifiedReview).not.toHaveBeenCalled();

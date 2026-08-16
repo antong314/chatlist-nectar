@@ -481,10 +481,14 @@ export function ContactForm({
               />
             ) : (
               <div className="space-y-1.5">
-                <p className="text-sm font-semibold text-emerald-950">Verify with Machu in WhatsApp</p>
+                <p className="text-sm font-semibold text-emerald-950">
+                  {contact ? 'Save changes with WhatsApp' : 'Add provider with WhatsApp'}
+                </p>
                 <p className="flex items-center gap-1.5 text-xs leading-relaxed text-gray-600">
                   <LockKeyhole aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-                  Send Machu the ready-made message. The sending number will be privately recorded with this action, and this device will be remembered for 30 days.
+                  {contact
+                    ? 'To save these changes, send Machu the ready-made message. Your number will be privately recorded with this edit, and this device will be remembered for 30 days.'
+                    : 'To add this provider, send Machu the ready-made message. Your number will be privately recorded with this addition, and this device will be remembered for 30 days.'}
                 </p>
               </div>
             ))}
@@ -542,10 +546,10 @@ export function ContactForm({
                   {isLoadingSession
                     ? 'Checking verification…'
                     : isSubmitting
-                      ? (session.authenticated ? 'Saving…' : 'Preparing WhatsApp…')
+                      ? (session.authenticated ? 'Saving…' : 'Opening WhatsApp…')
                       : session.authenticated
                         ? (contact ? 'Save changes' : 'Add provider')
-                        : 'Continue with WhatsApp'}
+                        : (contact ? 'Save changes with WhatsApp' : 'Add provider with WhatsApp')}
                 </Button>
               )}
             </div>

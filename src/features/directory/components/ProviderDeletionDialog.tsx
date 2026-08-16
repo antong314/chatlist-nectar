@@ -212,9 +212,9 @@ export function ProviderDeletionDialog({
             />
           ) : (
             <div className="space-y-1.5 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-              <p className="text-sm font-semibold text-emerald-950">Verify with Machu in WhatsApp</p>
+              <p className="text-sm font-semibold text-emerald-950">Remove provider with WhatsApp</p>
               <p className="text-xs leading-5 text-muted-foreground">
-                Send Machu the ready-made message. The sending number will be privately recorded with this removal, and this device will be remembered for 30 days.
+                To remove this provider, send Machu the ready-made message. Your number will be privately recorded with this removal, and this device will be remembered for 30 days.
               </p>
             </div>
           ))}
@@ -249,10 +249,10 @@ export function ProviderDeletionDialog({
                 {isLoadingSession
                   ? 'Checking verification…'
                   : isSubmitting
-                    ? (session.authenticated ? 'Removing…' : 'Preparing WhatsApp…')
+                    ? (session.authenticated ? 'Removing…' : 'Opening WhatsApp…')
                     : session.authenticated
                       ? 'Remove provider'
-                      : 'Continue with WhatsApp'}
+                      : 'Remove provider with WhatsApp'}
               </Button>
             )}
           </DialogFooter>
