@@ -129,7 +129,10 @@ export class OpenAIProvider {
       instructions: [
         'Create a precise search plan for a small local service-provider directory.',
         'A specific request must remain specific: massage is not all wellness, chef is not all food, and plumber is not all home repair.',
-        'For a specific service, produce up to 14 useful English and Spanish search terms, common spellings, and closely equivalent professional terms that could appear in a provider name or description.',
+        'For a specific service, service_terms must contain only words that directly prove the provider offers the requested profession or service. Do not put symptoms, audience, location, or the broad category in service_terms.',
+        'Use qualifier_groups for important stated constraints that distinguish the best matches, such as treating children or speaking English. Each group contains equivalent terms; a strong match must satisfy every qualifier group.',
+        'Use preference_groups for useful context that improves ranking but should not disqualify an otherwise relevant provider, such as a symptom when the user primarily asks for a doctor.',
+        'Produce concise English and Spanish terms, common spellings, and closely equivalent professional terms that could actually appear in a provider name or description.',
         'Do not include unrelated services from the same broad category.',
         'Set broad_category true only when the user explicitly asks for an entire named directory category, such as all wellness contacts or every taxi.',
         'Choose category only as a ranking hint. Use an empty category when no category is reasonably implied.',
@@ -143,13 +146,55 @@ export class OpenAIProvider {
           broad_category: { type: 'boolean' },
           category: { type: 'string', enum: ['', ...DIRECTORY_CATEGORIES] },
           service_label: { type: 'string', maxLength: 80 },
-          search_terms: {
+          service_terms: {
             type: 'array',
             items: { type: 'string', minLength: 2, maxLength: 60 },
             maxItems: 14,
           },
+          qualifier_groups: {
+            type: 'array',
+            maxItems: 4,
+            items: {
+              type: 'object',
+              properties: {
+                label: { type: 'string', minLength: 2, maxLength: 60 },
+                terms: {
+                  type: 'array',
+                  items: { type: 'string', minLength: 2, maxLength: 60 },
+                  maxItems: 12,
+                },
+              },
+              required: ['label', 'terms'],
+              additionalProperties: false,
+            },
+          },
+          preference_groups: {
+            type: 'array',
+            maxItems: 4,
+            items: {
+              type: 'object',
+              properties: {
+                label: { type: 'string', minLength: 2, maxLength: 60 },
+                terms: {
+                  type: 'array',
+                  items: { type: 'string', minLength: 2, maxLength: 60 },
+                  maxItems: 12,
+                },
+              },
+              required: ['label', 'terms'],
+              additionalProperties: false,
+            },
+          },
         },
-        required: ['is_search', 'broad_category', 'category', 'service_label', 'search_terms'],
+        required: [
+          'is_search',
+          'broad_category',
+          'category',
+          'service_label',
+          'service_terms',
+          'qualifier_groups',
+          'preference_groups',
+        ],
         additionalProperties: false,
       },
     });

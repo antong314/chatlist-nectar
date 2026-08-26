@@ -66,7 +66,8 @@ test('recognizes an explicitly broad category request', () => {
   const plan = planSearchHeuristically('Send me all wellness contacts');
   assert.equal(plan.broadCategory, true);
   assert.equal(plan.category, 'Healer');
-  assert.deepEqual(plan.searchTerms, []);
+  assert.deepEqual(plan.serviceTerms, []);
+  assert.equal(planSearchHeuristically('Do you know any wellness contacts?'), null);
 });
 
 test('parses reviews without mistaking a bare number for one', () => {

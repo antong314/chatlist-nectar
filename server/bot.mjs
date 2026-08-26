@@ -11,11 +11,12 @@ import {
   parseReview,
   parseVcards,
   planSearchHeuristically,
-  rankContactsForSearch,
+  rankContactsForSearchTiers,
 } from './domain.mjs';
 
 const DESCRIPTION_MAX_LENGTH = 1000;
 const SEARCH_SUMMARY_DESCRIPTION_MAX_LENGTH = 900;
+const SPECIFIC_SEARCH_RESULT_LIMIT = 3;
 const HELP_MESSAGE = [
   '🌿 I’m Machu, the San Mateo community directory helper.',
   '',
@@ -82,6 +83,31 @@ const contactAddedReply = (contact, created) => {
 const isSkip = (value) => /^(?:skip|done|no thanks|no|later|omitir|listo|nada)$/i.test(String(value ?? '').trim());
 const asksForReview = (value) => /\b(?:leave|write|add|dejar|escribir)\b.*\b(?:review|reseña)\b/i.test(String(value ?? ''));
 const isHelp = (value) => /^(?:help|menu|start|hola|hello|hi|hey|ayuda|what can you do)(?:\s+machu)?[?!. ]*$/i.test(String(value ?? '').trim());
+const asksForMoreResults = (value) => /^(?:(?:yes|sure|please|ok(?:ay)?)[,!. ]*)?(?:(?:show|send|see|give)(?:\s+me)?\s+)?(?:the\s+)?more\b/i.test(String(value ?? '').trim())
+  || /^(?:yes|sure|please|ok(?:ay)?)[?!. ]*$/i.test(String(value ?? '').trim());
+const explicitlyRequestsWholeCategory = (value) =>
+  /\b(all|every|whole|entire|full|everyone|todos?|todas?)\b/i.test(String(value ?? ''));
+
+const mergeTermGroups = (...collections) => {
+  const groups = new Map();
+  for (const group of collections.flat()) {
+    const label = String(group?.label ?? '').trim();
+    const terms = Array.isArray(group?.terms) ? group.terms.map(String).filter(Boolean) : [];
+    if (!label || terms.length === 0) continue;
+    const key = label.toLocaleLowerCase();
+    const existing = groups.get(key) ?? { label, terms: [] };
+    existing.terms = Array.from(new Set([...existing.terms, ...terms]));
+    groups.set(key, existing);
+  }
+  return [...groups.values()];
+};
+
+const naturalList = (values) => {
+  const items = [...new Set((values ?? []).filter(Boolean))];
+  if (items.length <= 1) return items[0] ?? '';
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(', ')}, and ${items.at(-1)}`;
+};
 
 export class MachuBot {
   constructor({
@@ -198,47 +224,162 @@ export class MachuBot {
     );
   }
 
-  async searchSpecific(plan) {
+  async saveSearchSession(conversationKey, context) {
+    if (!this.store.setSearchSession) return;
+    const hasRemaining = (context.remainingPrimaryIds?.length ?? 0) > 0
+      || (context.secondaryIds?.length ?? 0) > 0;
+    if (!hasRemaining) {
+      await this.store.clearSearchSession?.(conversationKey);
+      return;
+    }
+    await this.store.setSearchSession({ conversationKey, context, ttlHours: 24 });
+  }
+
+  moreResultsMessage({ serviceLabel, qualifierLabels, primaryCount, secondaryCount }) {
+    if (primaryCount > 0) {
+      return `I found ${primaryCount} more relevant match${primaryCount === 1 ? '' : 'es'} for ${serviceLabel}. Reply “more ${serviceLabel}” to see them.`;
+    }
+    if (secondaryCount > 0) {
+      const qualifier = naturalList(qualifierLabels);
+      const subject = secondaryCount === 1 ? 'its listing doesn’t' : 'their listings don’t';
+      const limitation = qualifier ? `, but ${subject} mention ${qualifier}` : '';
+      return `I found ${secondaryCount} more possible match${secondaryCount === 1 ? '' : 'es'} for ${serviceLabel}${limitation}. Reply “more ${serviceLabel}” to see them.`;
+    }
+    return '';
+  }
+
+  async searchSpecific(plan, conversationKey) {
+    await this.store.clearSearchSession?.(conversationKey);
     const candidates = await this.store.findSearchCandidates(200);
-    const contacts = rankContactsForSearch(candidates, plan, 20);
+    const ranked = rankContactsForSearchTiers(candidates, plan);
     const serviceLabel = String(plan.serviceLabel || 'provider').trim();
-    if (contacts.length === 0) {
+    if (ranked.primary.length === 0) {
+      if (ranked.secondary.length > 0) {
+        await this.saveSearchSession(conversationKey, {
+          serviceLabel,
+          qualifierLabels: ranked.qualifierLabels,
+          preferenceLabels: ranked.preferenceLabels,
+          remainingPrimaryIds: [],
+          secondaryIds: ranked.secondary.map((result) => result.contact.id),
+        });
+        const qualifier = naturalList(ranked.qualifierLabels);
+        const subject = ranked.secondary.length === 1 ? 'its listing doesn’t' : 'their listings don’t';
+        const limitation = qualifier ? `, but ${subject} mention ${qualifier}` : '';
+        return [{
+          body: `I found ${ranked.secondary.length} possible match${ranked.secondary.length === 1 ? '' : 'es'} for ${serviceLabel}${limitation}. Reply “more ${serviceLabel}” to see them.`,
+        }];
+      }
       const categoryNote = plan.category
         ? ` I didn’t send the whole ${CATEGORY_LABELS[plan.category] || plan.category} category because it would include unrelated providers.`
         : '';
-      return [{ body: `I couldn’t find an exact ${serviceLabel} match in the directory yet.${categoryNote}` }];
+      return [{ body: `I couldn’t find an exact match for ${serviceLabel} in the directory yet.${categoryNote}` }];
     }
 
-    return this.contactResultMessages(
-      contacts,
-      `🌿 I found ${contacts.length} ${serviceLabel} match${contacts.length === 1 ? '' : 'es'} in sanmateo.love:`,
+    const selected = ranked.primary.slice(0, SPECIFIC_SEARCH_RESULT_LIMIT);
+    const missingPreferences = ranked.preferenceLabels.filter((label) =>
+      !selected.some((result) => result.matchedPreferenceLabels.includes(label)));
+    const qualifier = naturalList(ranked.qualifierLabels);
+    const qualifierNote = qualifier ? ` whose listing${selected.length === 1 ? '' : 's'} mention${selected.length === 1 ? 's' : ''} ${qualifier}` : '';
+    const preference = naturalList(missingPreferences);
+    const preferenceNote = preference
+      ? ` The listing${selected.length === 1 ? '' : 's'} do${selected.length === 1 ? 'es' : ''} not specifically mention ${preference}.`
+      : '';
+    const messages = await this.contactResultMessages(
+      selected.map((result) => result.contact),
+      `🌿 I found ${selected.length} relevant match${selected.length === 1 ? '' : 'es'} for ${serviceLabel}${qualifierNote}.${preferenceNote}`,
     );
+
+    const session = {
+      serviceLabel,
+      qualifierLabels: ranked.qualifierLabels,
+      preferenceLabels: ranked.preferenceLabels,
+      remainingPrimaryIds: ranked.primary.slice(SPECIFIC_SEARCH_RESULT_LIMIT).map((result) => result.contact.id),
+      secondaryIds: ranked.secondary.map((result) => result.contact.id),
+    };
+    await this.saveSearchSession(conversationKey, session);
+    const moreMessage = this.moreResultsMessage({
+      serviceLabel,
+      qualifierLabels: ranked.qualifierLabels,
+      primaryCount: session.remainingPrimaryIds.length,
+      secondaryCount: session.secondaryIds.length,
+    });
+    if (moreMessage) messages.push({ body: moreMessage });
+    return messages;
   }
 
-  async planAndRunSearch(body, heuristicPlan = null) {
+  async sendMoreSearchResults(searchSession, conversationKey) {
+    const context = searchSession?.context ?? searchSession ?? {};
+    const candidates = await this.store.findSearchCandidates(200);
+    const byId = new Map(candidates.map((contact) => [contact.id, contact]));
+    const primaryIds = (context.remainingPrimaryIds ?? []).filter((id) => byId.has(id));
+    const secondaryIds = (context.secondaryIds ?? []).filter((id) => byId.has(id));
+    const usePrimary = primaryIds.length > 0;
+    const sourceIds = usePrimary ? primaryIds : secondaryIds;
+    const selectedIds = sourceIds.slice(0, SPECIFIC_SEARCH_RESULT_LIMIT);
+    if (selectedIds.length === 0) {
+      await this.store.clearSearchSession?.(conversationKey);
+      return [{ body: 'I don’t have any more matching contacts to send.' }];
+    }
+
+    const serviceLabel = String(context.serviceLabel || 'provider').trim();
+    const qualifier = naturalList(context.qualifierLabels);
+    const listingSubject = selectedIds.length === 1 ? 'Its listing doesn’t' : 'Their listings don’t';
+    const intro = usePrimary
+      ? `🌿 Here are ${selectedIds.length} more relevant match${selectedIds.length === 1 ? '' : 'es'} for ${serviceLabel}:`
+      : `🌿 Here are ${selectedIds.length} more possible match${selectedIds.length === 1 ? '' : 'es'} for ${serviceLabel}. ${listingSubject} mention ${qualifier || 'the additional details you requested'}:`;
+    const messages = await this.contactResultMessages(
+      selectedIds.map((id) => byId.get(id)),
+      intro,
+    );
+
+    const nextContext = {
+      ...context,
+      remainingPrimaryIds: usePrimary ? primaryIds.slice(SPECIFIC_SEARCH_RESULT_LIMIT) : primaryIds,
+      secondaryIds: usePrimary ? secondaryIds : secondaryIds.slice(SPECIFIC_SEARCH_RESULT_LIMIT),
+    };
+    await this.saveSearchSession(conversationKey, nextContext);
+    const moreMessage = this.moreResultsMessage({
+      serviceLabel,
+      qualifierLabels: context.qualifierLabels,
+      primaryCount: nextContext.remainingPrimaryIds.length,
+      secondaryCount: nextContext.secondaryIds.length,
+    });
+    if (moreMessage) messages.push({ body: moreMessage });
+    return messages;
+  }
+
+  async planAndRunSearch(body, heuristicPlan = null, conversationKey = '') {
     const modelPlan = await this.ai?.planDirectorySearch?.(body);
     const modelIsUsable = modelPlan?.is_search
-      && (modelPlan.broad_category || (modelPlan.search_terms?.length > 0));
+      && (modelPlan.broad_category || (modelPlan.service_terms?.length > 0));
 
     if (heuristicPlan?.broadCategory) {
       return this.searchBroadCategory(heuristicPlan.category);
     }
 
     const plan = modelIsUsable ? {
-      broadCategory: Boolean(modelPlan.broad_category),
-      category: DIRECTORY_CATEGORIES.includes(modelPlan.category) ? modelPlan.category : (heuristicPlan?.category || ''),
-      serviceLabel: String(modelPlan.service_label || heuristicPlan?.serviceLabel || 'provider').trim(),
-      searchTerms: Array.from(new Set([
-        ...((heuristicPlan && !heuristicPlan.broadCategory) ? [] : (modelPlan.search_terms ?? [])),
-        ...(heuristicPlan?.searchTerms ?? []),
+      broadCategory: Boolean(modelPlan.broad_category && explicitlyRequestsWholeCategory(body)),
+      category: heuristicPlan?.category
+        || (DIRECTORY_CATEGORIES.includes(modelPlan.category) ? modelPlan.category : ''),
+      serviceLabel: String(heuristicPlan?.serviceLabel || modelPlan.service_label || 'provider').trim(),
+      serviceTerms: Array.from(new Set([
+        ...((heuristicPlan && !heuristicPlan.broadCategory)
+          ? (heuristicPlan.serviceTerms ?? heuristicPlan.searchTerms ?? [])
+          : (modelPlan.service_terms ?? [])),
       ])),
+      qualifierGroups: heuristicPlan?.qualifierGroups?.length
+        ? mergeTermGroups(heuristicPlan.qualifierGroups)
+        : mergeTermGroups(modelPlan.qualifier_groups ?? []),
+      preferenceGroups: heuristicPlan?.preferenceGroups?.length
+        ? mergeTermGroups(heuristicPlan.preferenceGroups)
+        : mergeTermGroups(modelPlan.preference_groups ?? []),
     } : heuristicPlan;
 
     // Known specific intents are a guardrail against an overly broad model plan.
     if (heuristicPlan && !heuristicPlan.broadCategory && plan) plan.broadCategory = false;
     if (!plan) return null;
     if (plan.broadCategory && plan.category) return this.searchBroadCategory(plan.category);
-    if (plan.searchTerms?.length > 0) return this.searchSpecific(plan);
+    if ((plan.serviceTerms ?? plan.searchTerms)?.length > 0) return this.searchSpecific(plan, conversationKey);
     return null;
   }
 
@@ -311,6 +452,7 @@ export class MachuBot {
     const profileName = String(params.ProfileName ?? '').trim().slice(0, 80);
     const conversationKey = createConversationKey(senderPhone || params.From, this.signingSecret);
     const conversation = await this.store.getConversation(conversationKey);
+    const searchSession = await this.store.getSearchSession?.(conversationKey);
 
     const mediaCount = Math.min(Number(params.NumMedia || 0), 10);
     const vcardIndexes = Array.from({ length: mediaCount }, (_, index) => index).filter((index) =>
@@ -325,12 +467,17 @@ export class MachuBot {
       return this.addContacts(cards, conversationKey);
     }
 
+    if (searchSession && asksForMoreResults(body)) {
+      return this.sendMoreSearchResults(searchSession, conversationKey);
+    }
+
     const heuristicSearchPlan = planSearchHeuristically(body);
     if (heuristicSearchPlan?.broadCategory) {
+      await this.store.clearSearchSession?.(conversationKey);
       return this.searchBroadCategory(heuristicSearchPlan.category);
     }
     if (looksLikeDirectorySearch(body)) {
-      const searchResult = await this.planAndRunSearch(body, heuristicSearchPlan);
+      const searchResult = await this.planAndRunSearch(body, heuristicSearchPlan, conversationKey);
       if (searchResult) return searchResult;
     }
 
@@ -403,7 +550,11 @@ export class MachuBot {
 
     const classified = await this.ai?.classifyMessage?.(body);
     if (classified?.intent === 'search_directory' && DIRECTORY_CATEGORIES.includes(classified.category)) {
-      return this.searchBroadCategory(classified.category);
+      const searchResult = await this.planAndRunSearch(body, heuristicSearchPlan, conversationKey);
+      if (searchResult) return searchResult;
+      return [{
+        body: 'Tell me the specific kind of provider or service you need. I won’t send a whole category unless you explicitly ask for it.',
+      }];
     }
     if (classified?.intent === 'add_contact') {
       const phone = normalizePhone(classified.phone) || extractPhoneFromText(body)?.normalized;

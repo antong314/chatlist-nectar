@@ -51,7 +51,9 @@ test('builds a specific multilingual directory search plan', async () => {
               broad_category: false,
               category: 'Healer',
               service_label: 'massage therapists',
-              search_terms: ['massage', 'masajista', 'physiotherapy'],
+              service_terms: ['massage', 'masajista', 'physiotherapy'],
+              qualifier_groups: [],
+              preference_groups: [],
             }),
           }],
         }],
@@ -62,5 +64,5 @@ test('builds a specific multilingual directory search plan', async () => {
   const plan = await provider.planDirectorySearch('Who does massages?');
   assert.equal(requestBody.text.format.name, 'directory_search_plan');
   assert.equal(plan.broad_category, false);
-  assert.deepEqual(plan.search_terms, ['massage', 'masajista', 'physiotherapy']);
+  assert.deepEqual(plan.service_terms, ['massage', 'masajista', 'physiotherapy']);
 });

@@ -6,6 +6,7 @@ class MemoryStore {
   constructor() {
     this.contacts = [];
     this.conversations = new Map();
+    this.searchSessions = new Map();
     this.reviews = [];
     this.reviewSummaries = new Map();
   }
@@ -19,6 +20,11 @@ class MemoryStore {
     });
   }
   async clearConversation(key) { this.conversations.delete(key); }
+  async getSearchSession(key) { return this.searchSessions.get(key) ?? null; }
+  async setSearchSession({ conversationKey, context }) {
+    this.searchSessions.set(conversationKey, { context });
+  }
+  async clearSearchSession(key) { this.searchSessions.delete(key); }
   async createOrGetContact({ name, phone }) {
     const existing = this.contacts.find((contact) => contact.phone_number === phone);
     if (existing) return { contact: existing, created: false };
@@ -52,15 +58,17 @@ class MemoryStore {
   async submitReview(review) { this.reviews.push(review); return review; }
 }
 
-const createBot = (store = new MemoryStore()) => ({
+const defaultAi = {
+  inferCategory: async () => null,
+  classifyMessage: async () => null,
+  planDirectorySearch: async () => null,
+};
+
+const createBot = (store = new MemoryStore(), ai = defaultAi) => ({
   store,
   bot: new MachuBot({
     store,
-    ai: {
-      inferCategory: async () => null,
-      classifyMessage: async () => null,
-      planDirectorySearch: async () => null,
-    },
+    ai,
     fetchMedia: async () => [
       'BEGIN:VCARD',
       'VERSION:3.0',
@@ -183,7 +191,7 @@ test('returns only massage-related providers instead of the whole wellness categ
   });
 
   const messages = await bot.handle(inbound({ Body: 'Do you know anyone who does massages?' }));
-  assert.match(messages[0].body, /2 massage and bodywork matches/);
+  assert.match(messages[0].body, /2 relevant matches for massage and bodywork/);
   assert.equal(messages.length, 6);
   assert.ok(messages.some((message) => message.mediaUrl?.includes('massage-1')));
   assert.ok(messages.some((message) => message.mediaUrl?.includes('physio-1')));
@@ -216,23 +224,121 @@ test('searches descriptions for chefs without returning every food listing', asy
   );
 
   const messages = await bot.handle(inbound({ Body: 'Can you recommend a chef?' }));
-  assert.match(messages[0].body, /1 chefs and cooks match/);
+  assert.match(messages[0].body, /1 relevant match for chefs and cooks/);
   assert.equal(messages.length, 4);
   assert.match(messages[1].body, /Pastry chef/);
   assert.match(messages[2].mediaUrl, /chef-1/);
   assert.match(messages[3].body, /https:\/\/www\.sanmateo\.love\//);
 });
 
-test('still supports intentionally broad category searches', async () => {
+test('sends the relevant child doctor immediately and holds back less specific doctors', async () => {
   const { bot, store } = createBot();
   store.contacts.push(
-    { id: 'healer-1', title: 'Massage', subtitle: 'Massage', category: 'Healer', phone_number: '+50670001111' },
-    { id: 'healer-2', title: 'Astrology', subtitle: 'Astrology', category: 'Healer', phone_number: '+50670002222' },
+    {
+      id: 'doctor-child',
+      title: 'Dr. Edgar Leguizamón',
+      subtitle: 'Doctor in Orotina, english-speaking, both adults and children',
+      category: 'Healer',
+      phone_number: '+50670001111',
+    },
+    {
+      id: 'doctor-adults',
+      title: 'Adult Medical Clinic',
+      subtitle: 'Doctor providing primary care for adults',
+      category: 'Healer',
+      phone_number: '+50670002222',
+    },
+    {
+      id: 'ayurveda',
+      title: 'Bosque Ayurveda',
+      subtitle: 'Ayurvedic lifestyle consultation and wellness plans',
+      category: 'Healer',
+      phone_number: '+50670003333',
+    },
   );
 
+  const messages = await bot.handle(inbound({
+    Body: 'Hi Machu! What are doctor options around? I want to check my kids pimples',
+  }));
+
+  assert.match(messages[0].body, /1 relevant match for doctors/);
+  assert.match(messages[0].body, /treating children/);
+  assert.match(messages[0].body, /does not specifically mention skin conditions/);
+  assert.ok(messages.some((message) => message.mediaUrl?.includes('doctor-child')));
+  assert.ok(!messages.some((message) => message.mediaUrl?.includes('doctor-adults')));
+  assert.ok(!messages.some((message) => message.body?.includes('Bosque Ayurveda')));
+  assert.ok(messages.some((message) => /1 more possible match for doctors, but its listing doesn’t mention treating children/.test(message.body ?? '')));
+
+  const more = await bot.handle(inbound({ Body: 'more doctors' }));
+  assert.ok(more.some((message) => message.mediaUrl?.includes('doctor-adults')));
+  assert.ok(!more.some((message) => message.mediaUrl?.includes('doctor-child')));
+});
+
+test('caps specific searches at three contacts and paginates only after an explicit request', async () => {
+  const { bot, store } = createBot();
+  for (let index = 1; index <= 6; index += 1) {
+    store.contacts.push({
+      id: `massage-${index}`,
+      title: `Massage Provider ${index}`,
+      subtitle: 'Therapeutic massage and bodywork',
+      category: 'Healer',
+      phone_number: `+5067000111${index}`,
+    });
+  }
+
+  const firstPage = await bot.handle(inbound({ Body: 'Can you recommend a massage therapist?' }));
+  assert.equal(firstPage.filter((message) => message.mediaUrl).length, 3);
+  assert.ok(firstPage.some((message) => /3 more relevant matches for massage and bodywork/.test(message.body ?? '')));
+
+  const secondPage = await bot.handle(inbound({ Body: 'show me more' }));
+  assert.equal(secondPage.filter((message) => message.mediaUrl).length, 3);
+  assert.ok(!secondPage.some((message) => /Reply “more massage and bodywork”/.test(message.body ?? '')));
+});
+
+test('does not let a model interpret any category contacts as the whole category', async () => {
+  const store = new MemoryStore();
+  const ai = {
+    ...defaultAi,
+    planDirectorySearch: async () => ({
+      is_search: true,
+      broad_category: true,
+      category: 'Healer',
+      service_label: 'wellness providers',
+      service_terms: ['wellness'],
+      qualifier_groups: [],
+      preference_groups: [],
+    }),
+  };
+  const { bot } = createBot(store, ai);
+  for (let index = 1; index <= 6; index += 1) {
+    store.contacts.push({
+      id: `wellness-${index}`,
+      title: `Wellness Provider ${index}`,
+      subtitle: 'Wellness services',
+      category: 'Healer',
+      phone_number: `+5067000333${index}`,
+    });
+  }
+
+  const messages = await bot.handle(inbound({ Body: 'Do you know any wellness contacts?' }));
+  assert.equal(messages.filter((message) => message.mediaUrl).length, 3);
+});
+
+test('still supports intentionally broad category searches', async () => {
+  const { bot, store } = createBot();
+  for (let index = 1; index <= 6; index += 1) {
+    store.contacts.push({
+      id: `healer-${index}`,
+      title: `Wellness Provider ${index}`,
+      subtitle: index === 1 ? 'Massage' : 'Wellness service',
+      category: 'Healer',
+      phone_number: `+5067000222${index}`,
+    });
+  }
+
   const messages = await bot.handle(inbound({ Body: 'Send me all wellness contacts' }));
-  assert.match(messages[0].body, /2 wellness contacts/);
-  assert.equal(messages.length, 6);
+  assert.match(messages[0].body, /6 wellness contacts/);
+  assert.equal(messages.filter((message) => message.mediaUrl).length, 6);
   assert.match(messages.at(-1).body, /browse the full community directory/);
 });
 

@@ -63,6 +63,15 @@ const CATEGORY_ALIASES = {
 
 const SPECIFIC_SEARCH_INTENTS = [
   {
+    pattern: /\b(doctors?|physicians?|m[eé]dicos?|pediatricians?|pediatras?|dermatologists?|dermat[oó]logos?)\b/i,
+    serviceLabel: 'doctors',
+    category: 'Healer',
+    terms: [
+      'doctor', 'medical doctor', 'physician', 'medical provider',
+      'medico', 'médico', 'pediatrician', 'pediatra', 'dermatologist', 'dermatologo', 'dermatólogo',
+    ],
+  },
+  {
     pattern: /\b(massag(?:e|es|ist)|masseu(?:r|se)|massous|masaj(?:e|es|ista)|bodywork|physio(?:therapy|therapist|\s+therapy))\b/i,
     serviceLabel: 'massage and bodywork',
     category: 'Healer',
@@ -112,7 +121,43 @@ export const normalizeSearchText = (value) => cleanText(value)
 
 export const looksLikeDirectorySearch = (value) => {
   const normalized = cleanText(value);
-  return /\b(send|show|find|search|looking|need|recommend|give|all|any|anyone|someone|know|does|buscar|busco|necesito|manda|enviar|conoces|alguien|contactos?)\b/i.test(normalized);
+  return /\b(send|show|find|search|looking|need|want|recommend|give|all|any|anyone|someone|know|does|options?|available|more|buscar|busco|necesito|quiero|manda|enviar|conoces|alguien|contactos?)\b/i.test(normalized)
+    || /\bwhat\s+about\b/i.test(normalized);
+};
+
+const contextualGroupsForSearch = (value) => {
+  const qualifierGroups = [];
+  const preferenceGroups = [];
+
+  if (/\b(child|children|kid|kids|baby|babies|pediatric|pediatrics|ni[nñ]o|ni[nñ]os|ni[nñ]a|ni[nñ]as|beb[eé]|beb[eé]s)\b/i.test(value)) {
+    qualifierGroups.push({
+      label: 'treating children',
+      terms: [
+        'child', 'children', 'kid', 'kids', 'pediatric', 'pediatrics', 'pediatrician',
+        'whole family', 'family care', 'adults and children',
+        'niño', 'niños', 'niña', 'niñas', 'pediatra', 'bebé', 'bebés',
+      ],
+    });
+  }
+
+  if (/\b(english|ingl[eé]s|english[- ]speaking)\b/i.test(value)) {
+    qualifierGroups.push({
+      label: 'English-speaking',
+      terms: ['english', 'english speaking', 'speaks english', 'inglés', 'habla inglés'],
+    });
+  }
+
+  if (/\b(pimple|pimples|acne|skin|rash|dermatology|dermatologist|grano|granos|acn[eé]|piel|sarpullido)\b/i.test(value)) {
+    preferenceGroups.push({
+      label: 'skin conditions',
+      terms: [
+        'pimple', 'pimples', 'acne', 'skin', 'rash', 'dermatology', 'dermatologist',
+        'grano', 'granos', 'acné', 'piel', 'sarpullido',
+      ],
+    });
+  }
+
+  return { qualifierGroups, preferenceGroups };
 };
 
 export const planSearchHeuristically = (value) => {
@@ -121,16 +166,19 @@ export const planSearchHeuristically = (value) => {
 
   const specific = SPECIFIC_SEARCH_INTENTS.find((intent) => intent.pattern.test(normalized));
   if (specific) {
+    const context = contextualGroupsForSearch(normalized);
     return {
       broadCategory: false,
       category: specific.category,
       serviceLabel: specific.serviceLabel,
-      searchTerms: specific.terms,
+      serviceTerms: specific.terms,
+      qualifierGroups: context.qualifierGroups,
+      preferenceGroups: context.preferenceGroups,
     };
   }
 
   const lower = normalized.toLocaleLowerCase();
-  const explicitlyBroad = /\b(all|every|any|contacts?|everyone|todos?|todas?|cualquiera)\b/i.test(lower);
+  const explicitlyBroad = /\b(all|every|whole|entire|full|everyone|todos?|todas?)\b/i.test(lower);
   if (explicitlyBroad) {
     for (const category of DIRECTORY_CATEGORIES) {
       const categoryNames = [category, CATEGORY_LABELS[category]];
@@ -139,7 +187,9 @@ export const planSearchHeuristically = (value) => {
           broadCategory: true,
           category,
           serviceLabel: CATEGORY_LABELS[category] || category,
-          searchTerms: [],
+          serviceTerms: [],
+          qualifierGroups: [],
+          preferenceGroups: [],
         };
       }
     }
@@ -189,19 +239,67 @@ const fieldTermScore = (field, term, baseScore) => {
 };
 
 export const rankContactsForSearch = (contacts, plan, limit = 20) => {
-  const terms = Array.from(new Set((plan.searchTerms ?? []).map(normalizeSearchText).filter(Boolean)));
-  return contacts.map((contact) => {
-    const textScore = terms.reduce((score, term) => score
-      + fieldTermScore(contact.title, term, 12)
-      + fieldTermScore(contact.subtitle, term, 8), 0);
-    const categoryBonus = textScore > 0 && contact.category === plan.category ? 1 : 0;
-    return { contact, score: textScore + categoryBonus };
-  })
-    .filter((result) => result.score > 0)
-    .sort((left, right) => right.score - left.score
-      || String(left.contact.title).localeCompare(String(right.contact.title)))
+  const ranked = rankContactsForSearchTiers(contacts, plan);
+  return [...ranked.primary, ...ranked.secondary]
     .slice(0, limit)
     .map((result) => result.contact);
+};
+
+const normalizeTermGroup = (group) => ({
+  label: cleanText(group?.label),
+  terms: Array.from(new Set((group?.terms ?? []).map(normalizeSearchText).filter(Boolean))),
+});
+
+const scoreTerms = (contact, terms) => terms.reduce((score, term) => score
+      + fieldTermScore(contact.title, term, 12)
+      + fieldTermScore(contact.subtitle, term, 8), 0);
+
+const sortRankedContacts = (results) => results.sort((left, right) =>
+  right.score - left.score
+  || String(left.contact.title).localeCompare(String(right.contact.title)));
+
+export const rankContactsForSearchTiers = (contacts, plan) => {
+  const serviceTerms = Array.from(new Set(
+    (plan.serviceTerms ?? plan.searchTerms ?? []).map(normalizeSearchText).filter(Boolean),
+  ));
+  const qualifierGroups = (plan.qualifierGroups ?? [])
+    .map(normalizeTermGroup)
+    .filter((group) => group.terms.length > 0);
+  const preferenceGroups = (plan.preferenceGroups ?? [])
+    .map(normalizeTermGroup)
+    .filter((group) => group.terms.length > 0);
+
+  const eligible = contacts.map((contact) => {
+    const serviceScore = scoreTerms(contact, serviceTerms);
+    if (serviceScore <= 0) return null;
+
+    const matchedQualifiers = qualifierGroups.filter((group) => scoreTerms(contact, group.terms) > 0);
+    const matchedPreferences = preferenceGroups.filter((group) => scoreTerms(contact, group.terms) > 0);
+    const categoryBonus = contact.category === plan.category ? 1 : 0;
+    return {
+      contact,
+      score: serviceScore
+        + (matchedQualifiers.length * 30)
+        + (matchedPreferences.length * 10)
+        + categoryBonus,
+      matchedQualifierLabels: matchedQualifiers.map((group) => group.label).filter(Boolean),
+      matchedPreferenceLabels: matchedPreferences.map((group) => group.label).filter(Boolean),
+    };
+  }).filter(Boolean);
+
+  const primary = [];
+  const secondary = [];
+  for (const result of eligible) {
+    if (result.matchedQualifierLabels.length === qualifierGroups.length) primary.push(result);
+    else secondary.push(result);
+  }
+
+  return {
+    primary: sortRankedContacts(primary),
+    secondary: sortRankedContacts(secondary),
+    qualifierLabels: qualifierGroups.map((group) => group.label).filter(Boolean),
+    preferenceLabels: preferenceGroups.map((group) => group.label).filter(Boolean),
+  };
 };
 
 export const normalizePhone = (value, defaultCountryCode = '506') => {

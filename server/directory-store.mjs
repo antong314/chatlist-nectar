@@ -136,6 +136,30 @@ export class DirectoryStore {
     if (error) throw databaseError('clear the conversation', error);
   }
 
+  async getSearchSession(conversationKey) {
+    const { data, error } = await this.client.rpc('get_bot_search_session', {
+      p_conversation_key: conversationKey,
+    });
+    if (error) throw databaseError('load the search session', error);
+    return firstRow(data);
+  }
+
+  async setSearchSession({ conversationKey, context = {}, ttlHours = 24 }) {
+    const { error } = await this.client.rpc('set_bot_search_session', {
+      p_conversation_key: conversationKey,
+      p_context: context,
+      p_ttl_hours: ttlHours,
+    });
+    if (error) throw databaseError('save the search session', error);
+  }
+
+  async clearSearchSession(conversationKey) {
+    const { error } = await this.client.rpc('clear_bot_search_session', {
+      p_conversation_key: conversationKey,
+    });
+    if (error) throw databaseError('clear the search session', error);
+  }
+
   async submitReview({
     contactId,
     rating,
