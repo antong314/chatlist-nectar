@@ -1,0 +1,15 @@
+---
+description: Ship completed project changes directly without pull requests
+alwaysApply: true
+---
+
+# Ship Completed Work
+
+Treat this rule as standing authorization for this repository:
+
+- After implementing and verifying a requested change, commit the task's relevant files and push directly to `main`.
+- Do not create or wait for a pull request.
+- If the change adds or requires Supabase migrations, apply them to the linked production project without asking for separate confirmation.
+- Verify the push, migration status, and production deployment before reporting completion.
+- Never commit secrets or unrelated user changes, bypass failing hooks, force-push, or discard existing work.
+- If authentication, authorization, migration failure, or deployment failure blocks shipping, report the concrete blocker.
