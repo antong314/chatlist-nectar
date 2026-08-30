@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  appendWikiFactToAnchoredBlock,
   appendWikiParagraph,
   createWikiContent,
   extractWikiText,
@@ -36,4 +37,29 @@ test('applies minimal replacements and additions without discarding other blocks
 test('creates valid simple pages and safe slugs from conversational input', () => {
   assert.deepEqual(JSON.parse(createWikiContent('First paragraph.\n\nSecond paragraph.')).length, 2);
   assert.equal(slugifyWikiTitle('Recycling & Re-use in San Matéo'), 'recycling-re-use-in-san-mateo');
+});
+
+test('adds a fact to an existing linked list item without duplicating the entry', () => {
+  const restaurants = JSON.stringify([
+    {
+      type: 'bulletListItem',
+      content: [
+        { type: 'link', href: 'https://example.com/poza', content: [{ type: 'text', text: 'La Poza Blanca' }] },
+        { type: 'text', text: ' - local favorite' },
+      ],
+    },
+    {
+      type: 'bulletListItem',
+      content: [
+        { type: 'link', href: 'https://example.com/other', content: [{ type: 'text', text: 'Other Place' }] },
+        { type: 'text', text: ' - local favorite' },
+      ],
+    },
+  ]);
+
+  const updated = appendWikiFactToAnchoredBlock(restaurants, 'La Poza Blanca', 'great pizza');
+  const blocks = JSON.parse(updated);
+  assert.match(JSON.stringify(blocks[0]), /local favorite; great pizza/);
+  assert.doesNotMatch(JSON.stringify(blocks[1]), /great pizza/);
+  assert.equal((extractWikiText(updated).match(/La Poza Blanca/g) ?? []).length, 1);
 });

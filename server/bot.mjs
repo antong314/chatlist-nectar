@@ -14,6 +14,7 @@ import {
   rankContactsForSearchTiers,
 } from './domain.mjs';
 import {
+  appendWikiFactToAnchoredBlock,
   appendWikiParagraph,
   createWikiContent,
   replaceWikiText,
@@ -98,9 +99,60 @@ const explicitlyRequestsWholeCategory = (value) =>
 const requestsWikiChange = (value) => /\b(?:wiki|guide|page)\b.*\b(?:add|change|correct|delete|remove|update)\b|\b(?:add|change|correct|delete|remove|update)\b.*\b(?:wiki|guide|page)\b/i.test(String(value ?? ''));
 const requestsUndo = (value) => /^(?:undo|undo that|revert|revert that|deshacer|deshaz eso)[?!. ]*$/i.test(String(value ?? '').trim());
 const confirms = (value) => /^(?:yes|yes delete it|confirm|si|sí)[?!. ]*$/i.test(String(value ?? '').trim());
+const affirmsFact = (value) => /^(?:yes|yeah|yep|correct|that’s right|that's right|si|sí)\b[?!. ]*/i.test(String(value ?? '').trim());
+const declinesFact = (value) => /^(?:no|nope|not really|cancel)\b[?!. ]*/i.test(String(value ?? '').trim());
 const requiresDirectoryContactResult = (value) => /\b(?:contact|phone number|someone|anyone|provider|professional|doctor|physician|plumber|electrician|mechanic|taxi|driver|therapist|masseu(?:r|se)|chef|photographer|dentist|who does|who can)\b/i.test(String(value ?? ''));
 
 class WikiClarificationError extends Error {}
+
+const normalizeWikiLookup = (value) => String(value ?? '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLocaleLowerCase()
+  .replace(/[^a-z0-9]+/g, ' ')
+  .trim();
+
+const extractListAdditionSubject = (value) => {
+  const match = String(value ?? '').match(/\badd\s+(.+?)\s+to\s+(?:that|the|this)\s+list\b/i);
+  return String(match?.[1] ?? '').replace(/^(?:a|an|the)\s+/i, '').trim().slice(0, 160);
+};
+
+const recommendationFactFromQuestion = (question, proposedFact = '') => {
+  const proposed = String(proposedFact ?? '')
+    .trim()
+    .replace(/[.?!]+$/, '')
+    .replace(/^(?:has|serves|offers|is known for)\s+/i, '');
+  if (proposed) {
+    const pizza = /\bpizza\b/i.test(proposed);
+    return {
+      fact: proposed,
+      question: pizza ? 'Do they have good pizza?' : `Should I add “${proposed}” to their existing description?`,
+    };
+  }
+  const normalized = String(question ?? '');
+  const knownTopics = [
+    { pattern: /\bpizza\b/i, fact: 'great pizza', question: 'Do they have good pizza?' },
+    { pattern: /\bsushi\b/i, fact: 'great sushi', question: 'Do they have good sushi?' },
+    { pattern: /\bcoffee\b/i, fact: 'great coffee', question: 'Do they have good coffee?' },
+    { pattern: /\bceviche\b/i, fact: 'great ceviche', question: 'Do they have good ceviche?' },
+    { pattern: /\bbreakfast\b/i, fact: 'great breakfast', question: 'Do they serve a good breakfast?' },
+  ];
+  return knownTopics.find((topic) => topic.pattern.test(normalized)) ?? null;
+};
+
+const findExistingWikiSubject = (pages, subject) => {
+  const needle = normalizeWikiLookup(subject);
+  if (!needle) return null;
+  for (const page of pages) {
+    const lines = String(page?.plainText ?? '').split('\n').map((line) => line.trim()).filter(Boolean);
+    const anchorText = lines.find((line) => {
+      const normalized = normalizeWikiLookup(line);
+      return normalized.includes(needle) && normalized.length <= needle.length + 20;
+    });
+    if (anchorText) return { page, anchorText };
+  }
+  return null;
+};
 
 const formatWikiDate = (value) => {
   const date = new Date(value);
@@ -255,7 +307,7 @@ export class MachuBot {
       const best = pages[0];
       await this.wikiStore.setSession({
         conversationKey,
-        context: { mode: 'reading', pageSlugs: [best.slug] },
+        context: { mode: 'reading', pageSlugs: [best.slug], lastQuestion: body },
       });
       return [{
         body: `I found a likely answer on *${best.title}*, but I couldn’t summarize it confidently. Read it here: ${this.wikiUrl(best.slug)}`,
@@ -266,7 +318,12 @@ export class MachuBot {
     const cited = sources.length > 0 ? sources : [pages[0]];
     await this.wikiStore.setSession({
       conversationKey,
-      context: { mode: 'reading', pageSlugs: cited.map((page) => page.slug) },
+      context: {
+        mode: 'reading',
+        pageSlugs: cited.map((page) => page.slug),
+        lastQuestion: body,
+        lastAnswer: String(modelAnswer.answer).trim().slice(0, 1800),
+      },
     });
     const sourceLines = cited.map((page) => {
       const updated = formatWikiDate(page.updated_at);
@@ -308,7 +365,7 @@ export class MachuBot {
         content = null;
       } else if (plan.operation === 'replace') {
         try {
-          content = replaceWikiText(page.content, plan.find_text, plan.replacement_text);
+          content = replaceWikiText(page.content, plan.find_text, plan.replacement_text, plan.anchor_text);
         } catch (error) {
           throw new WikiClarificationError(error.message);
         }
@@ -358,11 +415,36 @@ export class MachuBot {
       ? `${context.originalMessage}\nAdditional detail from the user: ${body}`
       : body;
     const plan = await this.ai?.planWikiChange?.({ message: combinedMessage, pages, context });
+    const requestedSubject = String(plan?.subject_name || extractListAdditionSubject(body)).trim();
+    const existingSubject = requestedSubject ? findExistingWikiSubject(pages, requestedSubject) : null;
+    const recommendationFact = recommendationFactFromQuestion(context.lastQuestion, plan?.proposed_fact);
+    if (existingSubject && recommendationFact && /\bto\s+(?:that|the|this)\s+list\b/i.test(body)) {
+      const pageLabel = String(existingSubject.page.title || 'wiki page').toLocaleLowerCase();
+      const question = `Actually ${requestedSubject} is already in my list of ${pageLabel}. ${recommendationFact.question}`;
+      await this.wikiStore.setSession({
+        conversationKey,
+        context: {
+          ...context,
+          mode: 'confirm_existing_wiki_fact',
+          pageSlugs: [existingSubject.page.slug],
+          pendingFact: {
+            slug: existingSubject.page.slug,
+            title: existingSubject.page.title,
+            subjectName: requestedSubject,
+            anchorText: existingSubject.anchorText,
+            factText: recommendationFact.fact,
+          },
+          originalMessage: combinedMessage,
+        },
+      });
+      return [{ body: question }];
+    }
     if (!plan || plan.needs_clarification || plan.action === 'none') {
       const question = String(plan?.clarification_question || 'Which wiki page should I change, and what should it say?').trim();
       await this.wikiStore.setSession({
         conversationKey,
         context: {
+          ...context,
           mode: 'awaiting_change_details',
           originalMessage: combinedMessage,
           pageSlugs: pages.map((page) => page.slug),
@@ -384,6 +466,7 @@ export class MachuBot {
       await this.wikiStore.setSession({
         conversationKey,
         context: {
+          ...context,
           mode: 'awaiting_change_details',
           originalMessage: combinedMessage,
           pageSlugs: pages.map((page) => page.slug),
@@ -391,6 +474,34 @@ export class MachuBot {
       });
       return [{ body: error.message }];
     }
+  }
+
+  async confirmExistingWikiFact({ wikiSession, senderPhone, profileName, messageSid, conversationKey }) {
+    const pending = wikiSession?.context?.pendingFact ?? {};
+    const page = pending.slug ? await this.wikiStore.getPage(pending.slug) : null;
+    if (!page) {
+      await this.wikiStore.clearSession(conversationKey);
+      return [{ body: 'I can’t find that wiki entry anymore. Tell me the page and place name and I’ll take another look.' }];
+    }
+    const content = appendWikiFactToAnchoredBlock(page.content, pending.anchorText, pending.factText);
+    const result = await this.wikiStore.applyChange({
+      actionType: 'wiki_update',
+      slug: page.slug,
+      title: page.title,
+      category: page.category || 'Uncategorized',
+      content,
+      expectedVersion: page.version,
+      requesterWhatsapp: senderPhone,
+      requesterName: profileName,
+      twilioMessageSid: messageSid,
+    });
+    await this.wikiStore.setSession({
+      conversationKey,
+      context: { mode: 'changed', pageSlugs: [page.slug], lastEventId: result?.event_id },
+    });
+    return [{
+      body: `Done 🌿 I updated *${page.title}* to note that ${pending.subjectName} has ${pending.factText}.\n\n${this.wikiUrl(page.slug)}\n\nIf I misunderstood, reply “undo”.`,
+    }];
   }
 
   async addContacts(cards, conversationKey, audit = null) {
@@ -717,6 +828,31 @@ export class MachuBot {
           ? 'I couldn’t find a recent wiki change from you to undo.'
           : 'I couldn’t undo that because the page has changed since your edit. Its history is still available on the website.' }]);
       }
+    }
+
+    if (wikiSession?.context?.mode === 'confirm_existing_wiki_fact') {
+      if (affirmsFact(body)) {
+        return this.asWikiResponse(await this.confirmExistingWikiFact({
+          wikiSession,
+          senderPhone,
+          profileName,
+          messageSid,
+          conversationKey,
+        }));
+      }
+      if (declinesFact(body)) {
+        await this.wikiStore.setSession({
+          conversationKey,
+          context: {
+            mode: 'reading',
+            pageSlugs: wikiSession.context.pageSlugs ?? [],
+            lastQuestion: wikiSession.context.lastQuestion,
+            lastAnswer: wikiSession.context.lastAnswer,
+          },
+        });
+        return this.asWikiResponse([{ body: 'Got it—I left the existing wiki entry unchanged.' }]);
+      }
+      return this.asWikiResponse([{ body: 'Just to confirm: should I add that detail to the existing entry? Reply “yes” or “no”.' }]);
     }
 
     if (wikiSession?.context?.mode === 'confirm_delete' && confirms(body)) {

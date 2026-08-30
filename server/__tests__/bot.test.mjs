@@ -513,6 +513,70 @@ test('answers a general local question only from cited wiki pages', async () => 
   assert.match(messages[0].body, /updated Mar 27, 2025/);
 });
 
+test('recognizes an existing restaurant in a conversational list suggestion and confirms the missing fact', async () => {
+  const wikiStore = new MemoryWikiStore();
+  const content = JSON.stringify([
+    {
+      type: 'bulletListItem',
+      content: [
+        { type: 'link', href: 'https://example.com/poza', content: [{ type: 'text', text: 'La Poza Blanca' }] },
+        { type: 'text', text: ' - local favorite' },
+      ],
+    },
+  ]);
+  wikiStore.pages.push({
+    id: 'restaurants', slug: 'restaurants', title: 'Restaurants',
+    plainText: 'La Poza Blanca\n - local favorite', content, category: 'Shopping', version: 21,
+    updated_at: '2025-11-07T00:00:00Z', is_published: true,
+  });
+  let classificationCount = 0;
+  const ai = {
+    ...defaultAi,
+    classifyMessage: async () => {
+      classificationCount += 1;
+      return classificationCount === 1
+        ? { intent: 'wiki_question', category: '', phone: '', name: '', wiki_search_terms: ['pizza', 'restaurants'] }
+        : { intent: 'wiki_change', category: '', phone: '', name: '', wiki_search_terms: ['Poza Blanca', 'restaurants'] };
+    },
+    answerWikiQuestion: async () => ({
+      answered: true,
+      answer: 'The wiki recommends Monsoon and Mae Culpa for pizza.',
+      source_slugs: ['restaurants'],
+      high_stakes: false,
+    }),
+    planWikiChange: async () => ({
+      action: 'none', operation: 'none', target_slug: 'restaurants',
+      title: 'Restaurants', category: 'Shopping', subject_name: 'Poza Blanca',
+      proposed_fact: '', anchor_text: 'La Poza Blanca', find_text: '', replacement_text: '',
+      append_text: '', change_summary: 'Poza Blanca is already listed.',
+      needs_clarification: false, clarification_question: '',
+    }),
+  };
+  const { bot } = createBot(new MemoryStore(), ai, wikiStore);
+
+  await bot.handle(inbound({
+    Body: "I'm in the mood for some pizza. Where is the good place to get that?",
+  }));
+  const suggestion = await bot.handle(inbound({
+    Body: 'we should add Poza Blanca to that list',
+    MessageSid: `SM${'2'.repeat(32)}`,
+  }));
+
+  assert.match(suggestion[0].body, /Actually Poza Blanca is already in my list of restaurants\. Do they have good pizza\?/);
+  assert.equal(wikiStore.changes.length, 0);
+
+  const confirmed = await bot.handle(inbound({
+    Body: 'yes',
+    MessageSid: `SM${'3'.repeat(32)}`,
+  }));
+  assert.match(confirmed[0].body, /updated \*Restaurants\* to note that Poza Blanca has great pizza/);
+  assert.match(wikiStore.pages[0].content, /local favorite; great pizza/);
+  assert.equal((wikiStore.pages[0].content.match(/La Poza Blanca/g) ?? []).length, 1);
+  assert.equal(wikiStore.changes.length, 1);
+  assert.equal(wikiStore.changes[0].requesterWhatsapp, '+15555550123');
+  assert.match(confirmed.at(-1).body, /full community wiki/);
+});
+
 test('publishes an attributable wiki correction immediately and supports undo', async () => {
   const wikiStore = new MemoryWikiStore();
   wikiStore.pages.push({

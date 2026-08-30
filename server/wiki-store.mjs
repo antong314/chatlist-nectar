@@ -77,6 +77,34 @@ export const appendWikiParagraph = (content, text) => {
   return JSON.stringify(blocks);
 };
 
+const nodeContainsText = (value, text) => {
+  const output = [];
+  collectText(value, output);
+  return normalizeText(output.join(' ')).includes(normalizeText(text));
+};
+
+export const appendWikiFactToAnchoredBlock = (content, anchorText, factText) => {
+  const blocks = parseBlocks(content);
+  const anchor = String(anchorText ?? '').trim();
+  const fact = String(factText ?? '').trim();
+  if (!anchor || !fact) throw new Error('The existing wiki entry or new detail is missing.');
+  const block = blocks.find((candidate) => nodeContainsText(candidate, anchor));
+  if (!block) throw new Error(`I could not find the existing “${anchor}” entry.`);
+  if (nodeContainsText(block, fact)) return JSON.stringify(blocks);
+
+  const inlineContent = Array.isArray(block.content) ? block.content : [];
+  const trailingText = [...inlineContent].reverse().find((item) => item?.type === 'text');
+  if (trailingText) {
+    const existing = String(trailingText.text ?? '').trimEnd();
+    const separator = !existing || /[.;:!?—-]$/.test(existing) ? ' ' : '; ';
+    trailingText.text = `${existing}${separator}${fact}`;
+  } else {
+    inlineContent.push({ type: 'text', text: ` - ${fact}`, styles: {} });
+    block.content = inlineContent;
+  }
+  return JSON.stringify(blocks);
+};
+
 const replaceInNode = (value, findText, replacementText) => {
   if (Array.isArray(value)) {
     for (const item of value) {
@@ -103,11 +131,14 @@ const replaceInNode = (value, findText, replacementText) => {
   return false;
 };
 
-export const replaceWikiText = (content, findText, replacementText) => {
+export const replaceWikiText = (content, findText, replacementText, anchorText = '') => {
   const blocks = parseBlocks(content);
   const find = String(findText ?? '').trim();
   if (!find) throw new Error('I could not identify the existing wording to change.');
-  if (!replaceInNode(blocks, find, String(replacementText ?? '').trim())) {
+  const anchor = String(anchorText ?? '').trim();
+  const target = anchor ? blocks.find((block) => nodeContainsText(block, anchor)) : blocks;
+  if (!target) throw new Error(`I could not find the existing “${anchor}” entry.`);
+  if (!replaceInNode(target, find, String(replacementText ?? '').trim())) {
     throw new Error('The page changed before I could find that exact information. Please tell me which wording to replace.');
   }
   return JSON.stringify(blocks);
