@@ -100,6 +100,8 @@ const requestsUndo = (value) => /^(?:undo|undo that|revert|revert that|deshacer|
 const confirms = (value) => /^(?:yes|yes delete it|confirm|si|sí)[?!. ]*$/i.test(String(value ?? '').trim());
 const looksStronglyLikeProviderRequest = (value) => /\b(?:recommend|contact|phone number|someone|anyone|provider|professional|doctor|physician|plumber|electrician|mechanic|taxi|driver|therapist|masseu(?:r|se)|chef|photographer|dentist|find me|who does|who can)\b/i.test(String(value ?? ''));
 
+class WikiClarificationError extends Error {}
+
 const formatWikiDate = (value) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
@@ -267,10 +269,15 @@ export class MachuBot {
       title = String(title || '').trim();
       slug = slugifyWikiTitle(slug || title);
       content = createWikiContent(plan.append_text || plan.replacement_text);
-      if (!title || !slug || content === '[]') throw new Error('Tell me the page title and the information you want it to contain.');
+      if (!title || !slug) {
+        throw new WikiClarificationError('What should the new wiki page be called, and what information should it include?');
+      }
+      if (content === '[]') {
+        throw new WikiClarificationError(`What information should the new *${title}* page include?`);
+      }
     } else {
       if (!page && slug) page = await this.wikiStore.getPage(slug);
-      if (!page) throw new Error('I couldn’t identify which wiki page to change. Tell me the page name.');
+      if (!page) throw new WikiClarificationError('I couldn’t identify which wiki page to change. What is the page called?');
       slug = page.slug;
       title = String(plan.title || page.title).trim();
       category = plan.category || page.category || 'Uncategorized';
@@ -278,11 +285,18 @@ export class MachuBot {
       if (plan.action === 'delete') {
         content = null;
       } else if (plan.operation === 'replace') {
-        content = replaceWikiText(page.content, plan.find_text, plan.replacement_text);
+        try {
+          content = replaceWikiText(page.content, plan.find_text, plan.replacement_text);
+        } catch (error) {
+          throw new WikiClarificationError(error.message);
+        }
       } else if (plan.operation === 'append') {
+        if (!String(plan.append_text || '').trim()) {
+          throw new WikiClarificationError(`What information should I add to *${title}*?`);
+        }
         content = appendWikiParagraph(page.content, plan.append_text);
       } else {
-        throw new Error('Tell me whether to add new information or which existing wording to correct.');
+        throw new WikiClarificationError('Tell me whether to add new information or which existing wording to correct.');
       }
     }
 
@@ -341,7 +355,20 @@ export class MachuBot {
       });
       return [{ body: `Do you mean delete the entire *${plan.title || plan.target_slug}* wiki page? Reply “yes” to delete it.` }];
     }
-    return this.applyWikiPlan({ plan, pages, senderPhone, profileName, messageSid, conversationKey });
+    try {
+      return await this.applyWikiPlan({ plan, pages, senderPhone, profileName, messageSid, conversationKey });
+    } catch (error) {
+      if (!(error instanceof WikiClarificationError)) throw error;
+      await this.wikiStore.setSession({
+        conversationKey,
+        context: {
+          mode: 'awaiting_change_details',
+          originalMessage: combinedMessage,
+          pageSlugs: pages.map((page) => page.slug),
+        },
+      });
+      return [{ body: error.message }];
+    }
   }
 
   async addContacts(cards, conversationKey, audit = null) {

@@ -528,3 +528,48 @@ test('undoing a newly created wiki page reports that it was removed', async () =
   assert.match(undone[0].body, /removed the new \*Recycling\* page/);
   assert.doesNotMatch(undone[0].body, /\/wiki\/recycling/);
 });
+
+test('asks for missing page content instead of failing an incomplete wiki create', async () => {
+  const wikiStore = new MemoryWikiStore();
+  const plannedMessages = [];
+  const ai = {
+    ...defaultAi,
+    classifyMessage: async () => ({
+      intent: 'wiki_change', category: '', phone: '', name: '', wiki_search_terms: ['recycling'],
+    }),
+    planWikiChange: async ({ message }) => {
+      plannedMessages.push(message);
+      if (plannedMessages.length === 1) {
+        return {
+          action: 'create', operation: 'create', target_slug: 'recycling',
+          title: 'Recycling', category: 'Local Know-How', find_text: '', replacement_text: '',
+          append_text: '', change_summary: '', needs_clarification: false,
+          clarification_question: '',
+        };
+      }
+      return {
+        action: 'create', operation: 'create', target_slug: 'recycling',
+        title: 'Recycling', category: 'Local Know-How', find_text: '', replacement_text: '',
+        append_text: 'Recycling is collected on Tuesdays.',
+        change_summary: 'added recycling collection information',
+        needs_clarification: false, clarification_question: '',
+      };
+    },
+  };
+  const { bot } = createBot(new MemoryStore(), ai, wikiStore);
+
+  const clarification = await bot.handle(inbound({ Body: 'Add a new wiki page about recycling' }));
+  assert.match(clarification[0].body, /What information should the new \*Recycling\* page include\?/);
+  assert.equal(wikiStore.pages.length, 0);
+  assert.equal([...wikiStore.sessions.values()][0].context.mode, 'awaiting_change_details');
+
+  const created = await bot.handle(inbound({
+    Body: 'Recycling is collected on Tuesdays.',
+    MessageSid: `SM${'2'.repeat(32)}`,
+  }));
+  assert.match(created[0].body, /created \*Recycling\*/);
+  assert.equal(wikiStore.pages.length, 1);
+  assert.match(wikiStore.pages[0].content, /collected on Tuesdays/);
+  assert.match(plannedMessages[1], /Add a new wiki page about recycling/);
+  assert.match(plannedMessages[1], /Additional detail from the user: Recycling is collected on Tuesdays/);
+});
