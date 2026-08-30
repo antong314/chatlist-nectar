@@ -445,6 +445,47 @@ test('never substitutes wiki prose for a directory provider request', async () =
   assert.ok(!messages.some((message) => /Health & Wellness/.test(message.body ?? '')));
 });
 
+test('falls back to relevant wiki guidance when the directory has no place match', async () => {
+  const wikiStore = new MemoryWikiStore();
+  wikiStore.pages.push({
+    id: 'restaurants', slug: 'restaurants', title: 'Restaurants',
+    plainText: 'Mae Culpa Restaurante y Pizzería a la Leña — amazing views, good pizza and Italian dishes.',
+    content: '[]', category: 'Shopping', version: 2,
+    updated_at: '2026-08-30T00:00:00Z', is_published: true,
+  });
+  const ai = {
+    ...defaultAi,
+    classifyMessage: async () => ({
+      intent: 'search_directory', category: '', phone: '', name: '', wiki_search_terms: ['pizza', 'restaurant'],
+    }),
+    planDirectorySearch: async () => ({
+      is_search: true,
+      broad_category: false,
+      category: 'Service',
+      service_label: 'pizza places',
+      service_terms: ['pizza', 'pizzeria'],
+      qualifier_groups: [],
+      preference_groups: [],
+    }),
+    answerWikiQuestion: async () => ({
+      answered: true,
+      answer: 'The community wiki recommends Mae Culpa Restaurante y Pizzería a la Leña for pizza.',
+      source_slugs: ['restaurants'],
+      high_stakes: false,
+    }),
+  };
+  const { bot } = createBot(new MemoryStore(), ai, wikiStore);
+
+  const messages = await bot.handle(inbound({
+    Body: "I'm in the mood for some pizza. Where is the good place to get that?",
+  }));
+
+  assert.match(messages[0].body, /Mae Culpa Restaurante/);
+  assert.match(messages[0].body, /\/wiki\/restaurants/);
+  assert.match(messages.at(-1).body, /full community wiki at https:\/\/www\.sanmateo\.love\/wiki/);
+  assert.ok(!messages.some((message) => /couldn’t find an exact match/.test(message.body ?? '')));
+});
+
 test('answers a general local question only from cited wiki pages', async () => {
   const wikiStore = new MemoryWikiStore();
   wikiStore.pages.push({
@@ -560,6 +601,8 @@ test('asks for missing page content instead of failing an incomplete wiki create
 
   const clarification = await bot.handle(inbound({ Body: 'Add a new wiki page about recycling' }));
   assert.match(clarification[0].body, /What information should the new \*Recycling\* page include\?/);
+  assert.match(clarification[0].body, /full community wiki at https:\/\/www\.sanmateo\.love\/wiki/);
+  assert.doesNotMatch(clarification[0].body, /full community directory/);
   assert.equal(wikiStore.pages.length, 0);
   assert.equal([...wikiStore.sessions.values()][0].context.mode, 'awaiting_change_details');
 

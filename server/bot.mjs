@@ -98,7 +98,7 @@ const explicitlyRequestsWholeCategory = (value) =>
 const requestsWikiChange = (value) => /\b(?:wiki|guide|page)\b.*\b(?:add|change|correct|delete|remove|update)\b|\b(?:add|change|correct|delete|remove|update)\b.*\b(?:wiki|guide|page)\b/i.test(String(value ?? ''));
 const requestsUndo = (value) => /^(?:undo|undo that|revert|revert that|deshacer|deshaz eso)[?!. ]*$/i.test(String(value ?? '').trim());
 const confirms = (value) => /^(?:yes|yes delete it|confirm|si|sí)[?!. ]*$/i.test(String(value ?? '').trim());
-const looksStronglyLikeProviderRequest = (value) => /\b(?:recommend|contact|phone number|someone|anyone|provider|professional|doctor|physician|plumber|electrician|mechanic|taxi|driver|therapist|masseu(?:r|se)|chef|photographer|dentist|find me|who does|who can)\b/i.test(String(value ?? ''));
+const requiresDirectoryContactResult = (value) => /\b(?:contact|phone number|someone|anyone|provider|professional|doctor|physician|plumber|electrician|mechanic|taxi|driver|therapist|masseu(?:r|se)|chef|photographer|dentist|who does|who can)\b/i.test(String(value ?? ''));
 
 class WikiClarificationError extends Error {}
 
@@ -155,9 +155,17 @@ export class MachuBot {
     return `You can always browse the full community directory at ${this.publicBaseUrl}/ 🌿`;
   }
 
-  withDirectoryFooter(messages) {
-    const footer = this.directoryFooter();
-    const response = Array.isArray(messages) ? [...messages] : [];
+  wikiFooter() {
+    return `You can always browse the full community wiki at ${this.publicBaseUrl}/wiki 🌿`;
+  }
+
+  asWikiResponse(messages) {
+    return (messages ?? []).map((message) => ({ ...message, responseContext: 'wiki' }));
+  }
+
+  withFooter(messages, footer) {
+    const rawMessages = Array.isArray(messages) ? messages : [];
+    const response = rawMessages.map(({ responseContext: _responseContext, ...message }) => message);
     const lastMessage = response.at(-1);
 
     if (lastMessage?.body && !lastMessage.mediaUrl) {
@@ -170,6 +178,19 @@ export class MachuBot {
 
     response.push({ body: footer });
     return response;
+  }
+
+  withContextualFooter(messages) {
+    const isWikiResponse = (messages ?? []).some((message) => message?.responseContext === 'wiki');
+    return this.withFooter(messages, isWikiResponse ? this.wikiFooter() : this.directoryFooter());
+  }
+
+  withDirectoryFooter(messages) {
+    return this.withFooter(messages, this.directoryFooter());
+  }
+
+  withWikiFooter(messages) {
+    return this.withFooter(messages, this.wikiFooter());
   }
 
   providerSummary(contact, reviewSummary) {
@@ -222,10 +243,11 @@ export class MachuBot {
     return `${this.publicBaseUrl}/wiki/${encodeURIComponent(slug)}`;
   }
 
-  async answerWikiQuestion(body, searchTerms, conversationKey) {
+  async answerWikiQuestion(body, searchTerms, conversationKey, { returnNullWhenMissing = false } = {}) {
     if (!this.wikiStore) return null;
     const pages = await this.wikiStore.searchPages(body, searchTerms, 4);
     if (pages.length === 0) {
+      if (returnNullWhenMissing) return null;
       return [{ body: 'I couldn’t find that in the community wiki yet. If you know the answer, tell me and I can help add it.' }];
     }
     const modelAnswer = await this.ai?.answerWikiQuestion?.({ question: body, pages });
@@ -455,7 +477,10 @@ export class MachuBot {
       const categoryNote = plan.category
         ? ` I didn’t send the whole ${CATEGORY_LABELS[plan.category] || plan.category} category because it would include unrelated providers.`
         : '';
-      return [{ body: `I couldn’t find an exact match for ${serviceLabel} in the directory yet.${categoryNote}` }];
+      return [{
+        body: `I couldn’t find an exact match for ${serviceLabel} in the directory yet.${categoryNote}`,
+        responseContext: 'directory_no_match',
+      }];
     }
 
     const selected = ranked.primary.slice(0, SPECIFIC_SEARCH_RESULT_LIMIT);
@@ -566,6 +591,25 @@ export class MachuBot {
     return null;
   }
 
+  async searchDirectoryThenWiki({ body, heuristicPlan, conversationKey, wikiSearchTerms = [] }) {
+    const directoryMessages = await this.planAndRunSearch(body, heuristicPlan, conversationKey);
+    if (!directoryMessages) return null;
+    const hasExactDirectoryMatch = !directoryMessages.some(
+      (message) => message?.responseContext === 'directory_no_match',
+    );
+    if (hasExactDirectoryMatch || !this.wikiStore || requiresDirectoryContactResult(body)) {
+      return directoryMessages;
+    }
+
+    const wikiMessages = await this.answerWikiQuestion(
+      body,
+      wikiSearchTerms,
+      conversationKey,
+      { returnNullWhenMissing: true },
+    );
+    return wikiMessages ? this.asWikiResponse(wikiMessages) : directoryMessages;
+  }
+
   async saveReview({ conversation, review, senderPhone, profileName, conversationKey, messageSid }) {
     await this.store.submitReview({
       contactId: conversation.contact_id,
@@ -626,7 +670,7 @@ export class MachuBot {
   }
 
   async handle(params) {
-    return this.withDirectoryFooter(await this.handleMessage(params));
+    return this.withContextualFooter(await this.handleMessage(params));
   }
 
   async handleMessage(params) {
@@ -665,13 +709,13 @@ export class MachuBot {
           context: { mode: 'reading', pageSlugs: undone?.version >= 0 && undone?.slug ? [undone.slug] : [] },
         });
         const removedNewPage = Number(undone?.version) < 0;
-        return [{ body: removedNewPage
+        return this.asWikiResponse([{ body: removedNewPage
           ? `Undone 🌿 I removed the new *${undone?.title || 'wiki'}* page.`
-          : `Undone 🌿 I restored *${undone?.title || 'the wiki page'}*.${undone?.slug ? `\n\n${this.wikiUrl(undone.slug)}` : ''}` }];
+          : `Undone 🌿 I restored *${undone?.title || 'the wiki page'}*.${undone?.slug ? `\n\n${this.wikiUrl(undone.slug)}` : ''}` }]);
       } catch (error) {
-        return [{ body: error?.code === 'P0002'
+        return this.asWikiResponse([{ body: error?.code === 'P0002'
           ? 'I couldn’t find a recent wiki change from you to undo.'
-          : 'I couldn’t undo that because the page has changed since your edit. Its history is still available on the website.' }];
+          : 'I couldn’t undo that because the page has changed since your edit. Its history is still available on the website.' }]);
       }
     }
 
@@ -681,14 +725,14 @@ export class MachuBot {
         const page = await this.wikiStore.getPage(slug);
         if (page) pages.push(page);
       }
-      return this.applyWikiPlan({
+      return this.asWikiResponse(await this.applyWikiPlan({
         plan: wikiSession.context.plan,
         pages,
         senderPhone,
         profileName,
         messageSid,
         conversationKey,
-      });
+      }));
     }
 
     if (searchSession && asksForMoreResults(body)) {
@@ -701,7 +745,11 @@ export class MachuBot {
       return this.searchBroadCategory(heuristicSearchPlan.category);
     }
     if (looksLikeDirectorySearch(body)) {
-      const searchResult = await this.planAndRunSearch(body, heuristicSearchPlan, conversationKey);
+      const searchResult = await this.searchDirectoryThenWiki({
+        body,
+        heuristicPlan: heuristicSearchPlan,
+        conversationKey,
+      });
       if (searchResult) return searchResult;
     }
 
@@ -774,7 +822,12 @@ export class MachuBot {
 
     const classified = await this.ai?.classifyMessage?.(body);
     if (classified?.intent === 'search_directory') {
-      const searchResult = await this.planAndRunSearch(body, heuristicSearchPlan, conversationKey);
+      const searchResult = await this.searchDirectoryThenWiki({
+        body,
+        heuristicPlan: heuristicSearchPlan,
+        conversationKey,
+        wikiSearchTerms: classified.wiki_search_terms,
+      });
       if (searchResult) return searchResult;
       return [{
         body: 'Tell me the specific kind of provider or service you need. I won’t send a whole category unless you explicitly ask for it.',
@@ -790,14 +843,18 @@ export class MachuBot {
       }
     }
     if (classified?.intent === 'wiki_question') {
-      if (looksStronglyLikeProviderRequest(body)) {
+      if (requiresDirectoryContactResult(body)) {
         return [{ body: 'Are you looking for a person or service you can contact, or for general information from the community wiki?' }];
       }
-      return this.answerWikiQuestion(body, classified.wiki_search_terms, conversationKey);
+      return this.asWikiResponse(await this.answerWikiQuestion(
+        body,
+        classified.wiki_search_terms,
+        conversationKey,
+      ));
     }
     if (classified?.intent === 'wiki_change' || requestsWikiChange(body)
       || wikiSession?.context?.mode === 'awaiting_change_details') {
-      return this.handleWikiChange({
+      return this.asWikiResponse(await this.handleWikiChange({
         body,
         classified,
         wikiSession,
@@ -805,7 +862,7 @@ export class MachuBot {
         profileName,
         messageSid,
         conversationKey,
-      });
+      }));
     }
     if (classified?.intent === 'help') return [{ body: HELP_MESSAGE }];
 

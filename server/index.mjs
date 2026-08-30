@@ -254,6 +254,7 @@ app.post('/bot', express.urlencoded({ extended: false, limit: '256kb' }), async 
       senderPhone: request.body?.WaId || request.body?.From,
     });
     if (approval) {
+      const isWikiApproval = String(approval.actionType || '').startsWith('wiki_');
       const actionLabels = {
         provider_create: 'provider recommendation',
         provider_update: 'provider update',
@@ -271,7 +272,9 @@ app.post('/bot', express.urlencoded({ extended: false, limit: '256kb' }), async 
           : [
               `Verified 🌿 Return to San Mateo Love and your ${label} will finish automatically.`,
               '',
-              'You can also chat with me anytime: send a contact card to recommend a provider, or ask me to find local services.',
+              isWikiApproval
+                ? 'You can also chat with me anytime: ask a local question or tell me what the community wiki should add or update.'
+                : 'You can also chat with me anytime: send a contact card to recommend a provider, or ask me to find local services.',
             ].join('\n');
       } else if (approval.reason === 'phone') {
         body = 'This request was already verified by a different WhatsApp number. Return to San Mateo Love and start a new request.';
@@ -282,7 +285,10 @@ app.post('/bot', express.urlencoded({ extended: false, limit: '256kb' }), async 
       } else {
         body = 'I could not verify that request. Return to San Mateo Love and create a new verification message.';
       }
-      response.type('text/xml').send(messagesToTwiml(bot.withDirectoryFooter([{ body }])));
+      const messages = isWikiApproval
+        ? bot.withWikiFooter([{ body }])
+        : bot.withDirectoryFooter([{ body }]);
+      response.type('text/xml').send(messagesToTwiml(messages));
       return;
     }
 
