@@ -195,7 +195,8 @@ test('greets website visitors who open a prefilled Machu chat', async () => {
   const response = await bot.handle(inbound({ Body: 'Hi Machu!' }));
   assert.match(response[0].body, /I’m Machu/);
   assert.match(response[0].body, /Forward me a contact card/);
-  assert.match(response[0].body, /browse the full community directory at https:\/\/www\.sanmateo\.love\//);
+  assert.match(response[0].body, /Directory: https:\/\/www\.sanmateo\.love\//);
+  assert.match(response[0].body, /Community wiki: https:\/\/www\.sanmateo\.love\/wiki/);
 });
 
 test('returns native contact-card media for category searches', async () => {
@@ -217,8 +218,8 @@ test('returns native contact-card media for category searches', async () => {
   assert.equal(messages[1].mediaUrl, undefined);
   assert.equal(messages[2].body, undefined);
   assert.match(messages[2].mediaUrl, /\/bot\/contact\/taxi-1\.vcf\?token=/);
-  assert.match(messages[3].body, /browse the full community directory/);
-  assert.match(messages[3].body, /https:\/\/www\.sanmateo\.love\//);
+  assert.equal(messages.length, 3);
+  assert.ok(!messages.some((message) => /browse the full community directory/.test(message.body ?? '')));
 });
 
 test('returns only massage-related providers instead of the whole wellness category', async () => {
@@ -254,7 +255,7 @@ test('returns only massage-related providers instead of the whole wellness categ
 
   const messages = await bot.handle(inbound({ Body: 'Do you know anyone who does massages?' }));
   assert.match(messages[0].body, /2 relevant matches for massage and bodywork/);
-  assert.equal(messages.length, 6);
+  assert.equal(messages.length, 5);
   assert.ok(messages.some((message) => message.mediaUrl?.includes('massage-1')));
   assert.ok(messages.some((message) => message.mediaUrl?.includes('physio-1')));
   assert.ok(!messages.some((message) => message.mediaUrl?.includes('astrology-1')));
@@ -263,7 +264,7 @@ test('returns only massage-related providers instead of the whole wellness categ
   assert.match(jocsanMessage.body, /Physiotherapist offering dry needling and massage/);
   assert.match(jocsanMessage.body, /4\.8\/5 · 4 community reviews/);
   assert.match(jocsanMessage.body, /Website: https:\/\/example\.com\/jocsan/);
-  assert.match(messages.at(-1).body, /browse the full community directory/);
+  assert.ok(!messages.some((message) => /browse the full community directory/.test(message.body ?? '')));
 });
 
 test('searches descriptions for chefs without returning every food listing', async () => {
@@ -287,10 +288,10 @@ test('searches descriptions for chefs without returning every food listing', asy
 
   const messages = await bot.handle(inbound({ Body: 'Can you recommend a chef?' }));
   assert.match(messages[0].body, /1 relevant match for chefs and cooks/);
-  assert.equal(messages.length, 4);
+  assert.equal(messages.length, 3);
   assert.match(messages[1].body, /Pastry chef/);
   assert.match(messages[2].mediaUrl, /chef-1/);
-  assert.match(messages[3].body, /https:\/\/www\.sanmateo\.love\//);
+  assert.ok(!messages.some((message) => /browse the full community directory/.test(message.body ?? '')));
 });
 
 test('sends the relevant child doctor immediately and holds back less specific doctors', async () => {
@@ -401,7 +402,7 @@ test('still supports intentionally broad category searches', async () => {
   const messages = await bot.handle(inbound({ Body: 'Send me all wellness contacts' }));
   assert.match(messages[0].body, /6 wellness contacts/);
   assert.equal(messages.filter((message) => message.mediaUrl).length, 6);
-  assert.match(messages.at(-1).body, /browse the full community directory/);
+  assert.ok(!messages.some((message) => /browse the full community directory/.test(message.body ?? '')));
 });
 
 test('accepts an optional review after contact submission', async () => {
@@ -482,7 +483,7 @@ test('falls back to relevant wiki guidance when the directory has no place match
 
   assert.match(messages[0].body, /Mae Culpa Restaurante/);
   assert.match(messages[0].body, /\/wiki\/restaurants/);
-  assert.match(messages.at(-1).body, /full community wiki at https:\/\/www\.sanmateo\.love\/wiki/);
+  assert.doesNotMatch(messages[0].body, /full community wiki at/);
   assert.ok(!messages.some((message) => /couldn’t find an exact match/.test(message.body ?? '')));
 });
 
@@ -563,6 +564,7 @@ test('recognizes an existing restaurant in a conversational list suggestion and 
   }));
 
   assert.match(suggestion[0].body, /Actually Poza Blanca is already in my list of restaurants\. Do they have good pizza\?/);
+  assert.doesNotMatch(suggestion[0].body, /https?:\/\//);
   assert.equal(wikiStore.changes.length, 0);
 
   const confirmed = await bot.handle(inbound({
@@ -574,7 +576,7 @@ test('recognizes an existing restaurant in a conversational list suggestion and 
   assert.equal((wikiStore.pages[0].content.match(/La Poza Blanca/g) ?? []).length, 1);
   assert.equal(wikiStore.changes.length, 1);
   assert.equal(wikiStore.changes[0].requesterWhatsapp, '+15555550123');
-  assert.match(confirmed.at(-1).body, /full community wiki/);
+  assert.doesNotMatch(confirmed[0].body, /https?:\/\//);
 });
 
 test('publishes an attributable wiki correction immediately and supports undo', async () => {
@@ -665,8 +667,7 @@ test('asks for missing page content instead of failing an incomplete wiki create
 
   const clarification = await bot.handle(inbound({ Body: 'Add a new wiki page about recycling' }));
   assert.match(clarification[0].body, /What information should the new \*Recycling\* page include\?/);
-  assert.match(clarification[0].body, /full community wiki at https:\/\/www\.sanmateo\.love\/wiki/);
-  assert.doesNotMatch(clarification[0].body, /full community directory/);
+  assert.doesNotMatch(clarification[0].body, /https?:\/\//);
   assert.equal(wikiStore.pages.length, 0);
   assert.equal([...wikiStore.sessions.values()][0].context.mode, 'awaiting_change_details');
 

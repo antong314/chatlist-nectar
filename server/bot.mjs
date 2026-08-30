@@ -24,7 +24,7 @@ import {
 const DESCRIPTION_MAX_LENGTH = 1000;
 const SEARCH_SUMMARY_DESCRIPTION_MAX_LENGTH = 900;
 const SPECIFIC_SEARCH_RESULT_LIMIT = 3;
-const HELP_MESSAGE = [
+const HELP_MESSAGE_BODY = [
   '🌿 I’m Machu, the San Mateo community directory and local-knowledge helper.',
   '',
   '• Forward me a contact card and I’ll add it right away.',
@@ -203,46 +203,21 @@ export class MachuBot {
     return `${this.publicBaseUrl}/bot/contact/${encodeURIComponent(contactId)}.vcf?token=${token}`;
   }
 
-  directoryFooter() {
-    return `You can always browse the full community directory at ${this.publicBaseUrl}/ 🌿`;
-  }
-
-  wikiFooter() {
-    return `You can always browse the full community wiki at ${this.publicBaseUrl}/wiki 🌿`;
+  helpMessage() {
+    return [
+      HELP_MESSAGE_BODY,
+      `Directory: ${this.publicBaseUrl}/`,
+      `Community wiki: ${this.publicBaseUrl}/wiki`,
+    ].join('\n\n');
   }
 
   asWikiResponse(messages) {
     return (messages ?? []).map((message) => ({ ...message, responseContext: 'wiki' }));
   }
 
-  withFooter(messages, footer) {
-    const rawMessages = Array.isArray(messages) ? messages : [];
-    const response = rawMessages.map(({ responseContext: _responseContext, ...message }) => message);
-    const lastMessage = response.at(-1);
-
-    if (lastMessage?.body && !lastMessage.mediaUrl) {
-      response[response.length - 1] = {
-        ...lastMessage,
-        body: `${lastMessage.body}\n\n${footer}`,
-      };
-      return response;
-    }
-
-    response.push({ body: footer });
-    return response;
-  }
-
-  withContextualFooter(messages) {
-    const isWikiResponse = (messages ?? []).some((message) => message?.responseContext === 'wiki');
-    return this.withFooter(messages, isWikiResponse ? this.wikiFooter() : this.directoryFooter());
-  }
-
-  withDirectoryFooter(messages) {
-    return this.withFooter(messages, this.directoryFooter());
-  }
-
-  withWikiFooter(messages) {
-    return this.withFooter(messages, this.wikiFooter());
+  cleanMessages(messages) {
+    return (Array.isArray(messages) ? messages : [])
+      .map(({ responseContext: _responseContext, ...message }) => message);
   }
 
   providerSummary(contact, reviewSummary) {
@@ -300,7 +275,9 @@ export class MachuBot {
     const pages = await this.wikiStore.searchPages(body, searchTerms, 4);
     if (pages.length === 0) {
       if (returnNullWhenMissing) return null;
-      return [{ body: 'I couldn’t find that in the community wiki yet. If you know the answer, tell me and I can help add it.' }];
+      return [{
+        body: `I couldn’t find that in the community wiki yet. If you know the answer, tell me and I can help add it.\n\nBrowse the community wiki: ${this.publicBaseUrl}/wiki`,
+      }];
     }
     const modelAnswer = await this.ai?.answerWikiQuestion?.({ question: body, pages });
     if (!modelAnswer?.answered || !String(modelAnswer.answer ?? '').trim()) {
@@ -335,7 +312,15 @@ export class MachuBot {
     return [{ body: [String(modelAnswer.answer).trim(), safety, 'Community wiki:', ...sourceLines].filter(Boolean).join('\n\n') }];
   }
 
-  async applyWikiPlan({ plan, pages, senderPhone, profileName, messageSid, conversationKey }) {
+  async applyWikiPlan({
+    plan,
+    pages,
+    senderPhone,
+    profileName,
+    messageSid,
+    conversationKey,
+    includeLink = true,
+  }) {
     const actionType = `wiki_${plan.action}`;
     let page = pages.find((candidate) => candidate.slug === plan.target_slug) ?? null;
     let slug = plan.target_slug;
@@ -395,9 +380,15 @@ export class MachuBot {
       context: { mode: 'changed', pageSlugs: [slug], lastEventId: result?.event_id },
     });
     const verb = plan.action === 'create' ? 'created' : plan.action === 'delete' ? 'deleted' : 'updated';
-    const link = plan.action === 'delete' ? `${this.publicBaseUrl}/wiki` : this.wikiUrl(slug);
+    const link = includeLink
+      ? (plan.action === 'delete' ? `${this.publicBaseUrl}/wiki` : this.wikiUrl(slug))
+      : '';
     return [{
-      body: `Done 🌿 I ${verb} *${title}*${plan.change_summary ? `: ${plan.change_summary}` : '.'}\n\n${link}\n\nIf I misunderstood, reply “undo”.`,
+      body: [
+        `Done 🌿 I ${verb} *${title}*${plan.change_summary ? `: ${plan.change_summary}` : '.'}`,
+        link,
+        'If I misunderstood, reply “undo”.',
+      ].filter(Boolean).join('\n\n'),
     }];
   }
 
@@ -460,7 +451,15 @@ export class MachuBot {
       return [{ body: `Do you mean delete the entire *${plan.title || plan.target_slug}* wiki page? Reply “yes” to delete it.` }];
     }
     try {
-      return await this.applyWikiPlan({ plan, pages, senderPhone, profileName, messageSid, conversationKey });
+      return await this.applyWikiPlan({
+        plan,
+        pages,
+        senderPhone,
+        profileName,
+        messageSid,
+        conversationKey,
+        includeLink: !contextualSlugs.includes(plan.target_slug),
+      });
     } catch (error) {
       if (!(error instanceof WikiClarificationError)) throw error;
       await this.wikiStore.setSession({
@@ -500,7 +499,7 @@ export class MachuBot {
       context: { mode: 'changed', pageSlugs: [page.slug], lastEventId: result?.event_id },
     });
     return [{
-      body: `Done 🌿 I updated *${page.title}* to note that ${pending.subjectName} has ${pending.factText}.\n\n${this.wikiUrl(page.slug)}\n\nIf I misunderstood, reply “undo”.`,
+      body: `Done 🌿 I updated *${page.title}* to note that ${pending.subjectName} has ${pending.factText}.\n\nIf I misunderstood, reply “undo”.`,
     }];
   }
 
@@ -531,7 +530,9 @@ export class MachuBot {
   async searchBroadCategory(category) {
     const contacts = await this.store.findContactsByCategory(category, 20);
     if (contacts.length === 0) {
-      return [{ body: `I couldn’t find any ${CATEGORY_LABELS[category] || category} contacts yet.` }];
+      return [{
+        body: `I couldn’t find any ${CATEGORY_LABELS[category] || category} contacts yet.\n\nBrowse the community directory: ${this.publicBaseUrl}/`,
+      }];
     }
 
     return this.contactResultMessages(
@@ -589,7 +590,7 @@ export class MachuBot {
         ? ` I didn’t send the whole ${CATEGORY_LABELS[plan.category] || plan.category} category because it would include unrelated providers.`
         : '';
       return [{
-        body: `I couldn’t find an exact match for ${serviceLabel} in the directory yet.${categoryNote}`,
+        body: `I couldn’t find an exact match for ${serviceLabel} in the directory yet.${categoryNote}\n\nBrowse the community directory: ${this.publicBaseUrl}/`,
         responseContext: 'directory_no_match',
       }];
     }
@@ -781,7 +782,7 @@ export class MachuBot {
   }
 
   async handle(params) {
-    return this.withContextualFooter(await this.handleMessage(params));
+    return this.cleanMessages(await this.handleMessage(params));
   }
 
   async handleMessage(params) {
@@ -822,7 +823,7 @@ export class MachuBot {
         const removedNewPage = Number(undone?.version) < 0;
         return this.asWikiResponse([{ body: removedNewPage
           ? `Undone 🌿 I removed the new *${undone?.title || 'wiki'}* page.`
-          : `Undone 🌿 I restored *${undone?.title || 'the wiki page'}*.${undone?.slug ? `\n\n${this.wikiUrl(undone.slug)}` : ''}` }]);
+          : `Undone 🌿 I restored *${undone?.title || 'the wiki page'}*.` }]);
       } catch (error) {
         return this.asWikiResponse([{ body: error?.code === 'P0002'
           ? 'I couldn’t find a recent wiki change from you to undo.'
@@ -954,7 +955,7 @@ export class MachuBot {
       return [{ body: categoryQuestion }];
     }
 
-    if (isHelp(body) || !body) return [{ body: HELP_MESSAGE }];
+    if (isHelp(body) || !body) return [{ body: this.helpMessage() }];
 
     const classified = await this.ai?.classifyMessage?.(body);
     if (classified?.intent === 'search_directory') {
@@ -1000,8 +1001,8 @@ export class MachuBot {
         conversationKey,
       }));
     }
-    if (classified?.intent === 'help') return [{ body: HELP_MESSAGE }];
+    if (classified?.intent === 'help') return [{ body: this.helpMessage() }];
 
-    return [{ body: `I’m still learning 🌱\n\n${HELP_MESSAGE}` }];
+    return [{ body: `I’m still learning 🌱\n\n${this.helpMessage()}` }];
   }
 }

@@ -285,10 +285,7 @@ app.post('/bot', express.urlencoded({ extended: false, limit: '256kb' }), async 
       } else {
         body = 'I could not verify that request. Return to San Mateo Love and create a new verification message.';
       }
-      const messages = isWikiApproval
-        ? bot.withWikiFooter([{ body }])
-        : bot.withDirectoryFooter([{ body }]);
-      response.type('text/xml').send(messagesToTwiml(messages));
+      response.type('text/xml').send(messagesToTwiml([{ body }]));
       return;
     }
 
@@ -296,9 +293,9 @@ app.post('/bot', express.urlencoded({ extended: false, limit: '256kb' }), async 
     response.type('text/xml').send(messagesToTwiml(messages));
   } catch (error) {
     console.error('Machu webhook error:', error);
-    response.type('text/xml').send(messagesToTwiml(bot.withDirectoryFooter([{
+    response.type('text/xml').send(messagesToTwiml([{
       body: 'I hit a little snag 🌱 Your message is safe—please try once more in a moment.',
-    }])));
+    }]));
   }
 });
 

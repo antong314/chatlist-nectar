@@ -47,9 +47,11 @@ bot webhook at `POST /bot`.
   directory listing, followed immediately by its native WhatsApp contact card.
   They are separate messages because WhatsApp ignores captions attached to
   free-form vCard media.
-- Every bot response ends with a direct link to the full community directory.
-  Text-only replies include it as a footer; responses ending in a vCard receive
-  one short final text message so WhatsApp does not discard the link.
+- Links are conversational rather than automatic: wiki answers cite the page
+  they used, provider results link to the matching listing, and help or genuine
+  no-result replies link to the relevant directory/wiki landing page. Follow-up
+  questions, confirmations, verification replies, errors, and vCard result sets
+  do not receive a generic footer, avoiding repetitive WhatsApp link previews.
 
 There is no publish or confirmation step. Once Machu has a valid name and phone
 number, the contact is in the directory. Wiki additions and corrections are
