@@ -13,16 +13,24 @@ import {
   planSearchHeuristically,
   rankContactsForSearchTiers,
 } from './domain.mjs';
+import {
+  appendWikiParagraph,
+  createWikiContent,
+  replaceWikiText,
+  slugifyWikiTitle,
+} from './wiki-store.mjs';
 
 const DESCRIPTION_MAX_LENGTH = 1000;
 const SEARCH_SUMMARY_DESCRIPTION_MAX_LENGTH = 900;
 const SPECIFIC_SEARCH_RESULT_LIMIT = 3;
 const HELP_MESSAGE = [
-  '🌿 I’m Machu, the San Mateo community directory helper.',
+  '🌿 I’m Machu, the San Mateo community directory and local-knowledge helper.',
   '',
   '• Forward me a contact card and I’ll add it right away.',
   '• Or say “add this number +506…” / “add my number”.',
   '• Ask “send me all taxi contacts” to search the directory.',
+  '• Ask a local question like “When is the San Mateo farmers market?”',
+  '• Tell me when wiki information has changed and I’ll update it.',
   '• After adding someone, you can send “5 stars — great service” to leave a review.',
 ].join('\n');
 
@@ -87,6 +95,16 @@ const asksForMoreResults = (value) => /^(?:(?:yes|sure|please|ok(?:ay)?)[,!. ]*)
   || /^(?:yes|sure|please|ok(?:ay)?)[?!. ]*$/i.test(String(value ?? '').trim());
 const explicitlyRequestsWholeCategory = (value) =>
   /\b(all|every|whole|entire|full|everyone|todos?|todas?)\b/i.test(String(value ?? ''));
+const requestsWikiChange = (value) => /\b(?:wiki|guide|page)\b.*\b(?:add|change|correct|delete|remove|update)\b|\b(?:add|change|correct|delete|remove|update)\b.*\b(?:wiki|guide|page)\b/i.test(String(value ?? ''));
+const requestsUndo = (value) => /^(?:undo|undo that|revert|revert that|deshacer|deshaz eso)[?!. ]*$/i.test(String(value ?? '').trim());
+const confirms = (value) => /^(?:yes|yes delete it|confirm|si|sí)[?!. ]*$/i.test(String(value ?? '').trim());
+const looksStronglyLikeProviderRequest = (value) => /\b(?:recommend|contact|phone number|someone|anyone|provider|professional|doctor|physician|plumber|electrician|mechanic|taxi|driver|therapist|masseu(?:r|se)|chef|photographer|dentist|find me|who does|who can)\b/i.test(String(value ?? ''));
+
+const formatWikiDate = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+};
 
 const mergeTermGroups = (...collections) => {
   const groups = new Map();
@@ -112,12 +130,14 @@ const naturalList = (values) => {
 export class MachuBot {
   constructor({
     store,
+    wikiStore = null,
     ai,
     fetchMedia,
     publicBaseUrl = 'https://www.sanmateo.love',
     signingSecret,
   }) {
     this.store = store;
+    this.wikiStore = wikiStore;
     this.ai = ai;
     this.fetchMedia = fetchMedia;
     this.publicBaseUrl = publicBaseUrl.replace(/\/$/, '');
@@ -188,10 +208,146 @@ export class MachuBot {
     return messages;
   }
 
-  async addContacts(cards, conversationKey) {
+  auditFromMessage({ senderPhone, profileName, messageSid }) {
+    return senderPhone && messageSid ? {
+      requesterWhatsapp: senderPhone,
+      requesterName: profileName || null,
+      twilioMessageSid: messageSid,
+    } : null;
+  }
+
+  wikiUrl(slug) {
+    return `${this.publicBaseUrl}/wiki/${encodeURIComponent(slug)}`;
+  }
+
+  async answerWikiQuestion(body, searchTerms, conversationKey) {
+    if (!this.wikiStore) return null;
+    const pages = await this.wikiStore.searchPages(body, searchTerms, 4);
+    if (pages.length === 0) {
+      return [{ body: 'I couldn’t find that in the community wiki yet. If you know the answer, tell me and I can help add it.' }];
+    }
+    const modelAnswer = await this.ai?.answerWikiQuestion?.({ question: body, pages });
+    if (!modelAnswer?.answered || !String(modelAnswer.answer ?? '').trim()) {
+      const best = pages[0];
+      await this.wikiStore.setSession({
+        conversationKey,
+        context: { mode: 'reading', pageSlugs: [best.slug] },
+      });
+      return [{
+        body: `I found a likely answer on *${best.title}*, but I couldn’t summarize it confidently. Read it here: ${this.wikiUrl(best.slug)}`,
+      }];
+    }
+    const bySlug = new Map(pages.map((page) => [page.slug, page]));
+    const sources = (modelAnswer.source_slugs ?? []).map((slug) => bySlug.get(slug)).filter(Boolean);
+    const cited = sources.length > 0 ? sources : [pages[0]];
+    await this.wikiStore.setSession({
+      conversationKey,
+      context: { mode: 'reading', pageSlugs: cited.map((page) => page.slug) },
+    });
+    const sourceLines = cited.map((page) => {
+      const updated = formatWikiDate(page.updated_at);
+      return `• ${page.title}${updated ? ` · updated ${updated}` : ''}: ${this.wikiUrl(page.slug)}`;
+    });
+    const safety = modelAnswer.high_stakes
+      ? 'If this is urgent or affects your health, safety, legal rights, or finances, use appropriate professional or emergency help—the wiki is community-maintained.'
+      : '';
+    return [{ body: [String(modelAnswer.answer).trim(), safety, 'Community wiki:', ...sourceLines].filter(Boolean).join('\n\n') }];
+  }
+
+  async applyWikiPlan({ plan, pages, senderPhone, profileName, messageSid, conversationKey }) {
+    const actionType = `wiki_${plan.action}`;
+    let page = pages.find((candidate) => candidate.slug === plan.target_slug) ?? null;
+    let slug = plan.target_slug;
+    let title = plan.title;
+    let category = plan.category || 'Uncategorized';
+    let content = null;
+    let expectedVersion = null;
+
+    if (plan.action === 'create') {
+      title = String(title || '').trim();
+      slug = slugifyWikiTitle(slug || title);
+      content = createWikiContent(plan.append_text || plan.replacement_text);
+      if (!title || !slug || content === '[]') throw new Error('Tell me the page title and the information you want it to contain.');
+    } else {
+      if (!page && slug) page = await this.wikiStore.getPage(slug);
+      if (!page) throw new Error('I couldn’t identify which wiki page to change. Tell me the page name.');
+      slug = page.slug;
+      title = String(plan.title || page.title).trim();
+      category = plan.category || page.category || 'Uncategorized';
+      expectedVersion = page.version;
+      if (plan.action === 'delete') {
+        content = null;
+      } else if (plan.operation === 'replace') {
+        content = replaceWikiText(page.content, plan.find_text, plan.replacement_text);
+      } else if (plan.operation === 'append') {
+        content = appendWikiParagraph(page.content, plan.append_text);
+      } else {
+        throw new Error('Tell me whether to add new information or which existing wording to correct.');
+      }
+    }
+
+    const result = await this.wikiStore.applyChange({
+      actionType,
+      slug,
+      title,
+      category,
+      content,
+      expectedVersion,
+      requesterWhatsapp: senderPhone,
+      requesterName: profileName,
+      twilioMessageSid: messageSid,
+    });
+    await this.wikiStore.setSession({
+      conversationKey,
+      context: { mode: 'changed', pageSlugs: [slug], lastEventId: result?.event_id },
+    });
+    const verb = plan.action === 'create' ? 'created' : plan.action === 'delete' ? 'deleted' : 'updated';
+    const link = plan.action === 'delete' ? `${this.publicBaseUrl}/wiki` : this.wikiUrl(slug);
+    return [{
+      body: `Done 🌿 I ${verb} *${title}*${plan.change_summary ? `: ${plan.change_summary}` : '.'}\n\n${link}\n\nIf I misunderstood, reply “undo”.`,
+    }];
+  }
+
+  async handleWikiChange({ body, classified, wikiSession, senderPhone, profileName, messageSid, conversationKey }) {
+    if (!this.wikiStore) return null;
+    const context = wikiSession?.context ?? {};
+    const contextualSlugs = Array.isArray(context.pageSlugs) ? context.pageSlugs : [];
+    let pages = [];
+    for (const slug of contextualSlugs.slice(0, 4)) {
+      const page = await this.wikiStore.getPage(slug);
+      if (page) pages.push(page);
+    }
+    if (pages.length === 0) pages = await this.wikiStore.searchPages(body, classified?.wiki_search_terms, 4);
+    const combinedMessage = context.mode === 'awaiting_change_details' && context.originalMessage
+      ? `${context.originalMessage}\nAdditional detail from the user: ${body}`
+      : body;
+    const plan = await this.ai?.planWikiChange?.({ message: combinedMessage, pages, context });
+    if (!plan || plan.needs_clarification || plan.action === 'none') {
+      const question = String(plan?.clarification_question || 'Which wiki page should I change, and what should it say?').trim();
+      await this.wikiStore.setSession({
+        conversationKey,
+        context: {
+          mode: 'awaiting_change_details',
+          originalMessage: combinedMessage,
+          pageSlugs: pages.map((page) => page.slug),
+        },
+      });
+      return [{ body: question }];
+    }
+    if (plan.action === 'delete' && context.mode !== 'confirm_delete') {
+      await this.wikiStore.setSession({
+        conversationKey,
+        context: { mode: 'confirm_delete', plan, pageSlugs: pages.map((page) => page.slug) },
+      });
+      return [{ body: `Do you mean delete the entire *${plan.title || plan.target_slug}* wiki page? Reply “yes” to delete it.` }];
+    }
+    return this.applyWikiPlan({ plan, pages, senderPhone, profileName, messageSid, conversationKey });
+  }
+
+  async addContacts(cards, conversationKey, audit = null) {
     const results = [];
     for (const card of cards.slice(0, 10)) {
-      results.push(await this.store.createOrGetContact(card));
+      results.push(await this.store.createOrGetContact(card, audit));
     }
     if (results.length === 0) {
       return [{ body: 'I received a contact file but couldn’t find a valid phone number in it. Try sending the number as text.' }];
@@ -396,7 +552,7 @@ export class MachuBot {
     return [{ body: `Thank you 🌿 Your ${review.rating}-star review is now in the directory.` }];
   }
 
-  async saveDescription({ conversation, body, conversationKey }) {
+  async saveDescription({ conversation, body, conversationKey, audit }) {
     const description = String(body ?? '').trim().slice(0, DESCRIPTION_MAX_LENGTH);
     const contact = await this.store.getContact(conversation.contact_id);
     if (!contact) {
@@ -418,7 +574,7 @@ export class MachuBot {
     const updated = await this.store.updateContact(contact.id, {
       subtitle: description,
       ...(confident ? { category: inference.category } : {}),
-    });
+    }, audit);
 
     if (!confident) {
       await this.store.setConversation({
@@ -453,6 +609,9 @@ export class MachuBot {
     const conversationKey = createConversationKey(senderPhone || params.From, this.signingSecret);
     const conversation = await this.store.getConversation(conversationKey);
     const searchSession = await this.store.getSearchSession?.(conversationKey);
+    const wikiSession = await this.wikiStore?.getSession?.(conversationKey);
+    const messageSid = String(params.MessageSid ?? '').trim();
+    const audit = this.auditFromMessage({ senderPhone, profileName, messageSid });
 
     const mediaCount = Math.min(Number(params.NumMedia || 0), 10);
     const vcardIndexes = Array.from({ length: mediaCount }, (_, index) => index).filter((index) =>
@@ -464,7 +623,45 @@ export class MachuBot {
         const vcard = await this.fetchMedia(params[`MediaUrl${index}`]);
         cards.push(...parseVcards(vcard));
       }
-      return this.addContacts(cards, conversationKey);
+      return this.addContacts(cards, conversationKey, audit);
+    }
+
+    if (requestsUndo(body) && this.wikiStore) {
+      try {
+        const undone = await this.wikiStore.undoLastChange({
+          requesterWhatsapp: senderPhone,
+          requesterName: profileName,
+          twilioMessageSid: messageSid,
+        });
+        await this.wikiStore.setSession({
+          conversationKey,
+          context: { mode: 'reading', pageSlugs: undone?.version >= 0 && undone?.slug ? [undone.slug] : [] },
+        });
+        const removedNewPage = Number(undone?.version) < 0;
+        return [{ body: removedNewPage
+          ? `Undone 🌿 I removed the new *${undone?.title || 'wiki'}* page.`
+          : `Undone 🌿 I restored *${undone?.title || 'the wiki page'}*.${undone?.slug ? `\n\n${this.wikiUrl(undone.slug)}` : ''}` }];
+      } catch (error) {
+        return [{ body: error?.code === 'P0002'
+          ? 'I couldn’t find a recent wiki change from you to undo.'
+          : 'I couldn’t undo that because the page has changed since your edit. Its history is still available on the website.' }];
+      }
+    }
+
+    if (wikiSession?.context?.mode === 'confirm_delete' && confirms(body)) {
+      const pages = [];
+      for (const slug of wikiSession.context.pageSlugs ?? []) {
+        const page = await this.wikiStore.getPage(slug);
+        if (page) pages.push(page);
+      }
+      return this.applyWikiPlan({
+        plan: wikiSession.context.plan,
+        pages,
+        senderPhone,
+        profileName,
+        messageSid,
+        conversationKey,
+      });
     }
 
     if (searchSession && asksForMoreResults(body)) {
@@ -482,7 +679,7 @@ export class MachuBot {
     }
 
     const explicitAdd = detectAddRequest(body, senderPhone, profileName);
-    if (explicitAdd) return this.addContacts([explicitAdd], conversationKey);
+    if (explicitAdd) return this.addContacts([explicitAdd], conversationKey, audit);
 
     const review = parseReview(body);
     if (review && conversation?.contact_id) {
@@ -492,7 +689,7 @@ export class MachuBot {
         senderPhone,
         profileName,
         conversationKey,
-        messageSid: String(params.MessageSid ?? '').trim(),
+        messageSid,
       });
     }
 
@@ -516,12 +713,12 @@ export class MachuBot {
         await this.store.clearConversation(conversationKey);
         return [{ body: 'All good 🌿 The contact is already in the directory.' }];
       }
-      if (body) return this.saveDescription({ conversation, body, conversationKey });
+      if (body) return this.saveDescription({ conversation, body, conversationKey, audit });
     }
 
     if (conversation?.phase === 'awaiting_category') {
       if (isSkip(body)) {
-        const contact = await this.store.updateContact(conversation.contact_id, { category: 'Service' });
+        const contact = await this.store.updateContact(conversation.contact_id, { category: 'Service' }, audit);
         await this.store.setConversation({
           conversationKey,
           contactId: contact.id,
@@ -533,7 +730,7 @@ export class MachuBot {
       }
       const category = parseCategoryReply(body);
       if (category) {
-        const contact = await this.store.updateContact(conversation.contact_id, { category });
+        const contact = await this.store.updateContact(conversation.contact_id, { category }, audit);
         await this.store.setConversation({
           conversationKey,
           contactId: contact.id,
@@ -549,7 +746,7 @@ export class MachuBot {
     if (isHelp(body) || !body) return [{ body: HELP_MESSAGE }];
 
     const classified = await this.ai?.classifyMessage?.(body);
-    if (classified?.intent === 'search_directory' && DIRECTORY_CATEGORIES.includes(classified.category)) {
+    if (classified?.intent === 'search_directory') {
       const searchResult = await this.planAndRunSearch(body, heuristicSearchPlan, conversationKey);
       if (searchResult) return searchResult;
       return [{
@@ -562,8 +759,26 @@ export class MachuBot {
         return this.addContacts([{
           phone,
           name: String(classified.name || profileName || phone).trim(),
-        }], conversationKey);
+        }], conversationKey, audit);
       }
+    }
+    if (classified?.intent === 'wiki_question') {
+      if (looksStronglyLikeProviderRequest(body)) {
+        return [{ body: 'Are you looking for a person or service you can contact, or for general information from the community wiki?' }];
+      }
+      return this.answerWikiQuestion(body, classified.wiki_search_terms, conversationKey);
+    }
+    if (classified?.intent === 'wiki_change' || requestsWikiChange(body)
+      || wikiSession?.context?.mode === 'awaiting_change_details') {
+      return this.handleWikiChange({
+        body,
+        classified,
+        wikiSession,
+        senderPhone,
+        profileName,
+        messageSid,
+        conversationKey,
+      });
     }
     if (classified?.intent === 'help') return [{ body: HELP_MESSAGE }];
 

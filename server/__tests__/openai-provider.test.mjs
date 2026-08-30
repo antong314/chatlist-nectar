@@ -66,3 +66,36 @@ test('builds a specific multilingual directory search plan', async () => {
   assert.equal(plan.broad_category, false);
   assert.deepEqual(plan.service_terms, ['massage', 'masajista', 'physiotherapy']);
 });
+
+test('uses a separate grounded schema for wiki answers', async () => {
+  let requestBody;
+  const provider = new OpenAIProvider({
+    apiKey: 'test-key',
+    fetchImpl: async (_url, options) => {
+      requestBody = JSON.parse(options.body);
+      return new Response(JSON.stringify({
+        output: [{
+          type: 'message',
+          content: [{
+            type: 'output_text',
+            text: JSON.stringify({
+              answered: true,
+              answer: 'The market is on Thursday.',
+              source_slugs: ['food-stores'],
+              high_stakes: false,
+            }),
+          }],
+        }],
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    },
+  });
+
+  const answer = await provider.answerWikiQuestion({
+    question: 'When is the market?',
+    pages: [{ slug: 'food-stores', title: 'Food Stores', plainText: 'Thursday' }],
+  });
+
+  assert.equal(requestBody.text.format.name, 'wiki_answer');
+  assert.match(requestBody.instructions, /only the supplied community wiki pages/i);
+  assert.deepEqual(answer.source_slugs, ['food-stores']);
+});

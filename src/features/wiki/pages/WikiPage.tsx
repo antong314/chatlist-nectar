@@ -8,6 +8,7 @@ import WikiHistoryDialog from '@/features/wiki/components/WikiHistoryDialog';
 import { useWikiPage } from '@/features/wiki/hooks';
 import { trackWikiPageView } from '@/utils/analytics';
 import { trackEvent } from '@/utils/analytics';
+import { WhatsappApprovalPanel } from '@/features/verification';
 
 const WikiPage: React.FC = () => {
   const { pageId = 'welcome' } = useParams();
@@ -48,7 +49,13 @@ const WikiPage: React.FC = () => {
     toggleVersionHistory,
     selectVersion,
     handleRestoreVersion,
-    fetchVersionHistory
+    fetchVersionHistory,
+    verificationChallenge,
+    verificationError,
+    whatsappAutoLaunchFailed,
+    isStartingVerification,
+    completeApprovedWikiWrite,
+    resetWikiVerification,
   } = useWikiPage(pageId);
   
   // Track page view when the page loads and data is available
@@ -196,6 +203,7 @@ const WikiPage: React.FC = () => {
             toggleVersionHistory();
             trackEvent('Wiki', 'View History', page.title);
           }}
+          isSubmitting={isStartingVerification || Boolean(verificationChallenge)}
         />
         
         <div className="relative" ref={editorContainerRef}>
@@ -209,6 +217,19 @@ const WikiPage: React.FC = () => {
             autoFocus={isEditing}
           />
         </div>
+        {verificationChallenge && (
+          <div className="mt-4">
+            <WhatsappApprovalPanel
+              autoLaunchFailed={whatsappAutoLaunchFailed}
+              challenge={verificationChallenge}
+              onApproved={completeApprovedWikiWrite}
+              onReset={resetWikiVerification}
+            />
+          </div>
+        )}
+        {verificationError && !verificationChallenge && (
+          <p className="mt-3 text-sm font-medium text-red-700" role="alert">{verificationError}</p>
+        )}
       </div>
       
       <DeletePageDialog

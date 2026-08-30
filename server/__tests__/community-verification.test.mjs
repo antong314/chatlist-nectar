@@ -337,6 +337,53 @@ test('normalizes and binds provider edits to the verification action payload', a
   });
 });
 
+test('normalizes a wiki edit into the signed verification payload', async () => {
+  let insertedAction;
+  const results = [
+    { count: 0, error: null },
+    { data: { id: actionId, expires_at: '2026-08-30T15:10:00.000Z' }, error: null },
+  ];
+  const service = new CommunityVerificationService({
+    supabase: {
+      from() {
+        const chain = builder(results.shift());
+        chain.insert = (value) => {
+          insertedAction = value;
+          return chain;
+        };
+        return chain;
+      },
+    },
+    signingSecret: 'test-signing-secret',
+    whatsappFrom: '+15204473525',
+  });
+  const content = JSON.stringify([{
+    type: 'paragraph',
+    content: [{ type: 'text', text: 'The market begins at 3 PM.' }],
+  }]);
+
+  await service.start({
+    actionType: 'wiki_update',
+    payload: {
+      slug: 'food-stores',
+      title: ' Food Stores ',
+      category: ' Shopping ',
+      content,
+      expectedVersion: 3,
+    },
+    requestIp: '192.0.2.4',
+  });
+
+  assert.equal(insertedAction.action_type, 'wiki_update');
+  assert.deepEqual(insertedAction.payload, {
+    slug: 'food-stores',
+    title: 'Food Stores',
+    category: 'Shopping',
+    content,
+    expectedVersion: 3,
+  });
+});
+
 test('completes a verified provider write through the service-only RPC', async () => {
   const imagePath = `${actionId}/11111111-1111-4111-8111-111111111111.jpg`;
   let rpcArguments;
@@ -393,6 +440,63 @@ test('completes a verified provider write through the service-only RPC', async (
   assert.equal(result.actionType, 'provider_create');
   assert.equal(result.provider.id, providerId);
   assert.equal('previous_image_url' in result.provider, false);
+});
+
+test('completes a verified wiki write atomically through the service-only RPC', async () => {
+  let rpcArguments;
+  const service = new CommunityVerificationService({
+    supabase: {
+      rpc: async (name, args) => {
+        assert.equal(name, 'complete_verified_wiki_write');
+        rpcArguments = args;
+        return {
+          data: {
+            id: providerId,
+            slug: 'food-stores',
+            title: 'Food Stores',
+            content: '[]',
+            category: 'Shopping',
+            version: 4,
+            event_id: actionId,
+          },
+          error: null,
+        };
+      },
+    },
+    signingSecret: 'test-signing-secret',
+    whatsappFrom: '+15204473525',
+  });
+  service.loadAction = async () => ({
+    id: actionId,
+    action_type: 'wiki_update',
+    status: 'verified',
+    consumed_at: null,
+    requester_whatsapp: '+50687184331',
+    payload: { slug: 'food-stores' },
+  });
+
+  const result = await service.completeWikiWrite({
+    actionId,
+    actionToken: 'verification_action_token_12345678901234567890',
+  });
+
+  assert.deepEqual(rpcArguments, { p_action_id: actionId });
+  assert.equal(result.actionType, 'wiki_update');
+  assert.equal(result.page.slug, 'food-stores');
+
+  service.loadAction = async () => ({
+    id: actionId,
+    action_type: 'wiki_update',
+    status: 'completed',
+    consumed_at: '2026-08-30T15:05:00.000Z',
+    requester_whatsapp: '+50687184331',
+    payload: { slug: 'food-stores' },
+  });
+  const retried = await service.completeWikiWrite({
+    actionId,
+    actionToken: 'verification_action_token_12345678901234567890',
+  });
+  assert.equal(retried.page.slug, 'food-stores');
 });
 
 test('uploads a provider logo only for a verified replacement action', async () => {

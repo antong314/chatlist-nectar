@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { MachuBot, verifyContactMediaSignature } from './bot.mjs';
 import { createVcard, messagesToTwiml } from './domain.mjs';
 import { DirectoryStore } from './directory-store.mjs';
+import { WikiStore } from './wiki-store.mjs';
 import { OpenAIProvider } from './openai-provider.mjs';
 import {
   CommunityVerificationService,
@@ -39,6 +40,7 @@ const verifiedSessionCookie = 'machu_verified_session';
 const verifiedSessionMaxAgeMs = 30 * 24 * 60 * 60 * 1000;
 
 const store = new DirectoryStore();
+const wikiStore = new WikiStore();
 const ai = new OpenAIProvider();
 const adminSupabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -73,7 +75,7 @@ const fetchTwilioMedia = async (url) => {
   }
 };
 
-const bot = new MachuBot({ store, ai, fetchMedia: fetchTwilioMedia, publicBaseUrl, signingSecret });
+const bot = new MachuBot({ store, wikiStore, ai, fetchMedia: fetchTwilioMedia, publicBaseUrl, signingSecret });
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', true);
@@ -151,7 +153,7 @@ app.post(
 
 app.post(
   '/bot/verify/start',
-  express.json({ limit: '16kb', type: 'application/json' }),
+  express.json({ limit: '256kb', type: 'application/json' }),
   verificationRoute(async (request) => {
     const verifiedSession = await communityVerification.getVerifiedSession(
       readCookie(request, verifiedSessionCookie),
@@ -228,6 +230,15 @@ app.post(
   })),
 );
 
+app.post(
+  '/bot/verify/wiki/complete',
+  express.json({ limit: '256kb', type: 'application/json' }),
+  verificationRoute((request) => communityVerification.completeWikiWrite({
+    actionId: request.body?.actionId,
+    actionToken: request.body?.actionToken,
+  })),
+);
+
 app.post('/bot', express.urlencoded({ extended: false, limit: '256kb' }), async (request, response) => {
   try {
     if (validateTwilioSignatures) {
@@ -248,6 +259,9 @@ app.post('/bot', express.urlencoded({ extended: false, limit: '256kb' }), async 
         provider_update: 'provider update',
         provider_delete: 'provider removal',
         provider_review: 'review',
+        wiki_create: 'wiki page',
+        wiki_update: 'wiki update',
+        wiki_delete: 'wiki page deletion',
       };
       let body;
       if (approval.approved) {

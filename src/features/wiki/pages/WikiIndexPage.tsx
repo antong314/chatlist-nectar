@@ -17,6 +17,7 @@ import { useWikiIndex } from '@/features/wiki/hooks';
 import { getCategoryIcon } from '@/features/wiki/utils/categoryIcons';
 import { WikiPage } from '@/features/wiki/types';
 import { trackPageView } from '@/utils/analytics';
+import { WhatsappApprovalPanel } from '@/features/verification';
 
 const formatDate = (dateString?: string) => {
   if (!dateString) return 'Date unavailable';
@@ -80,6 +81,13 @@ const WikiIndexPage: React.FC = () => {
     handlePageClick,
     handleCreatePageClick,
     handleCreatePage,
+    verificationChallenge,
+    verificationError,
+    whatsappAutoLaunchFailed,
+    isLoadingSession,
+    isStartingVerification,
+    completeApprovedCreate,
+    resetCreateVerification,
   } = useWikiIndex();
   const predefinedCategories = categories.map((category) => category.toLowerCase());
   const additionalCategories = [...new Set(
@@ -194,17 +202,33 @@ const WikiIndexPage: React.FC = () => {
                 ))}
               </select>
             </div>
+            {verificationChallenge && (
+              <WhatsappApprovalPanel
+                autoLaunchFailed={whatsappAutoLaunchFailed}
+                challenge={verificationChallenge}
+                onApproved={completeApprovedCreate}
+                onReset={resetCreateVerification}
+              />
+            )}
+            {verificationError && !verificationChallenge && (
+              <p className="text-sm font-medium text-red-700" role="alert">{verificationError}</p>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" className="rounded-xl" onClick={() => setNewPageDialogOpen(false)}>Cancel</Button>
             <Button
               className="rounded-xl bg-[var(--directory-green)] hover:bg-[var(--directory-green-hover)]"
+              disabled={Boolean(verificationChallenge) || isLoadingSession || isStartingVerification}
               onClick={() => handleCreatePage({
                 title: newPageTitle,
                 category: selectedCategory || 'Uncategorized',
               })}
             >
-              Create page
+              {isLoadingSession
+                ? 'Checking verification…'
+                : isStartingVerification
+                  ? 'Starting…'
+                  : 'Create page'}
             </Button>
           </DialogFooter>
         </DialogContent>

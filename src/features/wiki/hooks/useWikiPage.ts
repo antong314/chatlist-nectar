@@ -4,17 +4,23 @@ import { useToast } from '@/components/ui/use-toast';
 import { WikiPage, WikiPageVersion } from '@/features/wiki/types';
 import { 
   getWikiPage, 
-  updateWikiPage, 
-  deleteWikiPage, 
   getWikiCategories, 
-  getWikiPageVersions,
-  restoreWikiPageVersion
+  getWikiPageVersions
 } from '@/features/wiki/api';
+import {
+  completeVerifiedWikiWrite,
+  prepareWhatsappLaunch,
+  startWhatsappVerification,
+  useVerifiedWhatsappSession,
+  type VerificationActionType,
+  type WhatsappVerificationChallenge,
+} from '@/features/verification';
 
 export const useWikiPage = (slug: string) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  const { session, isLoading: isLoadingSession, refresh: refreshVerifiedSession } = useVerifiedWhatsappSession();
   
   // Check if this is a new page from navigation state
   const isNewPage = location.state?.isNewPage === true;
@@ -36,6 +42,11 @@ export const useWikiPage = (slug: string) => {
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const [selectedVersion, setSelectedVersion] = useState<WikiPageVersion | null>(null);
   const [restoringVersion, setRestoringVersion] = useState(false);
+  const [verificationChallenge, setVerificationChallenge] = useState<WhatsappVerificationChallenge | null>(null);
+  const [verificationAction, setVerificationAction] = useState<VerificationActionType | null>(null);
+  const [verificationError, setVerificationError] = useState('');
+  const [whatsappAutoLaunchFailed, setWhatsappAutoLaunchFailed] = useState(false);
+  const [isStartingVerification, setIsStartingVerification] = useState(false);
   
   // Fetch page when slug changes
   useEffect(() => {
@@ -92,6 +103,54 @@ export const useWikiPage = (slug: string) => {
     }, 100);
   };
   
+  const finishVerifiedWrite = async (challenge: WhatsappVerificationChallenge, action: VerificationActionType) => {
+    await completeVerifiedWikiWrite(challenge);
+    await refreshVerifiedSession();
+    setVerificationChallenge(null);
+    setVerificationAction(null);
+    setVerificationError('');
+    document.dispatchEvent(new Event('wiki-data-changed'));
+    if (action === 'wiki_delete') {
+      toast({ title: 'Page deleted', description: 'The page was deleted and the change was recorded.' });
+      navigate('/wiki');
+      return;
+    }
+    const refreshedPage = await getWikiPage(slug);
+    setPage(refreshedPage);
+    setEditedContent(refreshedPage.content || '');
+    setEditedTitle(refreshedPage.title);
+    setEditedCategory(refreshedPage.category || 'Uncategorized');
+    setIsEditing(false);
+    setVersionHistoryOpen(false);
+    setVersions([]);
+    toast({ title: action === 'wiki_update' ? 'Page updated' : 'Page saved', description: 'Your change was saved and attributed to your verified WhatsApp number.' });
+  };
+
+  const beginVerifiedWrite = async (actionType: VerificationActionType, payload: Record<string, unknown>) => {
+    if (verificationChallenge || isLoadingSession || isStartingVerification) return;
+    const whatsappLaunch = session.authenticated ? null : prepareWhatsappLaunch();
+    setIsStartingVerification(true);
+    setVerificationError('');
+    try {
+      const challenge = await startWhatsappVerification({ actionType, payload });
+      setVerificationAction(actionType);
+      if (challenge.requiresWhatsappApproval) {
+        setWhatsappAutoLaunchFailed(!whatsappLaunch?.open(challenge.whatsappUrl));
+        setVerificationChallenge(challenge);
+      } else {
+        whatsappLaunch?.cancel();
+        await finishVerifiedWrite(challenge, actionType);
+      }
+    } catch (writeError) {
+      whatsappLaunch?.cancel();
+      const message = writeError instanceof Error ? writeError.message : 'The wiki change could not be saved.';
+      setVerificationError(message);
+      throw writeError;
+    } finally {
+      setIsStartingVerification(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!page) {
       console.error('Cannot save: page is null');
@@ -120,20 +179,12 @@ export const useWikiPage = (slug: string) => {
         category: editedCategory || 'Uncategorized'
       };
       
-      const updatedPage = await updateWikiPage(page.slug, pageUpdate);
-      
-      // Update local state with the returned page
-      setPage(updatedPage);
-      setIsEditing(false);
-      
-      // Dispatch custom event to notify other components that wiki data has changed
-      const wikiDataChangedEvent = new Event('wiki-data-changed');
-      document.dispatchEvent(wikiDataChangedEvent);
-      console.log('Dispatched wiki-data-changed event after updating page');
-      
-      toast({
-        title: "Page updated",
-        description: "Your changes have been saved successfully"
+      await beginVerifiedWrite('wiki_update', {
+        slug: page.slug,
+        title: pageUpdate.title,
+        content: pageUpdate.content,
+        category: pageUpdate.category,
+        expectedVersion: page.version,
       });
     } catch (err) {
       console.error('Error saving wiki page:', err);
@@ -153,18 +204,12 @@ export const useWikiPage = (slug: string) => {
     if (!page) return;
     
     try {
-      await deleteWikiPage(page.slug);
-      
-      // Dispatch custom event to notify other components that wiki data has changed
-      const wikiDataChangedEvent = new Event('wiki-data-changed');
-      document.dispatchEvent(wikiDataChangedEvent);
-      console.log('Dispatched wiki-data-changed event after deleting page');
-      
-      toast({
-        title: "Page deleted",
-        description: "The page has been deleted successfully"
+      await beginVerifiedWrite('wiki_delete', {
+        slug: page.slug,
+        title: page.title,
+        category: page.category || 'Uncategorized',
+        expectedVersion: page.version,
       });
-      navigate('/wiki');
     } catch (err) {
       console.error('Error deleting wiki page:', err);
       toast({
@@ -230,25 +275,15 @@ export const useWikiPage = (slug: string) => {
     
     setRestoringVersion(true);
     try {
-      const restoredPage = await restoreWikiPageVersion(slug, versionToRestore);
-      
-      // Update the current page with the restored content
-      setPage(restoredPage);
-      
-      // Refresh the version history
-      await fetchVersionHistory();
-      
-      // Dispatch custom event to notify other components that wiki data has changed
-      const wikiDataChangedEvent = new Event('wiki-data-changed');
-      document.dispatchEvent(wikiDataChangedEvent);
-      
-      toast({
-        title: 'Version restored',
-        description: `Page has been restored to version ${versionToRestore}.`,
+      const version = versions.find((candidate) => candidate.version === versionToRestore);
+      if (!version || !page) throw new Error('That wiki version is no longer available.');
+      await beginVerifiedWrite('wiki_update', {
+        slug: page.slug,
+        title: version.title,
+        content: version.content,
+        category: version.category || 'Uncategorized',
+        expectedVersion: page.version,
       });
-      
-      // Close the version history dialog
-      setVersionHistoryOpen(false);
     } catch (err) {
       console.error('Failed to restore version:', err);
       toast({
@@ -296,6 +331,21 @@ export const useWikiPage = (slug: string) => {
     toggleVersionHistory,
     selectVersion,
     handleRestoreVersion,
-    fetchVersionHistory
+    fetchVersionHistory,
+    verificationChallenge,
+    verificationError,
+    whatsappAutoLaunchFailed,
+    isLoadingSession,
+    isStartingVerification,
+    completeApprovedWikiWrite: async () => {
+      if (!verificationChallenge || !verificationAction) return;
+      await finishVerifiedWrite(verificationChallenge, verificationAction);
+    },
+    resetWikiVerification: () => {
+      setVerificationChallenge(null);
+      setVerificationAction(null);
+      setVerificationError('');
+      setWhatsappAutoLaunchFailed(false);
+    }
   };
 };

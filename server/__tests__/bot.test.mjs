@@ -58,16 +58,77 @@ class MemoryStore {
   async submitReview(review) { this.reviews.push(review); return review; }
 }
 
+class MemoryWikiStore {
+  constructor() {
+    this.pages = [];
+    this.sessions = new Map();
+    this.changes = [];
+  }
+  async getSession(key) { return this.sessions.get(key) ?? null; }
+  async setSession({ conversationKey, context }) { this.sessions.set(conversationKey, { context }); }
+  async clearSession(key) { this.sessions.delete(key); }
+  async getPage(slug) { return this.pages.find((page) => page.slug === slug && page.is_published !== false) ?? null; }
+  async searchPages(_query, terms = [], limit = 4) {
+    const needles = terms.map((term) => String(term).toLowerCase());
+    return this.pages.filter((page) => needles.length === 0
+      || needles.some((term) => `${page.title} ${page.plainText}`.toLowerCase().includes(term))).slice(0, limit);
+  }
+  async applyChange(change) {
+    let page = await this.getPage(change.slug);
+    const before = page ? { ...page } : null;
+    if (change.actionType === 'wiki_create') {
+      page = {
+        id: `wiki-${this.pages.length + 1}`,
+        slug: change.slug,
+        title: change.title,
+        category: change.category,
+        content: change.content,
+        plainText: change.content,
+        version: 0,
+        updated_at: '2026-08-30T00:00:00Z',
+        is_published: true,
+      };
+      this.pages.push(page);
+    } else if (change.actionType === 'wiki_delete') {
+      page.is_published = false;
+    } else {
+      Object.assign(page, {
+        title: change.title,
+        category: change.category,
+        content: change.content,
+        plainText: change.content,
+        version: page.version + 1,
+      });
+    }
+    const event = { ...change, before, after: page ? { ...page } : null, event_id: `event-${this.changes.length + 1}` };
+    this.changes.push(event);
+    return { ...page, event_id: event.event_id };
+  }
+  async undoLastChange({ requesterWhatsapp }) {
+    const event = [...this.changes].reverse().find((change) => change.requesterWhatsapp === requesterWhatsapp && !change.undone);
+    if (!event) { const error = new Error('none'); error.code = 'P0002'; throw error; }
+    event.undone = true;
+    const page = this.pages.find((candidate) => candidate.slug === event.slug);
+    if (event.before) Object.assign(page, event.before, { is_published: true });
+    else page.is_published = false;
+    return { slug: event.slug, title: event.before?.title || event.title, version: event.before?.version ?? -1 };
+  }
+}
+
 const defaultAi = {
   inferCategory: async () => null,
   classifyMessage: async () => null,
   planDirectorySearch: async () => null,
+  answerWikiQuestion: async () => null,
+  planWikiChange: async () => null,
 };
 
-const createBot = (store = new MemoryStore(), ai = defaultAi) => ({
+const createBot = (store = new MemoryStore(), ai = defaultAi, wikiStore = null) => ({
   store,
+  wikiStore,
   bot: new MachuBot({
     store,
+    wikiStore,
     ai,
     fetchMedia: async () => [
       'BEGIN:VCARD',
@@ -86,6 +147,7 @@ const inbound = (overrides = {}) => ({
   WaId: '15555550123',
   ProfileName: 'Community Member',
   Body: '',
+  MessageSid: `SM${'1'.repeat(32)}`,
   NumMedia: '0',
   ...overrides,
 });
@@ -350,4 +412,119 @@ test('accepts an optional review after contact submission', async () => {
   assert.equal(store.reviews[0].rating, 5);
   assert.equal(store.reviews[0].comment, 'kind and reliable');
   assert.match(response[0].body, /5-star review/);
+});
+
+test('never substitutes wiki prose for a directory provider request', async () => {
+  const wikiStore = new MemoryWikiStore();
+  wikiStore.pages.push({
+    id: 'health', slug: 'health-wellness', title: 'Health & Wellness',
+    plainText: 'General health information', content: '[]', category: 'Local Know-How',
+    version: 1, updated_at: '2026-08-30T00:00:00Z', is_published: true,
+  });
+  let wikiAnswerCalled = false;
+  const ai = {
+    ...defaultAi,
+    classifyMessage: async () => ({
+      intent: 'wiki_question', category: '', phone: '', name: '', wiki_search_terms: ['health'],
+    }),
+    answerWikiQuestion: async () => { wikiAnswerCalled = true; return null; },
+    planDirectorySearch: async () => ({
+      is_search: true,
+      broad_category: false,
+      category: 'Healer',
+      service_label: 'doctors',
+      service_terms: ['doctor', 'physician'],
+      qualifier_groups: [],
+      preference_groups: [],
+    }),
+  };
+  const { bot } = createBot(new MemoryStore(), ai, wikiStore);
+  const messages = await bot.handle(inbound({ Body: 'Can you recommend a doctor?' }));
+  assert.match(messages[0].body, /directory/i);
+  assert.equal(wikiAnswerCalled, false);
+  assert.ok(!messages.some((message) => /Health & Wellness/.test(message.body ?? '')));
+});
+
+test('answers a general local question only from cited wiki pages', async () => {
+  const wikiStore = new MemoryWikiStore();
+  wikiStore.pages.push({
+    id: 'markets', slug: 'food-stores', title: 'Food Stores & Farmers Markets',
+    plainText: 'Feria del Agricultor San Mateo — Thursdays from 2pm to 8pm.',
+    content: '[]', category: 'Shopping', version: 3,
+    updated_at: '2025-03-27T00:00:00Z', is_published: true,
+  });
+  const ai = {
+    ...defaultAi,
+    classifyMessage: async () => ({
+      intent: 'wiki_question', category: '', phone: '', name: '', wiki_search_terms: ['feria', 'market'],
+    }),
+    answerWikiQuestion: async () => ({
+      answered: true,
+      answer: 'The San Mateo farmers market is Thursday from 2 PM to 8 PM.',
+      source_slugs: ['food-stores'],
+      high_stakes: false,
+    }),
+  };
+  const { bot } = createBot(new MemoryStore(), ai, wikiStore);
+  const messages = await bot.handle(inbound({ Body: 'When is the San Mateo farmers market?' }));
+  assert.match(messages[0].body, /Thursday from 2 PM to 8 PM/);
+  assert.match(messages[0].body, /\/wiki\/food-stores/);
+  assert.match(messages[0].body, /updated Mar 27, 2025/);
+});
+
+test('publishes an attributable wiki correction immediately and supports undo', async () => {
+  const wikiStore = new MemoryWikiStore();
+  wikiStore.pages.push({
+    id: 'markets', slug: 'food-stores', title: 'Food Stores & Farmers Markets',
+    plainText: 'San Mateo market is Thursday from 2 PM to 8 PM.',
+    content: JSON.stringify([{ type: 'paragraph', content: [{ type: 'text', text: 'San Mateo market is Thursday from 2 PM to 8 PM.' }] }]),
+    category: 'Shopping', version: 3, updated_at: '2025-03-27T00:00:00Z', is_published: true,
+  });
+  const ai = {
+    ...defaultAi,
+    classifyMessage: async () => ({
+      intent: 'wiki_change', category: '', phone: '', name: '', wiki_search_terms: ['market'],
+    }),
+    planWikiChange: async () => ({
+      action: 'update', operation: 'replace', target_slug: 'food-stores',
+      title: 'Food Stores & Farmers Markets', category: 'Shopping',
+      find_text: 'San Mateo market is Thursday from 2 PM to 8 PM.',
+      replacement_text: 'San Mateo market is Thursday from 3 PM to 8 PM.',
+      append_text: '', change_summary: 'changed the Thursday start time to 3 PM',
+      needs_clarification: false, clarification_question: '',
+    }),
+  };
+  const { bot } = createBot(new MemoryStore(), ai, wikiStore);
+  const changed = await bot.handle(inbound({ Body: 'The market starts at 3 now. Update the wiki.' }));
+  assert.match(changed[0].body, /updated/);
+  assert.match(wikiStore.pages[0].content, /3 PM/);
+  assert.equal(wikiStore.changes[0].requesterWhatsapp, '+15555550123');
+  assert.equal(wikiStore.changes[0].requesterName, 'Community Member');
+  assert.equal(wikiStore.changes[0].twilioMessageSid, `SM${'1'.repeat(32)}`);
+
+  const undone = await bot.handle(inbound({ Body: 'undo', MessageSid: `SM${'2'.repeat(32)}` }));
+  assert.match(undone[0].body, /Undone/);
+  assert.match(wikiStore.pages[0].content, /2 PM/);
+});
+
+test('undoing a newly created wiki page reports that it was removed', async () => {
+  const wikiStore = new MemoryWikiStore();
+  const ai = {
+    ...defaultAi,
+    classifyMessage: async () => ({
+      intent: 'wiki_change', category: '', phone: '', name: '', wiki_search_terms: ['recycling'],
+    }),
+    planWikiChange: async () => ({
+      action: 'create', operation: 'create', target_slug: 'recycling',
+      title: 'Recycling', category: 'Local Know-How', find_text: '', replacement_text: '',
+      append_text: 'Recycling is collected on Tuesdays.', change_summary: 'added recycling information',
+      needs_clarification: false, clarification_question: '',
+    }),
+  };
+  const { bot } = createBot(new MemoryStore(), ai, wikiStore);
+  await bot.handle(inbound({ Body: 'Create a recycling wiki page.' }));
+
+  const undone = await bot.handle(inbound({ Body: 'undo', MessageSid: `SM${'3'.repeat(32)}` }));
+  assert.match(undone[0].body, /removed the new \*Recycling\* page/);
+  assert.doesNotMatch(undone[0].body, /\/wiki\/recycling/);
 });

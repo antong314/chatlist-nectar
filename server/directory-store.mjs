@@ -37,7 +37,19 @@ export class DirectoryStore {
     return data;
   }
 
-  async createOrGetContact({ name, phone }) {
+  async createOrGetContact({ name, phone }, audit = null) {
+    if (audit?.requesterWhatsapp && audit?.twilioMessageSid) {
+      const { data, error } = await this.client.rpc('upsert_inbound_provider_contact', {
+        p_name: name,
+        p_phone: phone,
+        p_requester_whatsapp: audit.requesterWhatsapp,
+        p_requester_name: audit.requesterName || null,
+        p_twilio_message_sid: audit.twilioMessageSid,
+      });
+      if (error) throw databaseError('add the audited contact', error);
+      const row = firstRow(data);
+      return { contact: row, created: Boolean(row?.created) };
+    }
     const existing = await this.findActiveContactByPhone(phone);
     if (existing) return { contact: existing, created: false };
 
@@ -60,10 +72,21 @@ export class DirectoryStore {
     throw databaseError('add the contact', error);
   }
 
-  async updateContact(id, values) {
+  async updateContact(id, values, audit = null) {
     const allowed = Object.fromEntries(
       Object.entries(values).filter(([key]) => ['title', 'subtitle', 'category'].includes(key)),
     );
+    if (audit?.requesterWhatsapp && audit?.twilioMessageSid) {
+      const { data, error } = await this.client.rpc('update_inbound_provider_contact', {
+        p_contact_id: id,
+        p_changes: allowed,
+        p_requester_whatsapp: audit.requesterWhatsapp,
+        p_requester_name: audit.requesterName || null,
+        p_twilio_message_sid: audit.twilioMessageSid,
+      });
+      if (error) throw databaseError('update the audited contact', error);
+      return firstRow(data);
+    }
     const { data, error } = await this.client
       .from('contacts')
       .update(allowed)

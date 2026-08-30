@@ -116,6 +116,16 @@ export const completeVerifiedProviderWrite = async (
   },
 );
 
+export const completeVerifiedWikiWrite = async (
+  challenge: Pick<WhatsappVerificationChallenge, 'actionId' | 'actionToken'>,
+): Promise<VerificationApproval & { page: Record<string, unknown> }> => postJson(
+  '/bot/verify/wiki/complete',
+  {
+    actionId: challenge.actionId,
+    actionToken: challenge.actionToken,
+  },
+);
+
 export const uploadVerifiedProviderLogo = async (
   challenge: Pick<WhatsappVerificationChallenge, 'actionId' | 'actionToken'>,
   file: File,

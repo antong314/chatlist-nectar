@@ -134,6 +134,27 @@ const normalizeActionPayload = (actionType, payload) => {
     return { providerId, rating, comment, reviewerName, imageCount };
   }
 
+  if (actionType === 'wiki_create' || actionType === 'wiki_update' || actionType === 'wiki_delete') {
+    const slug = compactText(payload.slug, 120).toLowerCase();
+    const title = compactText(payload.title, 160);
+    const category = compactText(payload.category ?? 'Uncategorized', 80) || 'Uncategorized';
+    const content = actionType === 'wiki_delete' ? null : String(payload.content ?? '');
+    const expectedVersion = actionType === 'wiki_create' ? null : Number(payload.expectedVersion);
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || !title
+      || (actionType !== 'wiki_delete' && (!content || content.length > 200000))
+      || (actionType !== 'wiki_create' && (!Number.isInteger(expectedVersion) || expectedVersion < 0))) {
+      throw new VerificationHttpError(400, 'Complete the wiki page details.');
+    }
+    if (content) {
+      try {
+        if (!Array.isArray(JSON.parse(content))) throw new Error('not an array');
+      } catch {
+        throw new VerificationHttpError(400, 'The wiki page content is invalid.');
+      }
+    }
+    return { slug, title, category, content, expectedVersion };
+  }
+
   throw new VerificationHttpError(400, 'Choose a valid verification action.');
 };
 
@@ -511,6 +532,30 @@ export class CommunityVerificationService {
     return { status: 'approved', actionType: action.action_type, provider: publicProvider };
   }
 
+  async completeWikiWrite({ actionId, actionToken }) {
+    const action = await this.loadAction(actionId, actionToken);
+    const ready = (action.status === 'verified' && !action.consumed_at)
+      || (action.status === 'completed' && Boolean(action.consumed_at));
+    if (!['wiki_create', 'wiki_update', 'wiki_delete'].includes(action.action_type) || !ready) {
+      throw new VerificationHttpError(409, 'This wiki verification is not ready to complete.');
+    }
+    const { data, error } = await this.supabase.rpc('complete_verified_wiki_write', {
+      p_action_id: action.id,
+    });
+    if (error) {
+      console.error('Verified wiki write completion failed:', error);
+      const conflict = error.code === '40001' || error.message?.includes('changed since');
+      const duplicate = error.code === '23505' || error.message?.includes('already exists');
+      throw new VerificationHttpError(conflict ? 409 : duplicate ? 409 : 400,
+        conflict ? 'This wiki page changed while you were editing. Refresh it and try again.'
+          : duplicate ? 'A wiki page with that title already exists.'
+            : 'The wiki page could not be saved. Please try again.');
+    }
+    const page = firstRow(data);
+    if (!page?.id) throw new VerificationHttpError(500, 'The wiki page could not be saved.');
+    return { status: 'approved', actionType: action.action_type, page };
+  }
+
   async uploadProviderLogo({ actionId, actionToken, contentType, bytes }) {
     const action = await this.loadAction(actionId, actionToken);
     if (!['provider_create', 'provider_update'].includes(action.action_type)
@@ -550,6 +595,9 @@ export class CommunityVerificationService {
       return this.completeReview({ action, imagePaths: [] });
     }
     if (['provider_create', 'provider_update'].includes(action.action_type)) {
+      return { status: 'approved', actionType: action.action_type, requiresCompletion: true };
+    }
+    if (['wiki_create', 'wiki_update', 'wiki_delete'].includes(action.action_type)) {
       return { status: 'approved', actionType: action.action_type, requiresCompletion: true };
     }
     return { status: 'approved', actionType: action.action_type, requiresCompletion: true };

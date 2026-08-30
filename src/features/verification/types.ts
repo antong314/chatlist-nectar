@@ -28,4 +28,7 @@ export type VerificationActionType =
   | 'provider_create'
   | 'provider_update'
   | 'provider_delete'
-  | 'provider_review';
+  | 'provider_review'
+  | 'wiki_create'
+  | 'wiki_update'
+  | 'wiki_delete';

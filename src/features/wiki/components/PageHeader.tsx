@@ -17,6 +17,7 @@ interface PageHeaderProps {
   onTitleChange?: (newTitle: string) => void;
   onCategoryChange?: (category: string) => void;
   onViewHistory?: () => void;
+  isSubmitting?: boolean;
 }
 
 const formatDate = (dateString?: string) => {
@@ -43,6 +44,7 @@ const PageHeader: React.FC<PageHeaderProps> = ({
   onTitleChange,
   onCategoryChange,
   onViewHistory,
+  isSubmitting = false,
 }) => {
   const displayDate = updatedAt ? formatDate(updatedAt) : (lastEdited || 'Not available');
   const CategoryIcon = getCategoryIcon(category || 'Uncategorized');
@@ -95,6 +97,7 @@ const PageHeader: React.FC<PageHeaderProps> = ({
             <Button
               size="sm"
               className="rounded-xl bg-[var(--directory-green)] hover:bg-[var(--directory-green-hover)]"
+              disabled={isSubmitting}
               onClick={onSave}
             >
               <Save className="mr-1.5 h-4 w-4" />
@@ -116,6 +119,7 @@ const PageHeader: React.FC<PageHeaderProps> = ({
                 variant="ghost"
                 size="sm"
                 className="rounded-xl text-stone-500 hover:bg-red-50 hover:text-red-700"
+                disabled={isSubmitting}
                 onClick={onDelete}
               >
                 <Trash2 className="mr-1.5 h-4 w-4" />
