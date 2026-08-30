@@ -415,7 +415,7 @@ export class MachuBot {
       ? `${context.originalMessage}\nAdditional detail from the user: ${body}`
       : body;
     const plan = await this.ai?.planWikiChange?.({ message: combinedMessage, pages, context });
-    const requestedSubject = String(plan?.subject_name || extractListAdditionSubject(body)).trim();
+    const requestedSubject = String(extractListAdditionSubject(body) || plan?.subject_name).trim();
     const existingSubject = requestedSubject ? findExistingWikiSubject(pages, requestedSubject) : null;
     const recommendationFact = recommendationFactFromQuestion(context.lastQuestion, plan?.proposed_fact);
     if (existingSubject && recommendationFact && /\bto\s+(?:that|the|this)\s+list\b/i.test(body)) {

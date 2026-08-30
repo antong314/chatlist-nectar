@@ -546,7 +546,7 @@ test('recognizes an existing restaurant in a conversational list suggestion and 
     }),
     planWikiChange: async () => ({
       action: 'none', operation: 'none', target_slug: 'restaurants',
-      title: 'Restaurants', category: 'Shopping', subject_name: 'Poza Blanca',
+      title: 'Restaurants', category: 'Shopping', subject_name: 'La Poza Blanca',
       proposed_fact: '', anchor_text: 'La Poza Blanca', find_text: '', replacement_text: '',
       append_text: '', change_summary: 'Poza Blanca is already listed.',
       needs_clarification: false, clarification_question: '',
