@@ -19,7 +19,8 @@ const RETENTION_DAYS = 14;
 const CHUNK_MAX_MESSAGES = 300;
 const CHUNK_MAX_CHARS = 60_000;
 const CONTEXT_MESSAGES = 15;
-const CUTOFF_DELAY_MS = 2 * 60 * 1000;
+// Leaves in-flight listener writes for the next run.
+const CUTOFF_DELAY_MS = 15 * 1000;
 const ADMIN_WINDOW_MS = 23 * 60 * 60 * 1000;
 const PENDING_SUMMARY_MS = 3 * 24 * 60 * 60 * 1000;
 const LISTENER_STALE_MS = 15 * 60 * 1000;
@@ -326,7 +327,9 @@ export class GroupDigest {
         error: cleanText(error?.message || error, 500),
       }).catch((finishError) => this.log.error('Unable to record digest failure:', finishError));
     }
-    await this.deliverSummary(runId).catch((error) => this.log.error('Unable to send digest summary:', error));
+    // A run an administrator started always reports back, even when quiet.
+    await this.deliverSummary(runId, { always: trigger === 'manual' })
+      .catch((error) => this.log.error('Unable to send digest summary:', error));
     return { runId, stats };
   }
 
@@ -610,6 +613,7 @@ export class GroupDigest {
       lines.push('', `Read ${stats.messages ?? 0} new message${stats.messages === 1 ? '' : 's'} from ${stats.groups ?? 0} of ${enabledGroups} enabled group${enabledGroups === 1 ? '' : 's'}.`);
     }
     if (run.mode === 'shadow') lines.push('Trial mode: nothing was published automatically. Reply “approve N” to publish an item.');
+    if (enabledGroups > 0 && items.length === 0 && run.status !== 'failed') lines.push('', 'Nothing new for the directory or wiki.');
 
     const line = (item) => `#${item.ref} ${item.title}${item.detail ? ` — ${item.detail}` : ''}`;
     const section = (title, list, format = line) => {
@@ -666,10 +670,10 @@ export class GroupDigest {
   // Sends the full summary inside WhatsApp's customer-service window, or the
   // approved template outside it. The full summary is otherwise delivered
   // with the administrator's next message to Machu.
-  async deliverSummary(runId) {
+  async deliverSummary(runId, { always = false } = {}) {
     const summary = await this.summaryFor(runId);
     if (!summary) return;
-    if (!summary.noteworthy) {
+    if (!summary.noteworthy && !always) {
       await this.store.markSummarySent(runId);
       return;
     }

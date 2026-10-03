@@ -458,3 +458,27 @@ test('TwilioNotifier sends text and template messages through the REST API', asy
   assert.equal(second.get('ContentVariables'), '{"1":"2"}');
   assert.equal(requests[0].request.headers.Authorization, `Basic ${Buffer.from('AC123:token').toString('base64')}`);
 });
+
+test('a manual run includes messages from moments ago and always replies', async () => {
+  const fresh = message('F1', 'Carlos fixed our wiring, 8888-1234', { received_at: new Date(NOW.getTime() - 30_000).toISOString() });
+  const { digest, store, notifier, ai } = createDigest({
+    ai: fakeAi({ contacts: [], wiki_facts: [] }),
+    storeOptions: { messages: [fresh] },
+  });
+  await store.touchAdmin(ADMIN);
+  await digest.run({ trigger: 'manual' });
+  assert.equal(ai.calls.length, 1, 'a 30-second-old message is digested');
+  assert.match(notifier.sent[0].body, /Read 1 new message/);
+  assert.match(notifier.sent[0].body, /Nothing new for the directory or wiki/);
+  assert.ok(store.runs[0].summary_sent_at);
+});
+
+test('a quiet scheduled run stays silent', async () => {
+  const { digest, store, notifier } = createDigest({
+    ai: fakeAi({ contacts: [], wiki_facts: [] }),
+    storeOptions: { messages: [] },
+  });
+  await store.touchAdmin(ADMIN);
+  await digest.runIfDue();
+  assert.equal(notifier.sent.length, 0);
+});
