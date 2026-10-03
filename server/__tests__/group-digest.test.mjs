@@ -91,6 +91,9 @@ class MemoryDigestStore {
   }
   async getItemByRef(ref) { const row = this.items.find((item) => item.ref === ref); return row ? { ...row } : null; }
   async listItems(runId) { return this.items.filter((item) => item.run_id === runId).map((item) => ({ ...item })); }
+  async listPendingItems() {
+    return this.items.filter((item) => ['proposed', 'needs_review'].includes(item.status)).map((item) => ({ ...item }));
+  }
   async undoItem(id, admin) {
     const row = this.items.find((item) => item.id === id);
     if (row.contact_id === 'locked') {
@@ -490,4 +493,21 @@ test('reply hints use the summary’s own item numbers', async () => {
   const ref = store.items[0].ref;
   assert.match(notifier.sent.at(-1).body, new RegExp(`Reply “approve ${ref}” to publish it, or “skip ${ref}” to dismiss it\\.`));
   assert.doesNotMatch(notifier.sent.at(-1).body, /undo 12|approve 16/);
+});
+
+test('undecided items carry into later summaries and approve all', async () => {
+  const { digest, store, notifier, directory } = createDigest({ mode: 'shadow', ai: fakeAi({ contacts: [extraction.contacts[0]], wiki_facts: [] }) });
+  await store.touchAdmin(ADMIN);
+  await digest.run({ trigger: 'manual' });
+  const [first] = store.items;
+  await digest.run({ trigger: 'manual' });
+  const second = notifier.sent.at(-1).body;
+  assert.match(second, /Read 0 new messages/);
+  assert.match(second, new RegExp(`Still waiting for your decision \\(from earlier digests\\):\\n#${first.ref} José — Plumbing`));
+  assert.match(second, new RegExp(`Reply “approve ${first.ref}” to publish it`));
+
+  await digest.handleAdminMessage({ senderPhone: ADMIN, body: 'approve all' });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(store.items[0].status, 'applied');
+  assert.equal(directory.contacts.length, 1);
 });

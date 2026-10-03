@@ -24,6 +24,7 @@ const CUTOFF_DELAY_MS = 15 * 1000;
 const ADMIN_WINDOW_MS = 23 * 60 * 60 * 1000;
 const PENDING_SUMMARY_MS = 3 * 24 * 60 * 60 * 1000;
 const LISTENER_STALE_MS = 15 * 60 * 1000;
+const PENDING_REVIEW_MS = 14 * 24 * 60 * 60 * 1000;
 const SUMMARY_MESSAGE_LIMIT = 1500;
 const EVIDENCE_TEXT_LIMIT = 280;
 const PHONE_PATTERN = /(?:\+|00)?\d[\d\s().-]{6,}\d/g;
@@ -602,7 +603,7 @@ export class GroupDigest {
     return '';
   }
 
-  buildSummary({ run, items, listener, groups }) {
+  buildSummary({ run, items, listener, groups, earlierPending = [] }) {
     const stats = run.stats ?? {};
     const lines = [`🌿 Machu group digest · ${formatDay(run.run_date)}`];
     if (run.status === 'failed') lines.push('', `The digest couldn’t finish: ${run.error || 'unknown error'}. It will try again.`);
@@ -631,13 +632,14 @@ export class GroupDigest {
       (item) => `${line(item)}${item.reason ? ` (${item.reason.toLowerCase()})` : ''}`);
     section('Couldn’t apply:', by((item) => item.status === 'failed'),
       (item) => `#${item.ref} ${item.title}${item.reason ? ` — ${item.reason}` : ''}`);
+    section('Still waiting for your decision (from earlier digests):', earlierPending);
     const noPhone = by((item) => item.status === 'skipped' && item.reason === 'No phone number in the messages');
     if (noPhone.length > 0) {
       lines.push('', `Mentioned without a phone number: ${noPhone.slice(0, 10).map((item) => item.title).join('; ')}${noPhone.length > 10 ? '; …' : ''}`);
     }
     const otherSkipped = by((item) => item.status === 'skipped').length - noPhone.length;
     if (otherSkipped > 0) lines.push('', `Skipped ${otherSkipped} other item${otherSkipped === 1 ? '' : 's'} (already listed, not services, already in the wiki, or time-sensitive).`);
-    const hint = this.commandHint(items);
+    const hint = this.commandHint([...items, ...earlierPending]);
     if (hint) lines.push('', hint);
     const warning = this.listenerWarning(listener);
     if (warning) lines.push('', warning);
@@ -666,20 +668,36 @@ export class GroupDigest {
       this.store.listGroups(),
     ]);
     if (!run) return null;
+    const earlierPending = (await this.pendingItems()).filter((item) => item.run_id !== runId);
     const noteworthy = run.status === 'failed'
       || items.some((item) => item.status !== 'skipped')
       || Boolean(this.listenerWarning(listener))
       || !groups.some((group) => group.enabled);
-    return { run, items, listener, groups, noteworthy, messages: this.buildSummary({ run, items, listener, groups }) };
+    return {
+      run,
+      items,
+      listener,
+      groups,
+      earlierPending,
+      noteworthy,
+      messages: this.buildSummary({ run, items, listener, groups, earlierPending }),
+    };
   }
 
-  templateVariables(items) {
+  templateVariables(items, earlierPending = []) {
     const applied = items.filter((item) => item.status === 'applied');
+    const pending = items.filter((item) => ['proposed', 'needs_review'].includes(item.status));
     return {
       1: String(applied.filter((item) => item.kind === 'contact').length),
       2: String(applied.filter((item) => item.kind === 'wiki').length),
-      3: String(items.filter((item) => ['proposed', 'needs_review'].includes(item.status)).length),
+      3: String(pending.length + earlierPending.length),
     };
+  }
+
+  // Undecided items from recent digests, oldest first.
+  async pendingItems() {
+    const since = new Date(this.now().getTime() - PENDING_REVIEW_MS).toISOString();
+    return this.store.listPendingItems({ since });
   }
 
   // Sends the full summary inside WhatsApp's customer-service window, or the
@@ -703,7 +721,7 @@ export class GroupDigest {
         await this.notifier.send({
           to: admin,
           contentSid: this.templateSid,
-          contentVariables: this.templateVariables(summary.items),
+          contentVariables: this.templateVariables(summary.items, summary.earlierPending),
         });
       }
     }
@@ -795,10 +813,7 @@ export class GroupDigest {
       for (const ref of target.slice(0, 20)) items.push((await this.store.getItemByRef(ref)) ?? { ref, missing: true });
       return items;
     }
-    const latest = await this.store.getLatestRun({ status: 'completed' });
-    if (!latest) return [];
-    return (await this.store.listItems(latest.id))
-      .filter((item) => ['needs_review', 'proposed'].includes(item.status));
+    return this.pendingItems();
   }
 
   async undoItems(refs, admin) {

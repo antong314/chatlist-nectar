@@ -90,7 +90,8 @@ publishes useful provider recommendations and local knowledge.
 5. **Summarize.** Machu messages each `ADMIN_WHATSAPP` number a summary with a
    reference number per item. Outside WhatsApp's 24-hour window it sends the
    `DIGEST_TEMPLATE_SID` template instead, and the full summary arrives with
-   the administrator's next message. A warning is added when the listener is
+   the administrator's next message. Undecided items from the last 14 days
+   are repeated in each summary until they are approved or skipped. A warning is added when the listener is
    offline or logged out.
 
 Administrators manage the digest by chatting with Machu:
@@ -98,7 +99,7 @@ Administrators manage the digest by chatting with Machu:
 - `digest`: the latest summary
 - `digest run`: run the digest now
 - `undo N`: reverse published item #N (refused if someone has changed it since)
-- `approve N`, `approve all`: publish items waiting for review
+- `approve N`, `approve all`: publish items waiting for review (all undecided items from the last 14 days)
 - `skip N`, `skip all`: dismiss items waiting for review
 - `groups`, `enable 2 3`, `disable 1`, `enable all`: choose which groups are recorded
 - `digest help`: the command list

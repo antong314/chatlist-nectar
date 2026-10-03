@@ -178,6 +178,18 @@ export class GroupDigestStore {
     return data ?? [];
   }
 
+  async listPendingItems({ since }) {
+    const { data, error } = await this.client
+      .from('group_digest_items')
+      .select(ITEM_COLUMNS)
+      .in('status', ['proposed', 'needs_review'])
+      .gte('created_at', since)
+      .order('ref', { ascending: true })
+      .limit(100);
+    if (error) throw databaseError('load items waiting for review', error);
+    return data ?? [];
+  }
+
   async undoItem(itemId, requesterWhatsapp) {
     const { data, error } = await this.client.rpc('undo_group_digest_item', {
       p_item_id: itemId,
