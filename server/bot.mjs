@@ -189,8 +189,10 @@ export class MachuBot {
     fetchMedia,
     publicBaseUrl = 'https://www.sanmateo.love',
     signingSecret,
+    digest = null,
   }) {
     this.store = store;
+    this.digest = digest;
     this.wikiStore = wikiStore;
     this.ai = ai;
     this.fetchMedia = fetchMedia;
@@ -782,7 +784,24 @@ export class MachuBot {
   }
 
   async handle(params) {
-    return this.cleanMessages(await this.handleMessage(params));
+    const adminReply = await this.handleAdminMessage(params);
+    if (adminReply?.handled) return adminReply.messages;
+    const messages = this.cleanMessages(await this.handleMessage(params));
+    return [...(adminReply?.messages ?? []), ...messages];
+  }
+
+  // Group digest administrators can manage the digest by chatting with Machu.
+  // Their other messages are handled normally, after any pending summary.
+  async handleAdminMessage(params) {
+    if (!this.digest) return null;
+    const senderPhone = normalizePhone(params.WaId || stripWhatsappPrefix(params.From), '');
+    if (!this.digest.isAdmin(senderPhone)) return null;
+    try {
+      return await this.digest.handleAdminMessage({ senderPhone, body: params.Body });
+    } catch (error) {
+      console.error('Group digest administrator message failed:', error);
+      return null;
+    }
   }
 
   async handleMessage(params) {

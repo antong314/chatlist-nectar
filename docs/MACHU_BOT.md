@@ -57,6 +57,58 @@ There is no publish or confirmation step. Once Machu has a valid name and phone
 number, the contact is in the directory. Wiki additions and corrections are
 also published immediately; only deletion of an entire page is confirmed.
 
+## Group digest
+
+Machu also learns from the community's WhatsApp groups. A separate read-only
+listener ([listener/README.md](../listener/README.md)) is a member of those
+groups through a dedicated WhatsApp number and records messages from groups an
+administrator has enabled. Once a day the server reads the new messages and
+publishes useful provider recommendations and local knowledge.
+
+1. **Record.** The listener stores text, captions, shared contact cards, and
+   reply links in `group_messages`. Senders are stored as an HMAC and their
+   display name. Raw messages are deleted after 14 days, and deleting a message
+   in WhatsApp deletes it here too.
+2. **Extract.** After `DIGEST_HOUR` (default 6:00 in `DIGEST_TIMEZONE`), the
+   server groups each enabled group's new messages into chunks with earlier
+   context and asks `DIGEST_OPENAI_MODEL` (default `gpt-6-luna`, medium
+   reasoning) for provider contacts and durable wiki facts with confidence
+   scores and the supporting message IDs.
+3. **Verify and decide (code, not the model).**
+   - Phone numbers and websites must appear in the supporting messages.
+   - Contacts deduplicate by normalized phone number, then by name.
+   - Existing listings are only enriched where description, category, or
+     website are empty.
+   - Wiki facts go through the same planning and versioned writes as
+     conversational wiki edits; facts already on a page are skipped.
+   - Time-sensitive facts, non-providers, and contacts without a number are
+     skipped. New wiki pages and low-confidence items wait for review.
+4. **Publish.** In `DIGEST_MODE=publish`, confident items are applied through
+   the audited functions with `verification_method = 'group_digest'` and the
+   listener's number as actor. In `shadow` mode (the default), nothing is
+   written until an administrator approves it.
+5. **Summarize.** Machu messages each `ADMIN_WHATSAPP` number a summary with a
+   reference number per item. Outside WhatsApp's 24-hour window it sends the
+   `DIGEST_TEMPLATE_SID` template instead, and the full summary arrives with
+   the administrator's next message. A warning is added when the listener is
+   offline or logged out.
+
+Administrators manage the digest by chatting with Machu:
+
+- `digest`: the latest summary
+- `digest run`: run the digest now
+- `undo 12`: reverse a published item (refused if someone has changed it since)
+- `approve 16`, `approve all`: publish items waiting for review
+- `skip 16`, `skip all`: dismiss items waiting for review
+- `groups`, `enable 2 3`, `disable 1`, `enable all`: choose which groups are recorded
+- `digest help`: the command list
+
+Any other message from an administrator is handled normally.
+
+Every decision, including skipped items and their evidence, is kept in
+`group_digest_items`. Runs are claimed atomically, once per local day, in
+`group_digest_runs`, with up to three retries after a failure.
+
 ## Routing and language-model boundary
 
 Deterministic routing always handles vCards, directory search patterns,
@@ -91,6 +143,21 @@ The server also consumes the existing `VITE_SUPABASE_URL` and
 - `BOT_SIGNING_SECRET` (defaults to `TWILIO_AUTH_TOKEN`)
 - `TWILIO_VALIDATE_SIGNATURE=false` for local-only webhook testing
 
+Group digest configuration (the digest is off unless `ADMIN_WHATSAPP` is set):
+
+- `ADMIN_WHATSAPP`: comma-separated E.164 numbers that receive summaries and
+  can use the administrator commands
+- `DIGEST_MODE`: `shadow` (default; propose only) or `publish`
+- `DIGEST_OPENAI_MODEL` (default `gpt-6-luna`), `DIGEST_REASONING_EFFORT`
+  (default `medium`)
+- `DIGEST_HOUR` (default `6`) and `DIGEST_TIMEZONE` (default `America/Costa_Rica`)
+- `DIGEST_TEMPLATE_SID`: approved WhatsApp template for summaries sent outside
+  the 24-hour window
+- `DIGEST_SECRET`: 32+ characters; enables the `/internal/group-digest/*` endpoints
+
+The `listener` worker uses `DATABASE_URL` (the `machu_listener` role) and
+`SENDER_HASH_SECRET`.
+
 Never prefix server secrets with `VITE_`; Vite exposes those values to browser
 JavaScript during the frontend build.
 
@@ -109,6 +176,9 @@ JavaScript during the frontend build.
 - `GET /bot` — lightweight bot status
 - `GET /bot/contact/:id.vcf?token=...` — short-lived signed vCard media URL
 - `GET /healthz` — service health check
+- `POST /internal/group-digest/run`, `GET /internal/group-digest/status`,
+  `POST /internal/group-digest/template`, `GET /internal/group-digest/template/:sid`:
+  digest maintenance, available only with the `x-digest-secret` header
 
 ## Database
 
@@ -149,6 +219,14 @@ edits record the actor's canonical WhatsApp number; Machu additionally records
 the Twilio message SID and available profile name. All mutation RPCs are
 service-role-only and retry-safe.
 
+Migration `20261003150000_machu_group_digest.sql` adds:
+- the group, message, run, item, and listener-status tables (all service-only);
+- the `machu_listener` login role, which can only execute the five
+  listener functions and use the private `whatsmeow` session schema;
+- the `group_digest` audit source;
+- `undo_wiki_change_event` and `undo_group_digest_item`, which undo one
+  specific change atomically and refuse if anyone has edited it since.
+
 ## Private administrator audit
 
 Administrators can identify the verified actor in Supabase using service-role
@@ -161,6 +239,8 @@ or dashboard access:
   including `whatsapp_inbound` versus `trusted_session`.
 - `wiki_change_events` for wiki creates, updates, deletions, and undo events,
   including private actor identity and before/after snapshots.
+- `group_digest_items` for every group-digest decision, its evidence, and the
+  resulting contact or wiki event (`verification_method = 'group_digest'`).
 
 ## Local verification
 

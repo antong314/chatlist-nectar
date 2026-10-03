@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import { timingSafeEqual } from 'node:crypto';
 import twilio from 'twilio';
 import { createClient } from '@supabase/supabase-js';
 import { existsSync } from 'node:fs';
@@ -10,6 +11,9 @@ import { createVcard, messagesToTwiml } from './domain.mjs';
 import { DirectoryStore } from './directory-store.mjs';
 import { WikiStore } from './wiki-store.mjs';
 import { OpenAIProvider } from './openai-provider.mjs';
+import { GroupDigest } from './group-digest.mjs';
+import { GroupDigestStore } from './group-digest-store.mjs';
+import { TwilioNotifier } from './twilio-notifier.mjs';
 import {
   CommunityVerificationService,
   verificationJsonError,
@@ -75,7 +79,40 @@ const fetchTwilioMedia = async (url) => {
   }
 };
 
-const bot = new MachuBot({ store, wikiStore, ai, fetchMedia: fetchTwilioMedia, publicBaseUrl, signingSecret });
+const digestAdminPhones = String(process.env.ADMIN_WHATSAPP || '')
+  .split(',')
+  .map((phone) => phone.trim())
+  .filter(Boolean);
+const digestSecret = process.env.DIGEST_SECRET || '';
+const twilioNotifier = new TwilioNotifier();
+const groupDigest = digestAdminPhones.length > 0
+  ? new GroupDigest({
+      store: new GroupDigestStore(),
+      directory: store,
+      wikiStore,
+      ai: new OpenAIProvider({
+        model: process.env.DIGEST_OPENAI_MODEL || 'gpt-6-luna',
+        reasoningEffort: process.env.DIGEST_REASONING_EFFORT || 'medium',
+        timeoutMs: 180_000,
+      }),
+      notifier: twilioNotifier,
+      adminPhones: digestAdminPhones,
+      mode: process.env.DIGEST_MODE || 'shadow',
+      timeZone: process.env.DIGEST_TIMEZONE || 'America/Costa_Rica',
+      digestHour: Number(process.env.DIGEST_HOUR || 6),
+      templateSid: process.env.DIGEST_TEMPLATE_SID || '',
+    })
+  : null;
+
+const bot = new MachuBot({
+  store,
+  wikiStore,
+  ai,
+  fetchMedia: fetchTwilioMedia,
+  publicBaseUrl,
+  signingSecret,
+  digest: groupDigest,
+});
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', true);
@@ -321,6 +358,63 @@ app.get('/bot/contact/:contactId.vcf', async (request, response) => {
     response.status(500).type('text/plain').send('Unable to create contact card');
   }
 });
+
+// Maintenance endpoints for the group digest, protected by DIGEST_SECRET.
+const hasDigestSecret = (request) => {
+  const provided = Buffer.from(String(request.get('x-digest-secret') || ''));
+  const expected = Buffer.from(digestSecret);
+  return digestSecret.length >= 32 && provided.length === expected.length && timingSafeEqual(provided, expected);
+};
+
+const digestRoute = (handler) => async (request, response) => {
+  response.set('Cache-Control', 'no-store');
+  if (!groupDigest || !hasDigestSecret(request)) {
+    response.status(404).json({ error: 'Not found' });
+    return;
+  }
+  try {
+    response.json(await handler(request));
+  } catch (error) {
+    console.error('Group digest endpoint error:', error);
+    response.status(500).json({ error: error.message });
+  }
+};
+
+app.post('/internal/group-digest/run', digestRoute(async () => {
+  groupDigest.run({ trigger: 'manual' }).catch((error) => console.error('Manual group digest failed:', error));
+  return { started: true };
+}));
+
+app.get('/internal/group-digest/status', digestRoute(async () => {
+  const [listener, groups, latestRun] = await Promise.all([
+    groupDigest.store.getListenerStatus(),
+    groupDigest.store.listGroups(),
+    groupDigest.store.getLatestRun(),
+  ]);
+  return {
+    mode: groupDigest.mode,
+    model: groupDigest.ai.model,
+    listener: listener && { status: listener.status, lastSeenAt: listener.last_seen_at, lastMessageAt: listener.last_message_at },
+    groups: { joined: groups.length, enabled: groups.filter((group) => group.enabled).length },
+    latestRun: latestRun && {
+      runDate: latestRun.run_date, status: latestRun.status, stats: latestRun.stats, error: latestRun.error,
+    },
+  };
+}));
+
+app.post('/internal/group-digest/template', digestRoute(async () => twilioNotifier.createDigestTemplate()));
+
+app.get('/internal/group-digest/template/:sid', digestRoute(async (request) => (
+  twilioNotifier.getTemplateApproval(request.params.sid)
+)));
+
+if (groupDigest?.enabled) {
+  const runDigestIfDue = () => {
+    groupDigest.runIfDue().catch((error) => console.error('Scheduled group digest failed:', error));
+  };
+  setTimeout(runDigestIfDue, 60_000).unref();
+  setInterval(runDigestIfDue, 10 * 60_000).unref();
+}
 
 const serverDirectory = path.dirname(fileURLToPath(import.meta.url));
 const distDirectory = path.resolve(serverDirectory, '../dist');

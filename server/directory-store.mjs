@@ -45,6 +45,7 @@ export class DirectoryStore {
         p_requester_whatsapp: audit.requesterWhatsapp,
         p_requester_name: audit.requesterName || null,
         p_twilio_message_sid: audit.twilioMessageSid,
+        ...(audit.verificationMethod ? { p_verification_method: audit.verificationMethod } : {}),
       });
       if (error) throw databaseError('add the audited contact', error);
       const row = firstRow(data);
@@ -73,8 +74,13 @@ export class DirectoryStore {
   }
 
   async updateContact(id, values, audit = null) {
+    // Only the group digest, which verifies links against the source
+    // messages, may set a website; conversational edits cannot.
+    const editable = audit?.verificationMethod === 'group_digest'
+      ? ['title', 'subtitle', 'category', 'website_url']
+      : ['title', 'subtitle', 'category'];
     const allowed = Object.fromEntries(
-      Object.entries(values).filter(([key]) => ['title', 'subtitle', 'category'].includes(key)),
+      Object.entries(values).filter(([key]) => editable.includes(key)),
     );
     if (audit?.requesterWhatsapp && audit?.twilioMessageSid) {
       const { data, error } = await this.client.rpc('update_inbound_provider_contact', {
@@ -83,6 +89,7 @@ export class DirectoryStore {
         p_requester_whatsapp: audit.requesterWhatsapp,
         p_requester_name: audit.requesterName || null,
         p_twilio_message_sid: audit.twilioMessageSid,
+        ...(audit.verificationMethod ? { p_verification_method: audit.verificationMethod } : {}),
       });
       if (error) throw databaseError('update the audited contact', error);
       return firstRow(data);
