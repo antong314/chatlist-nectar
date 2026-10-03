@@ -60,3 +60,18 @@ describe('Machu group digest SQL contract', () => {
     expect(sql).toMatch(/NOT IN \('whatsapp_inbound', 'group_digest'\)/);
   });
 });
+
+describe('Machu group reference numbers', () => {
+  const compactSql = readFileSync(
+    resolve(process.cwd(), 'supabase/migrations/20261003230000_compact_whatsapp_group_refs.sql'),
+    'utf8',
+  );
+
+  test('refreshing a known group does not consume reference numbers', () => {
+    const upsert = compactSql.match(/FUNCTION public\.upsert_whatsapp_group[\s\S]*?\$\$;/)?.[0] ?? '';
+    expect(upsert).toMatch(/UPDATE public\.whatsapp_groups[\s\S]*IF FOUND THEN[\s\S]*INSERT INTO public\.whatsapp_groups/);
+    expect(upsert).not.toMatch(/ON CONFLICT/);
+    expect(compactSql).toMatch(/GRANT EXECUTE ON FUNCTION public\.upsert_whatsapp_group\(TEXT, TEXT\) TO machu_listener, service_role/);
+    expect(compactSql).toMatch(/REVOKE ALL ON FUNCTION public\.upsert_whatsapp_group\(TEXT, TEXT\) FROM PUBLIC, anon, authenticated/);
+  });
+});
