@@ -32,11 +32,13 @@ const ADMIN_HELP = [
   'Group digest commands:',
   '• digest — the latest summary',
   '• digest run — run the digest now',
-  '• undo 12 — reverse a published item',
-  '• approve 16 / approve all — publish items waiting for review',
-  '• skip 16 / skip all — dismiss items waiting for review',
+  '• undo N — reverse published item #N',
+  '• approve N / approve all — publish items waiting for review',
+  '• skip N / skip all — dismiss items waiting for review',
   '• groups — list the groups the listener has joined',
-  '• enable 2 3 / disable 1 / enable all — choose which groups are recorded',
+  '• enable N / disable N / enable all — choose which groups are recorded (use the group numbers from “groups”)',
+  '',
+  'N is the # number shown next to each item in the summary.',
 ].join('\n');
 
 // ---------------------------------------------------------------------------
@@ -635,12 +637,25 @@ export class GroupDigest {
     }
     const otherSkipped = by((item) => item.status === 'skipped').length - noPhone.length;
     if (otherSkipped > 0) lines.push('', `Skipped ${otherSkipped} other item${otherSkipped === 1 ? '' : 's'} (already listed, not services, already in the wiki, or time-sensitive).`);
-    if (items.some((item) => ['applied', 'proposed', 'needs_review'].includes(item.status))) {
-      lines.push('', 'Reply “undo 12”, “approve 16”, “skip 16”, or “digest help”.');
-    }
+    const hint = this.commandHint(items);
+    if (hint) lines.push('', hint);
     const warning = this.listenerWarning(listener);
     if (warning) lines.push('', warning);
     return splitMessages(lines.join('\n'));
+  }
+
+  // Suggests replies using this summary's own reference numbers.
+  commandHint(items) {
+    const pending = items.filter((item) => ['proposed', 'needs_review'].includes(item.status));
+    const applied = items.filter((item) => item.status === 'applied');
+    const parts = [];
+    if (pending.length === 1) {
+      parts.push(`“approve ${pending[0].ref}” to publish it, or “skip ${pending[0].ref}” to dismiss it`);
+    } else if (pending.length > 1) {
+      parts.push(`“approve ${pending[0].ref}” or “approve all” to publish, “skip ${pending[0].ref}” to dismiss`);
+    }
+    if (applied.length > 0) parts.push(`“undo ${applied[0].ref}” to reverse a published item`);
+    return parts.length > 0 ? `Reply ${parts.join('; ')}.` : '';
   }
 
   async summaryFor(runId) {
@@ -740,7 +755,7 @@ export class GroupDigest {
         return { handled: true, messages: await this.setGroups(target, verb === 'enable') };
       }
       if (verb === 'undo') {
-        if (target === 'all') return { handled: true, messages: [{ body: 'Undo items one at a time, for example “undo 12”.' }] };
+        if (target === 'all') return { handled: true, messages: [{ body: 'Undo items one at a time, for example “undo 3”.' }] };
         return { handled: true, messages: await this.undoItems(target, admin) };
       }
       if (verb === 'skip') return { handled: true, messages: await this.skipItems(target, admin) };

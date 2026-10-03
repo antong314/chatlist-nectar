@@ -482,3 +482,12 @@ test('a quiet scheduled run stays silent', async () => {
   await digest.runIfDue();
   assert.equal(notifier.sent.length, 0);
 });
+
+test('reply hints use the summary’s own item numbers', async () => {
+  const { digest, store, notifier } = createDigest({ mode: 'shadow', ai: fakeAi({ contacts: [extraction.contacts[0]], wiki_facts: [] }) });
+  await store.touchAdmin(ADMIN);
+  await digest.run({ trigger: 'manual' });
+  const ref = store.items[0].ref;
+  assert.match(notifier.sent.at(-1).body, new RegExp(`Reply “approve ${ref}” to publish it, or “skip ${ref}” to dismiss it\\.`));
+  assert.doesNotMatch(notifier.sent.at(-1).body, /undo 12|approve 16/);
+});

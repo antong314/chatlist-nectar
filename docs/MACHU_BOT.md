@@ -97,9 +97,9 @@ Administrators manage the digest by chatting with Machu:
 
 - `digest`: the latest summary
 - `digest run`: run the digest now
-- `undo 12`: reverse a published item (refused if someone has changed it since)
-- `approve 16`, `approve all`: publish items waiting for review
-- `skip 16`, `skip all`: dismiss items waiting for review
+- `undo N`: reverse published item #N (refused if someone has changed it since)
+- `approve N`, `approve all`: publish items waiting for review
+- `skip N`, `skip all`: dismiss items waiting for review
 - `groups`, `enable 2 3`, `disable 1`, `enable all`: choose which groups are recorded
 - `digest help`: the command list
 
