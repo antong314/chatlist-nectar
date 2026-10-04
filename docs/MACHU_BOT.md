@@ -91,7 +91,8 @@ publishes useful provider recommendations and local knowledge.
    reference number per item. Outside WhatsApp's 24-hour window it sends the
    `DIGEST_TEMPLATE_SID` template instead, and the full summary arrives with
    the administrator's next message. Undecided items from the last 14 days
-   are repeated in each summary until they are approved or skipped. A warning is added when the listener is
+   are repeated in each summary until they are approved or skipped. A run
+   stays silent only when it read no messages and nothing awaits a decision. A warning is added when the listener is
    offline or logged out.
 
 Administrators manage the digest by chatting with Machu:

@@ -669,8 +669,11 @@ export class GroupDigest {
     ]);
     if (!run) return null;
     const earlierPending = (await this.pendingItems()).filter((item) => item.run_id !== runId);
+    // Silent only when there was nothing to read and nothing awaits a decision.
     const noteworthy = run.status === 'failed'
+      || Number(run.stats?.messages ?? 0) > 0
       || items.some((item) => item.status !== 'skipped')
+      || earlierPending.length > 0
       || Boolean(this.listenerWarning(listener))
       || !groups.some((group) => group.enabled);
     return {

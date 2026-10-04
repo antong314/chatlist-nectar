@@ -511,3 +511,12 @@ test('undecided items carry into later summaries and approve all', async () => {
   assert.equal(store.items[0].status, 'applied');
   assert.equal(directory.contacts.length, 1);
 });
+
+test('a scheduled run that read messages reports even when nothing qualified', async () => {
+  const { digest, store, notifier } = createDigest({ ai: fakeAi({ contacts: [], wiki_facts: [] }) });
+  await store.touchAdmin(ADMIN);
+  await digest.runIfDue();
+  assert.equal(notifier.sent.length, 1);
+  assert.match(notifier.sent[0].body, /Read 5 new messages/);
+  assert.match(notifier.sent[0].body, /Nothing new for the directory or wiki/);
+});

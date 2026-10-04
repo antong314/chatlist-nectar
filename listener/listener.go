@@ -97,6 +97,10 @@ func (l *Listener) handle(rawEvent any) {
 	case *events.TemporaryBan:
 		l.log.Error("WhatsApp temporarily banned this account", "detail", evt.String())
 		l.recordStatus("disconnected")
+	case *events.UndecryptableMessage:
+		if evt.Info.Chat.Server == types.GroupServer {
+			l.log.Warn("could not decrypt a group message", "group", evt.Info.Chat.String(), "unavailable", evt.IsUnavailable)
+		}
 	case *events.ConnectFailure:
 		l.log.Error("WhatsApp connection failed", "reason", evt.Reason.String(), "message", evt.Message)
 	}
@@ -119,29 +123,36 @@ func (l *Listener) rememberGroup(jid types.JID, name string) {
 	}
 }
 
-// groupName returns a cached group name, asking WhatsApp once per group.
+// groupName returns a cached group name without blocking. Unknown groups are
+// looked up in the background: whatsmeow handles events serially, and the
+// database keeps the last known name when none is supplied.
 func (l *Listener) groupName(jid types.JID, hint string) string {
 	jid = jid.ToNonAD()
 	l.mu.Lock()
+	defer l.mu.Unlock()
 	if hint != "" {
 		l.groupNames[jid] = hint
 	}
-	name, known := l.groupNames[jid]
-	l.mu.Unlock()
-	if known {
+	if name, known := l.groupNames[jid]; known {
 		return name
 	}
+	l.groupNames[jid] = ""
+	go l.lookupGroupName(jid)
+	return ""
+}
+
+func (l *Listener) lookupGroupName(jid types.JID) {
 	ctx, cancel := context.WithTimeout(context.Background(), groupInfoTimeout)
 	defer cancel()
 	info, err := l.client.GetGroupInfo(ctx, jid)
 	if err != nil {
 		l.log.Warn("could not load group name", "group", jid.String(), "error", err)
-		return ""
+		l.mu.Lock()
+		delete(l.groupNames, jid)
+		l.mu.Unlock()
+		return
 	}
-	l.mu.Lock()
-	l.groupNames[jid] = info.Name
-	l.mu.Unlock()
-	return info.Name
+	l.rememberGroup(jid, info.Name)
 }
 
 func (l *Listener) handleMessage(evt *events.Message, groupNameHint string) {
