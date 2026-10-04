@@ -10,7 +10,7 @@ const databaseError = (operation, error) => {
 
 const MESSAGE_COLUMNS = 'group_jid,message_id,sender_hash,sender_name,sent_at,body,contacts,quoted_message_id,received_at';
 const ITEM_COLUMNS = 'id,ref,run_id,kind,action,status,reason,confidence,title,detail,payload,evidence,contact_id,wiki_page_slug,wiki_event_id,created_at,decided_at';
-const RUN_COLUMNS = 'id,run_date,trigger,mode,status,stats,error,summary_sent_at,started_at,finished_at';
+const RUN_COLUMNS = 'id,run_date,trigger,mode,status,stats,error,summary_sent_at,started_at,finished_at,window_start,window_end';
 
 // Server-side access to the private group digest tables. Every method uses the
 // service role; none of these tables are reachable with the public anon key.
@@ -50,6 +50,7 @@ export class GroupDigestStore {
       .from('group_messages')
       .select(MESSAGE_COLUMNS)
       .eq('group_jid', groupJid)
+      .eq('source', 'live')
       .lte('received_at', through)
       .order('sent_at', { ascending: true })
       .limit(limit);
@@ -71,6 +72,55 @@ export class GroupDigestStore {
     return (data ?? []).reverse();
   }
 
+  // Backfill: every stored message (live or imported) sent in [start, end).
+  async getMessagesSentBetween(groupJid, { start, end, limit = 5000 }) {
+    const { data, error } = await this.client
+      .from('group_messages')
+      .select(MESSAGE_COLUMNS)
+      .eq('group_jid', groupJid)
+      .gte('sent_at', start)
+      .lt('sent_at', end)
+      .order('sent_at', { ascending: true })
+      .limit(limit);
+    if (error) throw databaseError('load group messages for the backfill window', error);
+    return data ?? [];
+  }
+
+  async getMessagesSentBefore(groupJid, { before, limit = 15 }) {
+    const { data, error } = await this.client
+      .from('group_messages')
+      .select(MESSAGE_COLUMNS)
+      .eq('group_jid', groupJid)
+      .lt('sent_at', before)
+      .order('sent_at', { ascending: false })
+      .limit(limit);
+    if (error) throw databaseError('load earlier group messages', error);
+    return (data ?? []).reverse();
+  }
+
+  // Marks undecided items from earlier backfill runs of the same window as
+  // superseded, so a rerun replaces them.
+  async supersedeBackfillItems({ start, end, exceptRunId }) {
+    const { data: runs, error: runError } = await this.client
+      .from('group_digest_runs')
+      .select('id')
+      .eq('trigger', 'backfill')
+      .eq('window_start', start)
+      .eq('window_end', end)
+      .neq('id', exceptRunId);
+    if (runError) throw databaseError('find earlier backfill runs', runError);
+    const runIds = (runs ?? []).map((run) => run.id);
+    if (runIds.length === 0) return 0;
+    const { data, error } = await this.client
+      .from('group_digest_items')
+      .update({ status: 'superseded', reason: 'Replaced by a rerun of the same dates', decided_at: new Date().toISOString() })
+      .in('run_id', runIds)
+      .in('status', ['proposed', 'needs_review'])
+      .select('id');
+    if (error) throw databaseError('supersede earlier backfill items', error);
+    return (data ?? []).length;
+  }
+
   async markGroupProcessed(groupJid, through) {
     const { error } = await this.client
       .from('whatsapp_groups')
@@ -85,11 +135,13 @@ export class GroupDigestStore {
     return Number(data ?? 0);
   }
 
-  async claimRun({ runDate, trigger, mode }) {
+  async claimRun({ runDate, trigger, mode, windowStart = null, windowEnd = null }) {
     const { data, error } = await this.client.rpc('claim_group_digest_run', {
       p_run_date: runDate,
       p_trigger: trigger,
       p_mode: mode,
+      p_window_start: windowStart,
+      p_window_end: windowEnd,
     });
     if (error) throw databaseError('start the digest run', error);
     return data || null;

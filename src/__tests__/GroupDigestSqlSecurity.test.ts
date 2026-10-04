@@ -75,3 +75,22 @@ describe('Machu group reference numbers', () => {
     expect(compactSql).toMatch(/REVOKE ALL ON FUNCTION public\.upsert_whatsapp_group\(TEXT, TEXT\) FROM PUBLIC, anon, authenticated/);
   });
 });
+
+describe('Machu group backfill', () => {
+  const backfillSql = readFileSync(
+    resolve(process.cwd(), 'supabase/migrations/20261004180000_group_digest_backfill.sql'),
+    'utf8',
+  );
+
+  test('imports only into enabled groups through a listener-callable function', () => {
+    expect(backfillSql).toMatch(/JOIN public\.whatsapp_groups AS groups ON groups\.jid = incoming\.group_jid AND groups\.enabled/);
+    expect(backfillSql).toMatch(/ON CONFLICT \(group_jid, message_id\) DO NOTHING/);
+    expect(backfillSql).toMatch(/REVOKE ALL ON FUNCTION public\.import_group_messages\(JSONB\) FROM PUBLIC, anon, authenticated/);
+    expect(backfillSql).toMatch(/GRANT EXECUTE ON FUNCTION public\.import_group_messages\(JSONB\) TO machu_listener, service_role/);
+  });
+
+  test('tags imported history so the daily digest can exclude it', () => {
+    expect(backfillSql).toMatch(/source TEXT NOT NULL DEFAULT 'live'/);
+    expect(backfillSql).toMatch(/quoted_message_id, 'backfill'/);
+  });
+});

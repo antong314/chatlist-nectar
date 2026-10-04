@@ -11,7 +11,7 @@ import { createVcard, messagesToTwiml } from './domain.mjs';
 import { DirectoryStore } from './directory-store.mjs';
 import { WikiStore } from './wiki-store.mjs';
 import { OpenAIProvider } from './openai-provider.mjs';
-import { GroupDigest } from './group-digest.mjs';
+import { GroupDigest, backfillWindow } from './group-digest.mjs';
 import { GroupDigestStore } from './group-digest-store.mjs';
 import { TwilioNotifier } from './twilio-notifier.mjs';
 import {
@@ -383,6 +383,14 @@ const digestRoute = (handler) => async (request, response) => {
 app.post('/internal/group-digest/run', digestRoute(async () => {
   groupDigest.run({ trigger: 'manual' }).catch((error) => console.error('Manual group digest failed:', error));
   return { started: true };
+}));
+
+app.post('/internal/group-digest/backfill', express.json(), digestRoute(async (request) => {
+  const { from, to = from } = request.body ?? {};
+  backfillWindow(from, to, groupDigest.timeZone);
+  if (groupDigest.activeRun) return { started: false, reason: 'A digest is already running' };
+  groupDigest.backfill({ from, to }).catch((error) => console.error('Group digest backfill failed:', error));
+  return { started: true, from, to };
 }));
 
 app.get('/internal/group-digest/status', digestRoute(async () => {

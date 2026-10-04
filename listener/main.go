@@ -5,6 +5,7 @@
 //
 //	listener login [-phone +15551234567] [-qr-png qr.png]   link the account once
 //	listener run                                            record messages (default)
+//	listener import -from 2026-09-27 -to 2026-10-03         backfill from the whatscli cache
 //
 // Environment:
 //
@@ -91,8 +92,10 @@ func main() {
 		err = run(ctx, cfg)
 	case "login":
 		err = login(ctx, cfg, args)
+	case "import":
+		err = importHistory(ctx, cfg, args)
 	default:
-		err = fmt.Errorf("unknown command %q (use run or login)", command)
+		err = fmt.Errorf("unknown command %q (use run, login, or import)", command)
 	}
 	if err != nil && !errors.Is(err, context.Canceled) {
 		cfg.log.Error("listener stopped", "error", err)

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   GroupDigest,
+  backfillWindow,
   buildWikiWrite,
   chunkMessages,
   enrichmentChanges,
@@ -52,8 +53,21 @@ class MemoryDigestStore {
     return matches;
   }
   async getMessages(jid, { after, through }) {
-    return this.messages.filter((item) => item.group_jid === jid
+    return this.messages.filter((item) => item.group_jid === jid && (item.source ?? 'live') === 'live'
       && (!after || item.received_at > after) && item.received_at <= through);
+  }
+  async getMessagesSentBetween(jid, { start, end }) {
+    return this.messages.filter((item) => item.group_jid === jid && item.sent_at >= start && item.sent_at < end);
+  }
+  async getMessagesSentBefore(jid, { before }) {
+    return this.messages.filter((item) => item.group_jid === jid && item.sent_at < before);
+  }
+  async supersedeBackfillItems({ start, end, exceptRunId }) {
+    const runIds = this.runs.filter((run) => run.trigger === 'backfill' && run.window_start === start
+      && run.window_end === end && run.id !== exceptRunId).map((run) => run.id);
+    const pending = this.items.filter((item) => runIds.includes(item.run_id) && ['proposed', 'needs_review'].includes(item.status));
+    for (const item of pending) item.status = 'superseded';
+    return pending.length;
   }
   async getContextMessages(jid, { before }) {
     return this.messages.filter((item) => item.group_jid === jid && item.received_at <= before);
@@ -62,10 +76,13 @@ class MemoryDigestStore {
     this.groups.find((group) => group.jid === jid).processed_through = through;
   }
   async purgeMessages() { return 0; }
-  async claimRun({ runDate, trigger, mode }) {
+  async claimRun({ runDate, trigger, mode, windowStart = null, windowEnd = null }) {
     if (this.runs.some((run) => run.status === 'running')) return null;
     if (trigger === 'schedule' && this.runs.some((run) => run.run_date === runDate && run.trigger === 'schedule')) return null;
-    const run = { id: `run-${this.runs.length + 1}`, run_date: runDate, trigger, mode, status: 'running', stats: {}, summary_sent_at: null };
+    const run = {
+      id: `run-${this.runs.length + 1}`, run_date: runDate, trigger, mode, status: 'running', stats: {},
+      summary_sent_at: null, window_start: windowStart, window_end: windowEnd,
+    };
     this.runs.push(run);
     return run.id;
   }
@@ -519,4 +536,62 @@ test('a scheduled run that read messages reports even when nothing qualified', a
   assert.equal(notifier.sent.length, 1);
   assert.match(notifier.sent[0].body, /Read 5 new messages/);
   assert.match(notifier.sent[0].body, /Nothing new for the directory or wiki/);
+});
+
+test('backfill windows cover whole local days', () => {
+  assert.deepEqual(backfillWindow('2026-09-27', '2026-10-03', 'America/Costa_Rica'), {
+    start: '2026-09-27T06:00:00.000Z', end: '2026-10-04T06:00:00.000Z', from: '2026-09-27', to: '2026-10-03',
+  });
+  assert.throws(() => backfillWindow('2026-10-03', '2026-09-27', 'America/Costa_Rica'), /must not be before/);
+  assert.throws(() => backfillWindow('2026-01-01', '2026-06-01', 'America/Costa_Rica'), /at most 62 days/);
+  assert.throws(() => backfillWindow('yesterday', '2026-06-01', 'America/Costa_Rica'), /Use dates like/);
+});
+
+const historical = () => [
+  message('B1', 'Who can fix a car AC?', { sent_at: '2026-09-28T15:00:00Z', source: 'backfill' }),
+  message('B11', 'Andrez, +506 6063 3494, best car AC repair', { sent_at: '2026-09-28T15:05:00Z', source: 'backfill', quoted_message_id: 'B1' }),
+  message('B111', 'Outside the window', { sent_at: '2026-10-10T15:00:00Z', source: 'backfill' }),
+];
+
+const backfillExtraction = {
+  contacts: [{ name: 'Andrez — Car AC Repair', phone: '+506 6063 3494', website: '', category: 'Mechanic', description: 'Car air-conditioning repair.', is_service_provider: true, confidence: 0.9, evidence_message_ids: ['m2'] }],
+  wiki_facts: [],
+};
+
+test('the daily digest never processes imported history', async () => {
+  const { digest, ai, store } = createDigest({ ai: fakeAi(backfillExtraction), storeOptions: { messages: historical() } });
+  await digest.run({ trigger: 'manual' });
+  assert.equal(ai.calls.length, 0);
+  assert.equal(store.runs[0].stats.messages, 0);
+});
+
+test('backfill digests a sent-at window, and a rerun replaces undecided items', async () => {
+  const { digest, store, notifier, ai } = createDigest({
+    mode: 'shadow',
+    ai: fakeAi(backfillExtraction),
+    storeOptions: { messages: historical() },
+  });
+  await store.touchAdmin(ADMIN);
+  await digest.backfill({ from: '2026-09-27', to: '2026-10-03' });
+  assert.equal(ai.calls[0].messages.length, 2, 'only messages sent inside the window');
+  assert.equal(store.groups[0].processed_through, null, 'the daily watermark is untouched');
+  assert.equal(store.runs[0].window_start, '2026-09-27T06:00:00.000Z');
+  assert.match(notifier.sent.at(-1).body, /^🌿 Machu backfill · Sun, Sep 27 – Sat, Oct 3/);
+  assert.equal(store.items[0].status, 'proposed');
+
+  await digest.backfill({ from: '2026-09-27', to: '2026-10-03' });
+  assert.equal(store.items[0].status, 'superseded');
+  assert.equal(store.items[1].status, 'proposed');
+  const rerun = notifier.sent.at(-1).body;
+  assert.match(rerun, /This rerun replaced 1 undecided item from the previous run of these dates/);
+  assert.doesNotMatch(rerun, /Still waiting for your decision/, 'superseded items are not repeated');
+});
+
+test('admins start backfills by chatting with Machu', async () => {
+  const { digest } = createDigest({ ai: fakeAi(backfillExtraction), storeOptions: { messages: historical() } });
+  const bad = await digest.handleAdminMessage({ senderPhone: ADMIN, body: 'backfill 2026-10-03 2026-09-27' });
+  assert.match(bad.messages[0].body, /must not be before/);
+  const ok = await digest.handleAdminMessage({ senderPhone: ADMIN, body: 'backfill 2026-09-27 to 2026-10-03' });
+  assert.match(ok.messages[0].body, /Backfilling 2026-09-27 to 2026-10-03/);
+  await digest.activeRun;
 });

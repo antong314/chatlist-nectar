@@ -33,6 +33,7 @@ const ADMIN_HELP = [
   'Group digest commands:',
   '• digest — the latest summary',
   '• digest run — run the digest now',
+  '• backfill 2026-09-27 2026-10-03 — digest imported history for those dates (rerun to redo them)',
   '• undo N — reverse published item #N',
   '• approve N / approve all — publish items waiting for review',
   '• skip N / skip all — dismiss items waiting for review',
@@ -82,6 +83,45 @@ export const localDateParts = (date, timeZone) => {
     hourCycle: 'h23',
   }).formatToParts(date).map((part) => [part.type, part.value]));
   return { date: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour) };
+};
+
+const zoneOffsetMs = (instant, timeZone) => {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(instant).map((part) => [part.type, part.value]));
+  const asUtc = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second);
+  return asUtc - instant.getTime();
+};
+
+// The instant a local calendar day starts in timeZone.
+export const localMidnight = (isoDate, timeZone) => {
+  const [year, month, day] = isoDate.split('-').map(Number);
+  const guess = Date.UTC(year, month - 1, day);
+  return new Date(guess - zoneOffsetMs(new Date(guess), timeZone));
+};
+
+const MAX_BACKFILL_DAYS = 62;
+
+// [start of from, start of the day after to) as ISO strings.
+export const backfillWindow = (from, to, timeZone) => {
+  const pattern = /^\d{4}-\d{2}-\d{2}$/;
+  if (!pattern.test(String(from)) || !pattern.test(String(to))) {
+    throw new Error('Use dates like 2026-09-27');
+  }
+  const start = localMidnight(from, timeZone);
+  const next = new Date(`${to}T12:00:00Z`);
+  next.setUTCDate(next.getUTCDate() + 1);
+  const end = localMidnight(next.toISOString().slice(0, 10), timeZone);
+  if (!(end > start)) throw new Error('The end date must not be before the start date');
+  if (end - start > MAX_BACKFILL_DAYS * 24 * 60 * 60 * 1000) throw new Error(`Backfill at most ${MAX_BACKFILL_DAYS} days at a time`);
+  return { start: start.toISOString(), end: end.toISOString(), from, to };
 };
 
 const formatTime = (value, timeZone) => new Intl.DateTimeFormat('en-US', {
@@ -293,24 +333,39 @@ export class GroupDigest {
     return this.run({ trigger: 'schedule', runDate: date });
   }
 
-  async run({ trigger = 'manual', runDate } = {}) {
+  async run({ trigger = 'manual', runDate, window = null } = {}) {
     if (this.activeRun) return { skipped: 'already running' };
     const date = runDate || localDateParts(this.now(), this.timeZone).date;
-    this.activeRun = this.execute({ trigger, runDate: date }).finally(() => {
+    this.activeRun = this.execute({ trigger, runDate: date, window }).finally(() => {
       this.activeRun = null;
     });
     return this.activeRun;
   }
 
-  async execute({ trigger, runDate }) {
-    const runId = await this.store.claimRun({ runDate, trigger, mode: this.mode });
+  // Digests every stored message sent between two local dates (inclusive).
+  // Rerunning the same dates replaces the earlier run's undecided items.
+  async backfill({ from, to }) {
+    return this.run({ trigger: 'backfill', window: backfillWindow(from, to, this.timeZone) });
+  }
+
+  async execute({ trigger, runDate, window }) {
+    const runId = await this.store.claimRun({
+      runDate,
+      trigger,
+      mode: this.mode,
+      windowStart: window?.start ?? null,
+      windowEnd: window?.end ?? null,
+    });
     if (!runId) return { skipped: 'not due' };
     const stats = {
       messages: 0, groups: 0, enabledGroups: 0, applied: 0, proposed: 0,
-      needs_review: 0, skipped: 0, failed: 0, purged: 0,
+      needs_review: 0, skipped: 0, failed: 0, purged: 0, superseded: 0,
     };
     try {
       stats.purged = await this.store.purgeMessages(RETENTION_DAYS);
+      if (window) {
+        stats.superseded = await this.store.supersedeBackfillItems({ ...window, exceptRunId: runId });
+      }
       const listener = await this.store.getListenerStatus();
       const actorPhone = normalizePhone(listener?.account_phone, '') || this.adminPhones[0];
       if (!actorPhone) throw new Error('No WhatsApp number is available to attribute digest changes');
@@ -319,7 +374,8 @@ export class GroupDigest {
       const cutoff = new Date(this.now().getTime() - CUTOFF_DELAY_MS).toISOString();
       const context = { runId, actorPhone, seenPhones: new Set(), stats, directoryIndex: null };
       for (const group of groups) {
-        await this.processGroup(group, cutoff, context);
+        if (window) await this.processBackfillGroup(group, window, context);
+        else await this.processGroup(group, cutoff, context);
       }
       await this.store.finishRun(runId, { status: 'completed', stats });
     } catch (error) {
@@ -331,19 +387,14 @@ export class GroupDigest {
       }).catch((finishError) => this.log.error('Unable to record digest failure:', finishError));
     }
     // A run an administrator started always reports back, even when quiet.
-    await this.deliverSummary(runId, { always: trigger === 'manual' })
+    await this.deliverSummary(runId, { always: trigger !== 'schedule' })
       .catch((error) => this.log.error('Unable to send digest summary:', error));
     return { runId, stats };
   }
 
-  async processGroup(group, cutoff, context) {
-    const messages = await this.store.getMessages(group.jid, { after: group.processed_through, through: cutoff });
-    if (messages.length === 0) return;
+  async digestMessages(group, messages, earlier, context) {
     context.stats.groups += 1;
     context.stats.messages += messages.length;
-    const earlier = group.processed_through
-      ? await this.store.getContextMessages(group.jid, { before: group.processed_through, limit: CONTEXT_MESSAGES })
-      : [];
     for (const chunk of chunkMessages(messages, earlier)) {
       const extraction = await this.ai.extractGroupKnowledge({ groupName: group.name, messages: chunk.prompt });
       if (!extraction) throw new Error('The language model was unavailable');
@@ -354,11 +405,30 @@ export class GroupDigest {
         await this.handleCandidate('wiki', fact, chunk, group, context);
       }
     }
+  }
+
+  // Daily runs read live messages received since the group's watermark.
+  async processGroup(group, cutoff, context) {
+    const messages = await this.store.getMessages(group.jid, { after: group.processed_through, through: cutoff });
+    if (messages.length === 0) return;
+    const earlier = group.processed_through
+      ? await this.store.getContextMessages(group.jid, { before: group.processed_through, limit: CONTEXT_MESSAGES })
+      : [];
+    await this.digestMessages(group, messages, earlier, context);
     const watermark = messages.reduce(
       (latest, message) => (message.received_at > latest ? message.received_at : latest),
       messages[0].received_at,
     );
     await this.store.markGroupProcessed(group.jid, watermark);
+  }
+
+  // Backfill runs read every message sent in the window and leave the daily
+  // watermark untouched, so the same window can be rerun.
+  async processBackfillGroup(group, window, context) {
+    const messages = await this.store.getMessagesSentBetween(group.jid, window);
+    if (messages.length === 0) return;
+    const earlier = await this.store.getMessagesSentBefore(group.jid, { before: window.start, limit: CONTEXT_MESSAGES });
+    await this.digestMessages(group, messages, earlier, context);
   }
 
   async handleCandidate(kind, candidate, chunk, group, context) {
@@ -605,7 +675,15 @@ export class GroupDigest {
 
   buildSummary({ run, items, listener, groups, earlierPending = [] }) {
     const stats = run.stats ?? {};
-    const lines = [`🌿 Machu group digest · ${formatDay(run.run_date)}`];
+    const backfillDays = run.trigger === 'backfill' && run.window_start
+      ? `${formatDay(localDateParts(new Date(run.window_start), this.timeZone).date)} – ${formatDay(localDateParts(new Date(new Date(run.window_end).getTime() - 1), this.timeZone).date)}`
+      : '';
+    const lines = [backfillDays
+      ? `🌿 Machu backfill · ${backfillDays}`
+      : `🌿 Machu group digest · ${formatDay(run.run_date)}`];
+    if (Number(stats.superseded) > 0) {
+      lines.push('', `This rerun replaced ${stats.superseded} undecided item${stats.superseded === 1 ? '' : 's'} from the previous run of these dates.`);
+    }
     if (run.status === 'failed') lines.push('', `The digest couldn’t finish: ${run.error || 'unknown error'}. It will try again.`);
     const enabledGroups = groups.filter((group) => group.enabled).length;
     if (enabledGroups === 0) {
@@ -632,7 +710,8 @@ export class GroupDigest {
       (item) => `${line(item)}${item.reason ? ` (${item.reason.toLowerCase()})` : ''}`);
     section('Couldn’t apply:', by((item) => item.status === 'failed'),
       (item) => `#${item.ref} ${item.title}${item.reason ? ` — ${item.reason}` : ''}`);
-    section('Still waiting for your decision (from earlier digests):', earlierPending);
+    section('Still waiting for your decision (from earlier digests):', earlierPending.slice(0, 15));
+    if (earlierPending.length > 15) lines.push(`…and ${earlierPending.length - 15} more. “approve all” or “skip all” covers them too.`);
     const noPhone = by((item) => item.status === 'skipped' && item.reason === 'No phone number in the messages');
     if (noPhone.length > 0) {
       lines.push('', `Mentioned without a phone number: ${noPhone.slice(0, 10).map((item) => item.title).join('; ')}${noPhone.length > 10 ? '; …' : ''}`);
@@ -767,6 +846,19 @@ export class GroupDigest {
       return { handled: true, messages: [{ body: 'Running the group digest now 🌿 I’ll send the summary when it’s done.' }] };
     }
     if (command === 'groups') return { handled: true, messages: await this.groupsReply() };
+
+    const backfillMatch = command.match(/^backfill\s+(\d{4}-\d{2}-\d{2})(?:\s+(?:to\s+)?(\d{4}-\d{2}-\d{2}))?$/);
+    if (backfillMatch) {
+      const [, from, to = backfillMatch[1]] = backfillMatch;
+      try {
+        backfillWindow(from, to, this.timeZone);
+      } catch (error) {
+        return { handled: true, messages: [{ body: error.message }] };
+      }
+      if (this.activeRun) return { handled: true, messages: [{ body: 'A digest is already running. Try again when its summary arrives.' }] };
+      this.backfill({ from, to }).catch((error) => this.log.error('Backfill failed:', error));
+      return { handled: true, messages: [{ body: `Backfilling ${from} to ${to} 🌿 I’ll send the summary when it’s done. Run the same command again later to redo these dates with the latest logic.` }] };
+    }
 
     const match = text.match(/^(undo|approve|skip|enable|disable)\s+(all|#?\d+(?:[\s,]+#?\d+)*)\s*$/i);
     if (match) {

@@ -99,6 +99,7 @@ Administrators manage the digest by chatting with Machu:
 
 - `digest`: the latest summary
 - `digest run`: run the digest now
+- `backfill 2026-09-27 2026-10-03`: digest imported history for those dates (rerun to redo them)
 - `undo N`: reverse published item #N (refused if someone has changed it since)
 - `approve N`, `approve all`: publish items waiting for review (all undecided items from the last 14 days)
 - `skip N`, `skip all`: dismiss items waiting for review
@@ -106,6 +107,29 @@ Administrators manage the digest by chatting with Machu:
 - `digest help`: the command list
 
 Any other message from an administrator is handled normally.
+
+### Backfilling history
+
+Older messages can be imported from the whatscli desktop client's local cache
+and digested one date window at a time:
+
+```sh
+cd listener
+go run . import --from 2026-09-27 --to 2026-10-03   # add --dry-run to count first
+```
+
+Then message Machu `backfill 2026-09-27 2026-10-03` (or call
+`POST /internal/group-digest/backfill` with `{"from","to"}`).
+
+- Imported rows are tagged `source = 'backfill'`, so the daily digest never
+  processes them.
+- Backfill runs read every stored message sent in the window and leave the
+  daily watermark alone.
+- Rerunning the same dates, for example after changing the extraction logic,
+  marks the previous run's undecided items `superseded`. Items already
+  approved stay published, and the rerun sees them as already listed.
+- Imports can be repeated: existing messages are skipped, and messages
+  removed by the 14-day retention are restored.
 
 Every decision, including skipped items and their evidence, is kept in
 `group_digest_items`. Runs are claimed atomically, once per local day, in
