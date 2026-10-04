@@ -189,7 +189,7 @@ func importHistory(ctx context.Context, cfg config, args []string) error {
 		}
 		inserted, duplicates, disabled = inserted+i, duplicates+d, disabled+x
 	}
-	fmt.Printf("Imported %d new messages; %d were already stored; %d belong to groups that aren't enabled.\n",
+	fmt.Printf("Imported %d new messages; %d were already stored; %d were from groups the listener isn't recording and were not stored.\n",
 		inserted, duplicates, disabled)
 	return nil
 }
