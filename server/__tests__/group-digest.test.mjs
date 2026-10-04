@@ -595,3 +595,38 @@ test('admins start backfills by chatting with Machu', async () => {
   assert.match(ok.messages[0].body, /Backfilling 2026-09-27 to 2026-10-03/);
   await digest.activeRun;
 });
+
+const selfPromotion = (overrides = {}) => ({
+  name: 'Kenneth Zúñiga — Bodywork', phone: '', website: '', category: 'Healer', description: 'Bodywork sessions.',
+  is_service_provider: true, offered_by_poster: true, confidence: 0.9, evidence_message_ids: ['m1'], ...overrides,
+});
+
+test('self-promotion uses the poster’s own WhatsApp number', async () => {
+  const { digest, store, notifier } = createDigest({
+    mode: 'shadow',
+    ai: fakeAi({ contacts: [selfPromotion()], wiki_facts: [] }),
+    storeOptions: { messages: [message('K1', 'I offer bodywork sessions, DM me', { sender_phone: '+50670001234' })] },
+  });
+  await store.touchAdmin(ADMIN);
+  await digest.run({ trigger: 'manual' });
+  const [item] = store.items;
+  assert.equal(item.status, 'proposed');
+  assert.equal(item.payload.phone, '+50670001234');
+  assert.equal(item.payload.phoneSource, 'poster');
+  assert.match(notifier.sent.at(-1).body, /Kenneth Zúñiga — Bodywork — wellness · \+50670001234 \(poster’s WhatsApp\)/);
+});
+
+test('the poster’s number is never used for recommendations or mixed evidence', async () => {
+  const messages = [
+    message('R1', 'Kenneth does great bodywork', { sender_phone: '+50670001111' }),
+    message('R11', 'Yes, he is great', { sender_phone: '+50670002222' }),
+  ];
+  for (const [candidate, label] of [
+    [selfPromotion({ offered_by_poster: false }), 'recommendation'],
+    [selfPromotion({ evidence_message_ids: ['m1', 'm2'] }), 'two posters'],
+  ]) {
+    const { digest, store } = createDigest({ ai: fakeAi({ contacts: [candidate], wiki_facts: [] }), storeOptions: { messages } });
+    await digest.run({ trigger: 'manual' });
+    assert.equal(store.items[0].reason, 'No phone number in the messages', label);
+  }
+});

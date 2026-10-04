@@ -8,7 +8,7 @@ const databaseError = (operation, error) => {
   return wrapped;
 };
 
-const MESSAGE_COLUMNS = 'group_jid,message_id,sender_hash,sender_name,sent_at,body,contacts,quoted_message_id,received_at';
+const MESSAGE_COLUMNS = 'group_jid,message_id,sender_hash,sender_name,sender_phone,sent_at,body,contacts,quoted_message_id,received_at';
 const ITEM_COLUMNS = 'id,ref,run_id,kind,action,status,reason,confidence,title,detail,payload,evidence,contact_id,wiki_page_slug,wiki_event_id,created_at,decided_at';
 const RUN_COLUMNS = 'id,run_date,trigger,mode,status,stats,error,summary_sent_at,started_at,finished_at,window_start,window_end';
 

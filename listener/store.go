@@ -55,9 +55,9 @@ func (r *PostgresRecorder) RecordMessage(ctx context.Context, record MessageReco
 		return false, err
 	}
 	var stored bool
-	err = r.pool.QueryRow(ctx, `SELECT public.record_group_message($1, NULLIF($2, ''), $3, $4, NULLIF($5, ''), $6, $7, $8::jsonb, NULLIF($9, ''))`,
+	err = r.pool.QueryRow(ctx, `SELECT public.record_group_message($1, NULLIF($2, ''), $3, $4, NULLIF($5, ''), $6, $7, $8::jsonb, NULLIF($9, ''), NULLIF($10, ''))`,
 		record.GroupJID, record.GroupName, record.MessageID, record.SenderHash, record.SenderName,
-		record.SentAt, record.Body, string(contactsJSON), record.QuotedMessageID,
+		record.SentAt, record.Body, string(contactsJSON), record.QuotedMessageID, record.SenderPhone,
 	).Scan(&stored)
 	return stored, err
 }

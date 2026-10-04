@@ -172,6 +172,11 @@ func (l *Listener) handleMessage(evt *events.Message, groupNameHint string) {
 		return
 	}
 	record.GroupName = l.groupName(evt.Info.Chat, groupNameHint)
+	if record.SenderPhone == "" && evt.Info.Sender.Server == types.HiddenUserServer && l.client.Store != nil {
+		if pn, err := l.client.Store.LIDs.GetPNForLID(ctx, evt.Info.Sender.ToNonAD()); err == nil {
+			record.SenderPhone = phoneFromJID(pn)
+		}
+	}
 	stored, err := l.recorder.RecordMessage(ctx, record)
 	if err != nil {
 		l.log.Warn("could not record message", "group", record.GroupJID, "error", err)

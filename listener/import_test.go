@@ -70,3 +70,12 @@ func TestLocalDayRangeIsInclusive(t *testing.T) {
 		t.Fatal("expected an error for a reversed range")
 	}
 }
+
+func TestRecordFromCacheKeepsSenderPhone(t *testing.T) {
+	entry := cacheEntry{ID: "H9", ChatID: "120363000000000001@g.us", SenderID: "50663804288@s.whatsapp.net",
+		Timestamp: 1759500000, Kind: "text", Text: "Shiatsu sessions this week, DM me"}
+	record, ok := recordFromCache(testSecret, entry)
+	if !ok || record.SenderPhone != "+50663804288" {
+		t.Fatalf("unexpected sender phone: %+v", record)
+	}
+}

@@ -94,3 +94,17 @@ describe('Machu group backfill', () => {
     expect(backfillSql).toMatch(/quoted_message_id, 'backfill'/);
   });
 });
+
+describe('Machu group sender numbers', () => {
+  const phoneSql = readFileSync(
+    resolve(process.cwd(), 'supabase/migrations/20261004200000_group_message_sender_phone.sql'),
+    'utf8',
+  );
+
+  test('stores validated sender numbers only through private functions', () => {
+    expect(phoneSql).toMatch(/sender_phone TEXT\s+CHECK \(sender_phone IS NULL OR sender_phone ~ '\^\\\+\[1-9\]\[0-9\]\{7,14\}\$'\)/);
+    expect(phoneSql).toMatch(/REVOKE ALL ON FUNCTION public\.record_group_message\([^)]*\) FROM PUBLIC, anon, authenticated/);
+    expect(phoneSql).toMatch(/GRANT EXECUTE ON FUNCTION public\.record_group_message\([^)]*\) TO machu_listener, service_role/);
+    expect(phoneSql).not.toMatch(/GRANT [^;]* ON TABLE/);
+  });
+});

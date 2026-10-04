@@ -32,6 +32,7 @@ type MessageRecord struct {
 	MessageID       string
 	SenderHash      string
 	SenderName      string
+	SenderPhone     string // private; used only when a member advertises their own service
 	SentAt          time.Time
 	Body            string
 	Contacts        []SharedContact
@@ -52,6 +53,19 @@ func truncate(value string, limit int) string {
 		return value
 	}
 	return string([]rune(value)[:limit])
+}
+
+// phoneFromJID returns an E.164 number for a phone-number JID, or "".
+func phoneFromJID(jid types.JID) string {
+	if jid.Server != types.DefaultUserServer || len(jid.User) < 8 || len(jid.User) > 15 {
+		return ""
+	}
+	for _, digit := range jid.User {
+		if digit < '0' || digit > '9' {
+			return ""
+		}
+	}
+	return "+" + jid.User
 }
 
 // hashSender returns a stable pseudonymous identifier for a group member.
@@ -162,6 +176,7 @@ func recordFromMessage(secret []byte, info types.MessageInfo, msg *waE2E.Message
 		MessageID:       string(info.ID),
 		SenderHash:      hashSender(secret, info.Sender),
 		SenderName:      truncate(info.PushName, maxNameLength),
+		SenderPhone:     firstNonEmpty(phoneFromJID(info.Sender.ToNonAD()), phoneFromJID(info.SenderAlt.ToNonAD())),
 		SentAt:          info.Timestamp,
 		Body:            truncate(messageText(msg), maxBodyLength),
 		Contacts:        sharedContacts(msg),
@@ -174,6 +189,15 @@ func recordFromMessage(secret []byte, info types.MessageInfo, msg *waE2E.Message
 		return MessageRecord{}, false
 	}
 	return record, true
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 // changeFromMessage recognizes edits and deletions of earlier group messages.

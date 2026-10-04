@@ -98,6 +98,7 @@ type importPayload struct {
 	Body            string          `json:"body"`
 	Contacts        []SharedContact `json:"contacts"`
 	QuotedMessageID string          `json:"quoted_message_id"`
+	SenderPhone     string          `json:"sender_phone,omitempty"`
 }
 
 func (r *PostgresRecorder) ImportMessages(ctx context.Context, records []MessageRecord) (inserted, duplicates, disabled int, err error) {
@@ -110,7 +111,7 @@ func (r *PostgresRecorder) ImportMessages(ctx context.Context, records []Message
 		payload = append(payload, importPayload{
 			GroupJID: record.GroupJID, MessageID: record.MessageID, SenderHash: record.SenderHash,
 			SenderName: record.SenderName, SentAt: record.SentAt, Body: record.Body,
-			Contacts: contacts, QuotedMessageID: record.QuotedMessageID,
+			Contacts: contacts, QuotedMessageID: record.QuotedMessageID, SenderPhone: record.SenderPhone,
 		})
 	}
 	data, err := json.Marshal(payload)
@@ -189,7 +190,7 @@ func importHistory(ctx context.Context, cfg config, args []string) error {
 		}
 		inserted, duplicates, disabled = inserted+i, duplicates+d, disabled+x
 	}
-	fmt.Printf("Imported %d new messages; %d were already stored; %d were from groups the listener isn't recording and were not stored.\n",
+	fmt.Printf("Imported %d new messages; %d were already stored (sender numbers filled in where missing); %d were from groups the listener isn't recording and were not stored.\n",
 		inserted, duplicates, disabled)
 	return nil
 }

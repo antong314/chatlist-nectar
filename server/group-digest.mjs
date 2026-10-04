@@ -480,15 +480,22 @@ export class GroupDigest {
     const evidencePhones = new Set([...evidence.flatMap((message) => phonesInText(message.body)), ...cardPhones]);
     let phone = normalizePhone(candidate.phone);
     if (phone && !evidencePhones.has(phone)) phone = null;
-    if (!phone && new Set(cardPhones).size === 1) phone = cardPhones[0];
+    let phoneSource = phone ? 'message' : null;
+    if (!phone && new Set(cardPhones).size === 1) [phone, phoneSource] = [cardPhones[0], 'contact card'];
+    // A member advertising their own service is reachable on their own
+    // WhatsApp number, but only when exactly one person wrote the evidence.
+    if (!phone && candidate.offered_by_poster) {
+      const posters = new Set(evidence.filter((message) => !message.context).map((message) => message.sender_phone || null));
+      if (posters.size === 1 && !posters.has(null)) [phone, phoneSource] = [[...posters][0], 'poster'];
+    }
 
     const label = CATEGORY_LABELS[category] || category;
     const base = {
       kind: 'contact',
       confidence,
       title: name,
-      detail: cleanText(`${label}${phone ? ` · ${phone}` : ''}`, 500),
-      payload: { name, phone, category, description, website },
+      detail: cleanText(`${label}${phone ? ` · ${phone}${phoneSource === 'poster' ? ' (poster’s WhatsApp)' : ''}` : ''}`, 500),
+      payload: { name, phone, phoneSource, category, description, website },
     };
     if (!candidate.is_service_provider) return { ...base, status: 'skipped', reason: 'Not a service provider' };
     if (!phone) return { ...base, status: 'skipped', reason: 'No phone number in the messages' };

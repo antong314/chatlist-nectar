@@ -66,8 +66,9 @@ administrator has enabled. Once a day the server reads the new messages and
 publishes useful provider recommendations and local knowledge.
 
 1. **Record.** The listener stores text, captions, shared contact cards, and
-   reply links in `group_messages`. Senders are stored as an HMAC and their
-   display name. Raw messages are deleted after 14 days, and deleting a message
+   reply links in `group_messages`. Senders are stored as an HMAC, their
+   display name, and their WhatsApp number when known. The number is private
+   and is used only when a member advertises their own service. Raw messages are deleted after 14 days, and deleting a message
    in WhatsApp deletes it here too.
 2. **Extract.** After `DIGEST_HOUR` (default 6:00 in `DIGEST_TIMEZONE`), the
    server groups each enabled group's new messages into chunks with earlier
@@ -75,7 +76,11 @@ publishes useful provider recommendations and local knowledge.
    reasoning) for provider contacts and durable wiki facts with confidence
    scores and the supporting message IDs.
 3. **Verify and decide (code, not the model).**
-   - Phone numbers and websites must appear in the supporting messages.
+   - Phone numbers and websites must appear in the supporting messages. The
+     exception is self-promotion ("I offer massages, DM me"): when the model
+     marks a contact as offered by the poster and a single member wrote all
+     the evidence, that member's WhatsApp number is used. Summaries label it
+     "(poster's WhatsApp)".
    - Contacts deduplicate by normalized phone number, then by name.
    - Existing listings are only enriched where description, category, or
      website are empty.

@@ -116,3 +116,22 @@ func TestHashSenderIgnoresDeviceSuffix(t *testing.T) {
 		t.Fatal("hash must be stable across a member's devices")
 	}
 }
+
+func TestSenderPhoneComesFromPhoneJIDsOnly(t *testing.T) {
+	msg := &waE2E.Message{Conversation: proto.String("I offer bodywork, DM me")}
+	lid := groupInfo("P1")
+	if record, _ := recordFromMessage(testSecret, lid, msg, ""); record.SenderPhone != "" {
+		t.Fatalf("a hidden LID sender has no known phone: %q", record.SenderPhone)
+	}
+	alt := groupInfo("P2")
+	alt.SenderAlt = types.NewJID("50688887777", types.DefaultUserServer)
+	if record, _ := recordFromMessage(testSecret, alt, msg, ""); record.SenderPhone != "+50688887777" {
+		t.Fatalf("expected the alternate phone address, got %q", record.SenderPhone)
+	}
+	pn := groupInfo("P3")
+	pn.Sender = types.NewJID("15551234567", types.DefaultUserServer)
+	pn.Sender.Device = 2
+	if record, _ := recordFromMessage(testSecret, pn, msg, ""); record.SenderPhone != "+15551234567" {
+		t.Fatalf("expected the sender phone, got %q", record.SenderPhone)
+	}
+}
