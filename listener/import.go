@@ -101,7 +101,7 @@ type importPayload struct {
 	SenderPhone     string          `json:"sender_phone,omitempty"`
 }
 
-func (r *PostgresRecorder) ImportMessages(ctx context.Context, records []MessageRecord) (inserted, duplicates, disabled int, err error) {
+func (r *PostgresRecorder) ImportMessages(ctx context.Context, records []MessageRecord) (inserted, refreshed, disabled int, err error) {
 	payload := make([]importPayload, 0, len(records))
 	for _, record := range records {
 		contacts := record.Contacts
@@ -118,9 +118,9 @@ func (r *PostgresRecorder) ImportMessages(ctx context.Context, records []Message
 	if err != nil {
 		return 0, 0, 0, err
 	}
-	err = r.pool.QueryRow(ctx, `SELECT inserted, duplicates, disabled FROM public.import_group_messages($1::jsonb)`, string(data)).
-		Scan(&inserted, &duplicates, &disabled)
-	return inserted, duplicates, disabled, err
+	err = r.pool.QueryRow(ctx, `SELECT inserted, refreshed, disabled FROM public.import_group_messages($1::jsonb)`, string(data)).
+		Scan(&inserted, &refreshed, &disabled)
+	return inserted, refreshed, disabled, err
 }
 
 func defaultCachePath() string {
@@ -181,16 +181,16 @@ func importHistory(ctx context.Context, cfg config, args []string) error {
 		return err
 	}
 	defer recorder.Close()
-	var inserted, duplicates, disabled int
+	var inserted, refreshed, disabled int
 	for offset := 0; offset < len(records); offset += importBatchSize {
 		batch := records[offset:min(offset+importBatchSize, len(records))]
 		i, d, x, err := recorder.ImportMessages(ctx, batch)
 		if err != nil {
 			return fmt.Errorf("import batch at %d: %w", offset, err)
 		}
-		inserted, duplicates, disabled = inserted+i, duplicates+d, disabled+x
+		inserted, refreshed, disabled = inserted+i, refreshed+d, disabled+x
 	}
-	fmt.Printf("Imported %d new messages; %d were already stored (sender numbers filled in where missing); %d were from groups the listener isn't recording and were not stored.\n",
-		inserted, duplicates, disabled)
+	fmt.Printf("Imported %d new messages; refreshed %d already stored; %d were from groups the listener isn't recording and were not stored.\n",
+		inserted, refreshed, disabled)
 	return nil
 }

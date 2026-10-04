@@ -630,3 +630,18 @@ test('the poster’s number is never used for recommendations or mixed evidence'
     assert.equal(store.items[0].reason, 'No phone number in the messages', label);
   }
 });
+
+test('a reply recommending a quoted contact card lists that person', async () => {
+  const card = { name: 'Roberto Arauz Arquitecto BIOA', vcard: 'BEGIN:VCARD\nFN:Roberto Arauz Arquitecto BIOA\nTEL:+506 8811 2233\nEND:VCARD', quoted: true };
+  const reply = message('L1', 'By far the best architect in the Valley. Reach out to Roberto.', { contacts: [card], quoted_message_id: 'CARD1' });
+  const ai = fakeAi({
+    contacts: [{ name: 'Roberto Arauz — Architect (BIOA)', phone: '', website: '', category: 'Construction', description: 'Architect and builder recommended for quality work in Alegría.', is_service_provider: true, offered_by_poster: false, confidence: 0.92, evidence_message_ids: ['m1'] }],
+    wiki_facts: [],
+  });
+  const { digest, store } = createDigest({ mode: 'shadow', ai, storeOptions: { messages: [reply] } });
+  await digest.run({ trigger: 'manual' });
+  assert.deepEqual(ai.calls[0].messages[0].contacts, [{ name: 'Roberto Arauz Arquitecto BIOA', phone: '+50688112233', from_quoted_message: true }]);
+  assert.equal(store.items[0].status, 'proposed');
+  assert.equal(store.items[0].payload.phone, '+50688112233');
+  assert.equal(store.items[0].payload.phoneSource, 'contact card');
+});

@@ -68,9 +68,10 @@ export const phonesInText = (value) => (String(value ?? '').match(PHONE_PATTERN)
 
 export const cardsFromMessage = (message) => (Array.isArray(message?.contacts) ? message.contacts : [])
   .flatMap((card) => {
+    const quoted = Boolean(card?.quoted);
     const parsed = parseVcards(card?.vcard);
-    if (parsed.length > 0) return parsed.map((entry) => ({ name: card?.name || entry.name, phone: entry.phone }));
-    return card?.name ? [{ name: card.name, phone: null }] : [];
+    if (parsed.length > 0) return parsed.map((entry) => ({ name: card?.name || entry.name, phone: entry.phone, quoted }));
+    return card?.name ? [{ name: card.name, phone: null, quoted }] : [];
   });
 
 export const localDateParts = (date, timeZone) => {
@@ -162,7 +163,11 @@ const promptMessage = (message, shortId, idMap, context) => ({
   sender: cleanText(message.sender_name, 60) || `Member ${String(message.sender_hash ?? '').slice(0, 6)}`,
   reply_to: message.quoted_message_id ? (idMap.get(message.quoted_message_id) || 'an earlier message') : '',
   text: String(message.body ?? '').slice(0, 4000),
-  contacts: cardsFromMessage(message).map((card) => ({ name: card.name, phone: card.phone || '' })),
+  contacts: cardsFromMessage(message).map((card) => ({
+    name: card.name,
+    phone: card.phone || '',
+    ...(card.quoted ? { from_quoted_message: true } : {}),
+  })),
   context_only: context,
 });
 

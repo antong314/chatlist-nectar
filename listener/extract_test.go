@@ -135,3 +135,24 @@ func TestSenderPhoneComesFromPhoneJIDsOnly(t *testing.T) {
 		t.Fatalf("expected the sender phone, got %q", record.SenderPhone)
 	}
 }
+
+func TestRepliesCarryTheQuotedContactCard(t *testing.T) {
+	vcard := "BEGIN:VCARD\nFN:Roberto Arauz Arquitecto BIOA\nTEL:+506 8888 1234\nEND:VCARD"
+	msg := &waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+		Text: proto.String("By far the best architect in the Valley"),
+		ContextInfo: &waE2E.ContextInfo{
+			StanzaID: proto.String("CARD1"),
+			QuotedMessage: &waE2E.Message{ContactMessage: &waE2E.ContactMessage{
+				DisplayName: proto.String("Roberto Arauz Arquitecto BIOA"),
+				Vcard:       proto.String(vcard),
+			}},
+		},
+	}}
+	record, ok := recordFromMessage(testSecret, groupInfo("R1"), msg, "")
+	if !ok || record.QuotedMessageID != "CARD1" || len(record.Contacts) != 1 {
+		t.Fatalf("unexpected record: %+v", record)
+	}
+	if card := record.Contacts[0]; !card.Quoted || card.Name != "Roberto Arauz Arquitecto BIOA" || card.Vcard != vcard {
+		t.Fatalf("unexpected quoted card: %+v", card)
+	}
+}

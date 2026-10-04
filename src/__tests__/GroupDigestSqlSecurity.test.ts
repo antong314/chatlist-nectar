@@ -108,3 +108,17 @@ describe('Machu group sender numbers', () => {
     expect(phoneSql).not.toMatch(/GRANT [^;]* ON TABLE/);
   });
 });
+
+describe('Machu group re-import refresh', () => {
+  const refreshSql = readFileSync(
+    resolve(process.cwd(), 'supabase/migrations/20261004220000_refresh_imported_group_messages.sql'),
+    'utf8',
+  );
+
+  test('refreshes imported rows but never rewrites live message text', () => {
+    expect(refreshSql).toMatch(/body = CASE WHEN messages\.source = 'backfill' THEN EXCLUDED\.body ELSE messages\.body END/);
+    expect(refreshSql).toMatch(/JOIN public\.whatsapp_groups AS groups ON groups\.jid = incoming\.group_jid AND groups\.enabled/);
+    expect(refreshSql).toMatch(/REVOKE ALL ON FUNCTION public\.import_group_messages\(JSONB\) FROM PUBLIC, anon, authenticated/);
+    expect(refreshSql).toMatch(/GRANT EXECUTE ON FUNCTION public\.import_group_messages\(JSONB\) TO machu_listener, service_role/);
+  });
+});

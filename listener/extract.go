@@ -23,6 +23,10 @@ const (
 type SharedContact struct {
 	Name  string `json:"name"`
 	Vcard string `json:"vcard"`
+	// Quoted marks a card copied from the message this one replies to. The
+	// original card message may be missing (for example from desktop-client
+	// history), and the reply is often the recommendation.
+	Quoted bool `json:"quoted,omitempty"`
 }
 
 // MessageRecord is what the listener stores for one group message.
@@ -120,19 +124,37 @@ func messageText(msg *waE2E.Message) string {
 	return ""
 }
 
-// sharedContacts returns the contact cards attached to a message.
-func sharedContacts(msg *waE2E.Message) []SharedContact {
+// contextInfo returns the reply context of a message, if any.
+func contextInfo(msg *waE2E.Message) *waE2E.ContextInfo {
 	if msg == nil {
 		return nil
 	}
+	for _, info := range []*waE2E.ContextInfo{
+		msg.GetExtendedTextMessage().GetContextInfo(),
+		msg.GetImageMessage().GetContextInfo(),
+		msg.GetVideoMessage().GetContextInfo(),
+		msg.GetDocumentMessage().GetContextInfo(),
+		msg.GetContactMessage().GetContextInfo(),
+		msg.GetContactsArrayMessage().GetContextInfo(),
+		msg.GetLocationMessage().GetContextInfo(),
+	} {
+		if info.GetStanzaID() != "" {
+			return info
+		}
+	}
+	return nil
+}
+
+func cardsIn(msg *waE2E.Message, quoted bool) []SharedContact {
 	contacts := []SharedContact{}
 	add := func(card *waE2E.ContactMessage) {
 		if card == nil || strings.TrimSpace(card.GetVcard()) == "" {
 			return
 		}
 		contacts = append(contacts, SharedContact{
-			Name:  truncate(card.GetDisplayName(), maxNameLength),
-			Vcard: truncate(card.GetVcard(), maxVcardLength),
+			Name:   truncate(card.GetDisplayName(), maxNameLength),
+			Vcard:  truncate(card.GetVcard(), maxVcardLength),
+			Quoted: quoted,
 		})
 	}
 	add(msg.GetContactMessage())
@@ -142,26 +164,22 @@ func sharedContacts(msg *waE2E.Message) []SharedContact {
 	return contacts
 }
 
+// sharedContacts returns the contact cards attached to a message, followed by
+// any cards in the message it replies to.
+func sharedContacts(msg *waE2E.Message) []SharedContact {
+	if msg == nil {
+		return nil
+	}
+	contacts := cardsIn(msg, false)
+	if quoted := contextInfo(msg).GetQuotedMessage(); quoted != nil {
+		contacts = append(contacts, cardsIn(quoted, true)...)
+	}
+	return contacts
+}
+
 // quotedMessageID returns the ID of the message this one replies to.
 func quotedMessageID(msg *waE2E.Message) string {
-	if msg == nil {
-		return ""
-	}
-	contexts := []*waE2E.ContextInfo{
-		msg.GetExtendedTextMessage().GetContextInfo(),
-		msg.GetImageMessage().GetContextInfo(),
-		msg.GetVideoMessage().GetContextInfo(),
-		msg.GetDocumentMessage().GetContextInfo(),
-		msg.GetContactMessage().GetContextInfo(),
-		msg.GetContactsArrayMessage().GetContextInfo(),
-		msg.GetLocationMessage().GetContextInfo(),
-	}
-	for _, info := range contexts {
-		if id := info.GetStanzaID(); id != "" {
-			return id
-		}
-	}
-	return ""
+	return contextInfo(msg).GetStanzaID()
 }
 
 // recordFromMessage converts a decrypted group message into a record. It
