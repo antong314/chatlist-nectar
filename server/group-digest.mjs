@@ -494,7 +494,7 @@ export class GroupDigest {
       context.directoryIndex = new Map();
       for (const contact of contacts) {
         const key = baseName(contact.title);
-        if (key.length >= 8 && !context.directoryIndex.has(key)) context.directoryIndex.set(key, contact);
+        if (key.length >= 5 && !context.directoryIndex.has(key)) context.directoryIndex.set(key, contact);
       }
     }
     return context.directoryIndex;

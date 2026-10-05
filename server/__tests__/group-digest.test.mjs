@@ -747,3 +747,12 @@ test('a skip only carries over for the same provider and the same kind of change
   const other = store.items.filter((item) => item.run_id === store.runs.at(-1).id)[0];
   assert.equal(other.status, 'proposed', 'a different business from the same poster is still proposed');
 });
+
+test('short business names already listed under another number are not duplicated', async () => {
+  const directory = new MemoryDirectory([{ id: 'd1', title: 'DeliCru', subtitle: 'Living foods', category: 'Groceries', phone_number: '+50663064551' }]);
+  const ai = fakeAi({ contacts: [{ ...extraction.contacts[0], name: 'DeliCru' }], wiki_facts: [] });
+  const { digest, store } = createDigest({ mode: 'shadow', ai, directory });
+  await digest.run({ trigger: 'manual' });
+  assert.equal(store.items[0].status, 'skipped');
+  assert.equal(store.items[0].reason, 'Possibly already listed as DeliCru');
+});
