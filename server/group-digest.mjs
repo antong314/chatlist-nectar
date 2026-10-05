@@ -239,6 +239,17 @@ const describeChanges = (changes) => {
   return `Added ${labels.join(', ')}`;
 };
 
+// The fields an enrichment item changes; older items only describe them.
+const changeKeysOf = (item) => {
+  if (item.payload?.changes) return Object.keys(item.payload.changes);
+  const detail = String(item.detail ?? '');
+  return [
+    /description/.test(detail) && 'subtitle',
+    /category/.test(detail) && 'category',
+    /website/.test(detail) && 'website_url',
+  ].filter(Boolean);
+};
+
 // Snapshot of the fields an enrichment changes, so undo can restore them.
 const previousValues = (contact, keys) => Object.fromEntries(keys.map((key) => {
   if (key === 'website_url') return [key, contact?.website_url ?? null];
@@ -491,10 +502,19 @@ export class GroupDigest {
 
   // Finds an earlier item for the same provider or fact that an
   // administrator skipped or undid.
-  async priorRejection(context, { phone = null, statement = null }) {
+  // A provider match needs the same phone, a similar name, and the same kind
+  // of change: one person may post for several businesses, and skipping a
+  // proposed category change is not a rejection of the provider.
+  async priorRejection(context, { phone = null, name = null, action = null, changeKeys = [], statement = null }) {
     if (!context.rejections) context.rejections = await this.store.listAdminRejections();
+    const sameChanges = (item) => action !== 'contact_enrich'
+      || changeKeysOf(item).sort().join() === [...changeKeys].sort().join();
     const match = context.rejections.find((item) => (phone
-      ? item.kind === 'contact' && item.payload?.phone === phone
+      ? item.kind === 'contact'
+        && item.payload?.phone === phone
+        && (item.action ?? 'contact_create') === action
+        && (statementSimilarity(item.payload?.name || item.title, name) >= 0.5 || baseName(item.payload?.name || item.title) === baseName(name))
+        && sameChanges(item)
       : item.kind === 'wiki' && statementSimilarity(item.payload?.statement, statement) >= REJECTED_FACT_SIMILARITY));
     if (!match) return null;
     return `You ${match.status === 'undone' ? 'undid' : 'skipped'} this before (#${match.ref})`;
@@ -532,8 +552,6 @@ export class GroupDigest {
     if (!phone) return { ...base, status: 'skipped', reason: 'No phone number in the messages' };
     if (context.seenPhones.has(phone)) return null;
     context.seenPhones.add(phone);
-    const rejected = await this.priorRejection(context, { phone });
-    if (rejected) return { ...base, status: 'skipped', reason: rejected };
 
     const existing = await this.directory.findActiveContactByPhone(phone);
     if (existing) {
@@ -541,12 +559,19 @@ export class GroupDigest {
       if (Object.keys(changes).length === 0) {
         return { ...base, title: existing.title || name, status: 'skipped', reason: 'Already in the directory', contact_id: existing.id };
       }
+      const rejectedChange = await this.priorRejection(context, {
+        phone, name, action: 'contact_enrich', changeKeys: Object.keys(changes),
+      });
+      if (rejectedChange) {
+        return { ...base, title: existing.title || name, status: 'skipped', reason: rejectedChange, contact_id: existing.id };
+      }
       return {
         ...base,
         action: 'contact_enrich',
         title: existing.title || name,
         detail: describeChanges(changes),
         contact_id: existing.id,
+        payload: { ...base.payload, changes },
         ...this.statusFor(confidence, CONTACT_CONFIDENCE),
       };
     }
@@ -555,6 +580,8 @@ export class GroupDigest {
     if (sameName) {
       return { ...base, status: 'skipped', reason: `Possibly already listed as ${sameName.title}`, contact_id: sameName.id };
     }
+    const rejected = await this.priorRejection(context, { phone, name, action: 'contact_create' });
+    if (rejected) return { ...base, status: 'skipped', reason: rejected };
     return { ...base, action: 'contact_create', ...this.statusFor(confidence, CONTACT_CONFIDENCE) };
   }
 

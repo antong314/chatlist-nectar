@@ -724,3 +724,26 @@ test('approving a new wiki page publishes the change shown in the summary', asyn
   assert.equal(wiki.changes[0].actionType, 'wiki_create');
   assert.match(extractWikiText(wiki.changes[0].content), /Three golf courses/);
 });
+
+test('a skip only carries over for the same provider and the same kind of change', async () => {
+  const directory = new MemoryDirectory([{ id: 'existing', title: 'ChocoTour', subtitle: 'Tours', category: 'Service', phone_number: '+50688887777' }]);
+  const categoryChange = { ...extraction.contacts[0], name: 'ChocoTour', category: 'Construction' };
+  const ai = fakeAi({ contacts: [categoryChange], wiki_facts: [] });
+  const { digest, store } = createDigest({ mode: 'shadow', ai, directory });
+  await digest.run({ trigger: 'manual' });
+  const [proposedChange] = store.items;
+  assert.equal(proposedChange.action, 'contact_enrich');
+  assert.deepEqual(proposedChange.payload.changes, { category: 'Construction' });
+  await digest.handleAdminMessage({ senderPhone: ADMIN, body: `skip ${proposedChange.ref}` });
+
+  ai.extractGroupKnowledge = async () => ({ contacts: [categoryChange, { ...categoryChange, name: 'Khaya Vegan Foods', phone: '8888-7777' }], wiki_facts: [] });
+  await digest.backfill({ from: '2026-10-03', to: '2026-10-03' });
+  const latest = store.items.filter((item) => item.run_id === store.runs.at(-1).id);
+  assert.equal(latest[0].reason, `You skipped this before (#${proposedChange.ref})`, 'the same change stays dismissed');
+
+  directory.contacts.length = 0;
+  ai.extractGroupKnowledge = async () => ({ contacts: [{ ...categoryChange, name: 'Khaya Vegan Foods' }], wiki_facts: [] });
+  await digest.backfill({ from: '2026-10-02', to: '2026-10-03' });
+  const other = store.items.filter((item) => item.run_id === store.runs.at(-1).id)[0];
+  assert.equal(other.status, 'proposed', 'a different business from the same poster is still proposed');
+});
