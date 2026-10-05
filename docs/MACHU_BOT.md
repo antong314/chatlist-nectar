@@ -87,7 +87,8 @@ publishes useful provider recommendations and local knowledge.
    - Wiki facts go through the same planning and versioned writes as
      conversational wiki edits; facts already on a page are skipped.
    - Time-sensitive facts, non-providers, and contacts without a number are
-     skipped. New wiki pages and low-confidence items wait for review.
+     skipped, as are providers (same phone) and wiki facts (similar
+     statement) that an administrator skipped or undid before. New wiki pages and low-confidence items wait for review.
 4. **Publish.** In `DIGEST_MODE=publish`, confident items are applied through
    the audited functions with `verification_method = 'group_digest'` and the
    listener's number as actor. In `shadow` mode (the default), nothing is
@@ -106,7 +107,9 @@ Administrators manage the digest by chatting with Machu:
 - `digest run`: run the digest now
 - `backfill 2026-09-27 2026-10-03`: digest imported history for those dates (rerun to redo them)
 - `undo N`: reverse published item #N (refused if someone has changed it since)
-- `approve N`, `approve all`: publish items waiting for review (all undecided items from the last 14 days)
+- `approve N`, `approve all`: publish items waiting for review. Wiki items
+  publish exactly the change shown in the summary unless the page has
+  changed since, in which case the fact is planned again (all undecided items from the last 14 days)
 - `approve all but N N` (or `except`): publish everything waiting except those items, which stay waiting
 - `skip N`, `skip all`, `skip all but N`: dismiss items waiting for review
 - `groups`, `enable 2 3`, `disable 1`, `enable all`: choose which groups are recorded

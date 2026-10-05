@@ -283,6 +283,20 @@ export const buildWikiWrite = async ({ plan, pages, wikiStore }) => {
   };
 };
 
+const statementTokens = (value) => new Set(normalizeName(value).split(' ').filter((token) => token.length >= 3));
+
+// Jaccard similarity of two statements' significant words.
+export const statementSimilarity = (left, right) => {
+  const a = statementTokens(left);
+  const b = statementTokens(right);
+  if (a.size === 0 || b.size === 0) return 0;
+  let shared = 0;
+  for (const token of a) if (b.has(token)) shared += 1;
+  return shared / (a.size + b.size - shared);
+};
+
+const REJECTED_FACT_SIMILARITY = 0.6;
+
 const parseRefs = (value) => String(value ?? '')
   .split(/[\s,]+/)
   .map((token) => Number(token.replace(/^#/, '')))
@@ -444,7 +458,7 @@ export class GroupDigest {
     if (!evidence.some((message) => !message.context)) return null;
     const decision = kind === 'contact'
       ? await this.decideContact(candidate, evidence, context)
-      : await this.decideWikiFact(candidate);
+      : await this.decideWikiFact(candidate, context);
     if (!decision) return null;
     const { apply = false, write = null, ...fields } = decision;
     let item = await this.store.createItem({
@@ -473,6 +487,17 @@ export class GroupDigest {
       }
     }
     return context.directoryIndex;
+  }
+
+  // Finds an earlier item for the same provider or fact that an
+  // administrator skipped or undid.
+  async priorRejection(context, { phone = null, statement = null }) {
+    if (!context.rejections) context.rejections = await this.store.listAdminRejections();
+    const match = context.rejections.find((item) => (phone
+      ? item.kind === 'contact' && item.payload?.phone === phone
+      : item.kind === 'wiki' && statementSimilarity(item.payload?.statement, statement) >= REJECTED_FACT_SIMILARITY));
+    if (!match) return null;
+    return `You ${match.status === 'undone' ? 'undid' : 'skipped'} this before (#${match.ref})`;
   }
 
   async decideContact(candidate, evidence, context) {
@@ -507,6 +532,8 @@ export class GroupDigest {
     if (!phone) return { ...base, status: 'skipped', reason: 'No phone number in the messages' };
     if (context.seenPhones.has(phone)) return null;
     context.seenPhones.add(phone);
+    const rejected = await this.priorRejection(context, { phone });
+    if (rejected) return { ...base, status: 'skipped', reason: rejected };
 
     const existing = await this.directory.findActiveContactByPhone(phone);
     if (existing) {
@@ -551,7 +578,7 @@ export class GroupDigest {
     }
   }
 
-  async decideWikiFact(fact) {
+  async decideWikiFact(fact, context) {
     const statement = cleanText(fact.statement, 800);
     if (!statement) return null;
     const confidence = clampConfidence(fact.confidence);
@@ -565,6 +592,8 @@ export class GroupDigest {
       payload: { statement, topic, searchTerms },
     };
     if (fact.time_sensitive) return { ...base, status: 'skipped', reason: 'Time-sensitive' };
+    const rejected = await this.priorRejection(context, { statement });
+    if (rejected) return { ...base, status: 'skipped', reason: rejected };
     const planned = await this.planWikiFact(base.payload);
     if (planned.failed) return { ...base, status: 'failed', reason: planned.failed };
     if (planned.skip) return { ...base, status: 'skipped', reason: planned.skip };
@@ -575,7 +604,7 @@ export class GroupDigest {
       title: cleanText(planned.write.title, 200) || base.title,
       detail: cleanText(planned.plan.change_summary || statement, 500),
       wiki_page_slug: planned.write.slug,
-      payload: { ...base.payload, plan: planned.plan },
+      payload: { ...base.payload, plan: planned.plan, plannedVersion: planned.write.expectedVersion },
       write: planned.write,
     };
     if (action === 'wiki_create') return { ...decision, status: 'needs_review', reason: 'Would create a new wiki page' };
@@ -644,13 +673,33 @@ export class GroupDigest {
     });
   }
 
+  async storedWikiWrite(item, plan) {
+    try {
+      if (plan.action === 'update') {
+        const page = await this.wikiStore.getPage(item.wiki_page_slug || plan.target_slug);
+        if (!page || page.version !== item.payload?.plannedVersion) return null;
+        return await buildWikiWrite({ plan, pages: [page], wikiStore: this.wikiStore });
+      }
+      return await buildWikiWrite({ plan, pages: [], wikiStore: this.wikiStore });
+    } catch {
+      return null;
+    }
+  }
+
   async applyWiki(item, { actorPhone, write, decidedBy }) {
     let change = write;
     let plan = item.payload?.plan;
+    // An approval publishes the change shown in the summary, unless the page
+    // has changed since; only then is the fact planned again.
+    if (!change && plan) change = await this.storedWikiWrite(item, plan);
     if (!change) {
       const planned = await this.planWikiFact(item.payload ?? {});
       if (planned.failed) throw new Error(planned.failed);
-      if (planned.skip) return this.store.updateItem(item.id, { status: 'skipped', reason: planned.skip });
+      if (planned.skip) {
+        return this.store.updateItem(item.id, decidedBy
+          ? { status: 'failed', reason: cleanText(`Couldn’t publish: ${planned.skip}`, 300) }
+          : { status: 'skipped', reason: planned.skip });
+      }
       change = planned.write;
       plan = planned.plan;
     }

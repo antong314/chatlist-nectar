@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   GroupDigest,
+  statementSimilarity,
   backfillWindow,
   buildWikiWrite,
   chunkMessages,
@@ -108,6 +109,9 @@ class MemoryDigestStore {
   }
   async getItemByRef(ref) { const row = this.items.find((item) => item.ref === ref); return row ? { ...row } : null; }
   async listItems(runId) { return this.items.filter((item) => item.run_id === runId).map((item) => ({ ...item })); }
+  async listAdminRejections() {
+    return this.items.filter((item) => item.status === 'undone' || (item.status === 'skipped' && item.decided_by)).map((item) => ({ ...item }));
+  }
   async listPendingItems() {
     return this.items.filter((item) => ['proposed', 'needs_review'].includes(item.status)).map((item) => ({ ...item }));
   }
@@ -678,4 +682,45 @@ test('skip all but dismisses everything except the listed items', async () => {
     store.items.filter((item) => ['proposed', 'needs_review'].includes(item.status)).map((item) => item.ref).sort(),
     [keepA.ref, keepB.ref].sort(),
   );
+});
+
+test('items an administrator skipped are not proposed again', async () => {
+  const fact = extraction.wiki_facts[0];
+  const ai = fakeAi({ contacts: [extraction.contacts[0]], wiki_facts: [fact] });
+  const { digest, store } = createDigest({ mode: 'shadow', ai });
+  await digest.run({ trigger: 'manual' });
+  const firstContact = store.items.find((item) => item.kind === 'contact');
+  const firstFact = store.items.find((item) => item.kind === 'wiki');
+  await digest.handleAdminMessage({ senderPhone: ADMIN, body: `skip ${firstContact.ref} ${firstFact.ref}` });
+
+  ai.extractGroupKnowledge = async () => ({
+    contacts: [extraction.contacts[0]],
+    wiki_facts: [{ ...fact, statement: 'The Orotina feria is also held on Saturdays now.' }],
+  });
+  await digest.backfill({ from: '2026-10-03', to: '2026-10-03' });
+  const second = store.items.filter((item) => item.run_id === store.runs.at(-1).id);
+  assert.equal(second.find((item) => item.kind === 'contact').reason, `You skipped this before (#${firstContact.ref})`);
+  assert.equal(second.find((item) => item.kind === 'wiki').reason, `You skipped this before (#${firstFact.ref})`);
+  assert.ok(statementSimilarity('Market moved to Saturdays', 'The bank opens at nine') < 0.6);
+});
+
+test('approving a new wiki page publishes the change shown in the summary', async () => {
+  const createPlan = {
+    action: 'create', operation: 'create', target_slug: 'golf-courses', title: 'Golf Courses Near San Mateo', category: 'Leisure',
+    subject_name: '', proposed_fact: '', anchor_text: '', find_text: '', replacement_text: '',
+    append_text: 'Three golf courses are within an hour of San Mateo.', change_summary: 'Create a golf courses page',
+    needs_clarification: false, clarification_question: '',
+  };
+  const ai = fakeAi({ contacts: [], wiki_facts: [{ ...extraction.wiki_facts[0], statement: 'Three golf courses are within an hour.' }] }, createPlan);
+  const wiki = new MemoryWiki([]);
+  const { digest, store } = createDigest({ mode: 'shadow', ai, wiki });
+  await digest.run({ trigger: 'manual' });
+  const [item] = store.items;
+  assert.equal(item.status, 'needs_review');
+  ai.planWikiChange = async () => ({ ...createPlan, append_text: '', replacement_text: '' });
+  await digest.handleAdminMessage({ senderPhone: ADMIN, body: `approve ${item.ref}` });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(store.items[0].status, 'applied');
+  assert.equal(wiki.changes[0].actionType, 'wiki_create');
+  assert.match(extractWikiText(wiki.changes[0].content), /Three golf courses/);
 });

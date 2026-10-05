@@ -242,6 +242,19 @@ export class GroupDigestStore {
     return data ?? [];
   }
 
+  // Items an administrator dismissed or reversed, so later runs don't
+  // propose them again.
+  async listAdminRejections() {
+    const { data, error } = await this.client
+      .from('group_digest_items')
+      .select(ITEM_COLUMNS)
+      .or('status.eq.undone,and(status.eq.skipped,decided_by.not.is.null)')
+      .order('ref', { ascending: false })
+      .limit(2000);
+    if (error) throw databaseError('load dismissed digest items', error);
+    return data ?? [];
+  }
+
   async undoItem(itemId, requesterWhatsapp) {
     const { data, error } = await this.client.rpc('undo_group_digest_item', {
       p_item_id: itemId,
