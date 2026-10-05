@@ -107,7 +107,8 @@ Administrators manage the digest by chatting with Machu:
 - `backfill 2026-09-27 2026-10-03`: digest imported history for those dates (rerun to redo them)
 - `undo N`: reverse published item #N (refused if someone has changed it since)
 - `approve N`, `approve all`: publish items waiting for review (all undecided items from the last 14 days)
-- `skip N`, `skip all`: dismiss items waiting for review
+- `approve all but N N` (or `except`): publish everything waiting except those items, which stay waiting
+- `skip N`, `skip all`, `skip all but N`: dismiss items waiting for review
 - `groups`, `enable 2 3`, `disable 1`, `enable all`: choose which groups are recorded
 - `digest help`: the command list
 

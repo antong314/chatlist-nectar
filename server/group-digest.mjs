@@ -36,7 +36,8 @@ const ADMIN_HELP = [
   '• backfill 2026-09-27 2026-10-03 — digest imported history for those dates (rerun to redo them)',
   '• undo N — reverse published item #N',
   '• approve N / approve all — publish items waiting for review',
-  '• skip N / skip all — dismiss items waiting for review',
+  '• approve all but N N — publish everything except those numbers',
+  '• skip N / skip all / skip all but N — dismiss items waiting for review',
   '• groups — list the groups the listener has joined',
   '• enable N / disable N / enable all — choose which groups are recorded (use the group numbers from “groups”)',
   '',
@@ -745,7 +746,7 @@ export class GroupDigest {
     if (pending.length === 1) {
       parts.push(`“approve ${pending[0].ref}” to publish it, or “skip ${pending[0].ref}” to dismiss it`);
     } else if (pending.length > 1) {
-      parts.push(`“approve ${pending[0].ref}” or “approve all” to publish, “skip ${pending[0].ref}” to dismiss`);
+      parts.push(`“approve all” to publish everything, “approve all but ${pending[0].ref} ${pending[1].ref}” to hold some back, or “skip ${pending[0].ref}” to dismiss one`);
     }
     if (applied.length > 0) parts.push(`“undo ${applied[0].ref}” to reverse a published item`);
     return parts.length > 0 ? `Reply ${parts.join('; ')}.` : '';
@@ -872,6 +873,15 @@ export class GroupDigest {
       return { handled: true, messages: [{ body: `Backfilling ${from} to ${to} 🌿 I’ll send the summary when it’s done. Run the same command again later to redo these dates with the latest logic.` }] };
     }
 
+    const allBut = text.match(/^(approve|skip)\s+all\s+(?:but|except)\s+(#?\d+(?:[\s,]+(?:and\s+)?#?\d+)*)\s*$/i);
+    if (allBut) {
+      const verb = allBut[1].toLowerCase();
+      const except = parseRefs(allBut[2].replace(/\band\b/gi, ' '));
+      if (verb === 'skip') return { handled: true, messages: await this.skipItems('all', admin, except) };
+      this.approveItems('all', admin, except).catch((error) => this.log.error('Digest approval failed:', error));
+      return { handled: true, messages: [{ body: `Publishing everything waiting except ${except.map((ref) => `#${ref}`).join(', ')} 🌿 I’ll confirm in a moment.` }] };
+    }
+
     const match = text.match(/^(undo|approve|skip|enable|disable)\s+(all|#?\d+(?:[\s,]+#?\d+)*)\s*$/i);
     if (match) {
       const verb = match[1].toLowerCase();
@@ -914,13 +924,22 @@ export class GroupDigest {
     }];
   }
 
-  async itemsForTarget(target) {
+  async itemsForTarget(target, except = []) {
     if (target !== 'all') {
       const items = [];
       for (const ref of target.slice(0, 20)) items.push((await this.store.getItemByRef(ref)) ?? { ref, missing: true });
       return items;
     }
-    return this.pendingItems();
+    return (await this.pendingItems()).filter((item) => !except.includes(Number(item.ref)));
+  }
+
+  // Tells the administrator which excluded items are still waiting.
+  async keptLine(except) {
+    if (except.length === 0) return '';
+    const pending = new Set((await this.pendingItems()).map((item) => Number(item.ref)));
+    const kept = except.filter((ref) => pending.has(ref));
+    if (kept.length === 0) return '';
+    return `Still waiting: ${kept.map((ref) => `#${ref}`).join(', ')}. Reply “skip all” to dismiss ${kept.length === 1 ? 'it' : 'them'}.`;
   }
 
   async undoItems(refs, admin) {
@@ -946,9 +965,9 @@ export class GroupDigest {
     return [{ body: lines.join('\n') || 'Nothing to undo.' }];
   }
 
-  async skipItems(target, admin) {
+  async skipItems(target, admin, except = []) {
     const lines = [];
-    for (const item of await this.itemsForTarget(target)) {
+    for (const item of await this.itemsForTarget(target, except)) {
       if (item.missing) {
         lines.push(`#${item.ref}: not found.`);
       } else if (!['needs_review', 'proposed'].includes(item.status)) {
@@ -960,12 +979,14 @@ export class GroupDigest {
         lines.push(`Skipped #${item.ref} ${item.title}.`);
       }
     }
+    const kept = await this.keptLine(except);
+    if (kept) lines.push('', kept.replace('“skip all” to dismiss', '“approve all” to publish'));
     return [{ body: lines.join('\n') || 'Nothing is waiting for review.' }];
   }
 
-  async approveItems(target, admin) {
+  async approveItems(target, admin, except = []) {
     const lines = [];
-    for (const item of await this.itemsForTarget(target)) {
+    for (const item of await this.itemsForTarget(target, except)) {
       if (item.missing) {
         lines.push(`#${item.ref}: not found.`);
       } else if (!['needs_review', 'proposed'].includes(item.status) || !item.action) {
@@ -977,6 +998,8 @@ export class GroupDigest {
           : `#${result.ref} ${result.title}: ${result.reason || result.status}.`);
       }
     }
+    const kept = await this.keptLine(except);
+    if (kept) lines.push('', kept);
     if (this.notifier) {
       for (const body of splitMessages(lines.join('\n') || 'Nothing is waiting for review.')) {
         await this.notifier.send({ to: admin, body });

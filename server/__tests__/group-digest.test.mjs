@@ -645,3 +645,37 @@ test('a reply recommending a quoted contact card lists that person', async () =>
   assert.equal(store.items[0].payload.phone, '+50688112233');
   assert.equal(store.items[0].payload.phoneSource, 'contact card');
 });
+
+test('approve all but publishes everything except the listed items', async () => {
+  const { digest, store, notifier, directory } = createDigest({ mode: 'shadow' });
+  await store.touchAdmin(ADMIN);
+  await digest.run({ trigger: 'manual' });
+  const pending = store.items.filter((item) => ['proposed', 'needs_review'].includes(item.status));
+  assert.ok(pending.length >= 3);
+  assert.match(notifier.sent.at(-1).body, /“approve all but \d+ \d+” to hold some back/);
+  const [held, ...rest] = pending.map((item) => ({ ...item }));
+
+  const reply = await digest.handleAdminMessage({ senderPhone: ADMIN, body: `approve all except #${held.ref}` });
+  assert.match(reply.messages[0].body, new RegExp(`Publishing everything waiting except #${held.ref}`));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(store.items.find((item) => item.id === held.id).status, held.status, 'the held item still waits');
+  for (const item of rest) assert.ok(['applied', 'skipped', 'failed'].includes(store.items.find((row) => row.id === item.id).status));
+  assert.ok(directory.contacts.length >= 1);
+  assert.match(notifier.sent.at(-1).body, new RegExp(`Still waiting: #${held.ref}\\. Reply “skip all” to dismiss it\\.`));
+
+  const skipped = await digest.handleAdminMessage({ senderPhone: ADMIN, body: 'skip all' });
+  assert.match(skipped.messages[0].body, new RegExp(`Skipped #${held.ref}`));
+});
+
+test('skip all but dismisses everything except the listed items', async () => {
+  const { digest, store } = createDigest({ mode: 'shadow' });
+  await digest.run({ trigger: 'manual' });
+  const pending = store.items.filter((item) => ['proposed', 'needs_review'].includes(item.status));
+  const [keepA, keepB] = pending;
+  const reply = await digest.handleAdminMessage({ senderPhone: ADMIN, body: `skip all but ${keepA.ref}, and ${keepB.ref}` });
+  assert.match(reply.messages[0].body, /Still waiting: #\d+, #\d+\. Reply “approve all” to publish them\./);
+  assert.deepEqual(
+    store.items.filter((item) => ['proposed', 'needs_review'].includes(item.status)).map((item) => item.ref).sort(),
+    [keepA.ref, keepB.ref].sort(),
+  );
+});
