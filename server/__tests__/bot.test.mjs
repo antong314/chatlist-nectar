@@ -824,3 +824,50 @@ test('says so when a document has no readable text', async () => {
   const reply = await bot.handle(inbound({ NumMedia: '1', MediaContentType0: 'application/pdf', MediaUrl0: 'https://api.twilio.test/scan' }));
   assert.match(reply[0].body, /couldn’t read any text/);
 });
+
+test('updates a page from a document with several block edits', async () => {
+  const wikiStore = new MemoryWikiStore();
+  wikiStore.pages.push({
+    ...snakePage(),
+    content: JSON.stringify([
+      { type: 'numberedListItem', content: [{ type: 'text', text: 'Keep the victim calm.', styles: {} }] },
+      { type: 'numberedListItem', content: [{ type: 'text', text: 'Apply a constricting band above the bite.', styles: {} }] },
+      { type: 'paragraph', content: [{ type: 'text', text: 'Call 911 or Orotina Hospital: 2285-1911', styles: { bold: true } }] },
+    ]),
+  });
+  const plans = [];
+  const ai = {
+    ...defaultAi,
+    planWikiChange: async (input) => {
+      plans.push(input);
+      return {
+        action: 'update', operation: 'edit', target_slug: 'snake-bites', title: 'Snake Bites', category: 'Local Know-How',
+        subject_name: '', proposed_fact: '', anchor_text: '', find_text: '', replacement_text: '', append_text: '',
+        edits: [
+          { action: 'replace', index: 1, type: 'numberedListItem', text: 'Do not cut, suck, or apply a tourniquet.' },
+          { action: 'replace', index: 2, type: 'paragraph', text: '**Call 911, then head to Puntarenas Hospital: 2630-8000**' },
+        ],
+        change_summary: 'replaced the tourniquet step and switched the hospital to Puntarenas',
+        needs_clarification: false, clarification_question: '',
+      };
+    },
+  };
+  const bot = new MachuBot({
+    store: new MemoryStore(),
+    wikiStore,
+    ai,
+    fetchMedia: async () => '',
+    readDocument: async () => 'Head straight to Puntarenas Hospital. Do not cut, suck, or apply a tourniquet.',
+    signingSecret: 'test-secret',
+  });
+  const reply = await bot.handle(inbound({
+    Body: 'See what our snake bites page is missing from this PDF and update it',
+    NumMedia: '1', MediaContentType0: 'application/pdf', MediaUrl0: 'https://api.twilio.test/protocol',
+  }));
+  assert.match(reply[0].body, /switched the hospital to Puntarenas/);
+  assert.equal(plans[0].pages[0].slug, 'snake-bites');
+  const text = wikiStore.pages[0].content;
+  assert.match(text, /Puntarenas Hospital: 2630-8000/);
+  assert.doesNotMatch(text, /constricting band|Orotina/);
+  assert.match(text, /Keep the victim calm/);
+});

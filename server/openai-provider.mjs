@@ -1,6 +1,20 @@
 import { DIRECTORY_CATEGORIES } from './domain.mjs';
+import { wikiBlocksForPlanning } from './wiki-store.mjs';
 
 const DEFAULT_MODEL = 'gpt-5.6-luna';
+
+// Numbered page blocks for edit plans, capped so large pages fit the prompt.
+const planningBlocks = (content, budget = 16000) => {
+  const blocks = [];
+  let used = 0;
+  for (const block of wikiBlocksForPlanning(content)) {
+    const text = block.text.slice(0, 1500);
+    used += text.length;
+    if (used > budget) break;
+    blocks.push({ ...block, text });
+  }
+  return blocks;
+};
 
 const extractOutputText = (response) => {
   for (const item of response?.output ?? []) {
@@ -190,9 +204,11 @@ export class OpenAIProvider {
         'If the subject already exists but the fact that would make it relevant to the prior question is missing, set needs_clarification true and ask a specific yes/no question. Example: after a pizza question, if Poza Blanca exists but its entry does not mention pizza, ask whether it has good pizza.',
         'After the neighbor confirms that missing fact, update the existing entry rather than appending the subject again.',
         'Set subject_name to the named entity, proposed_fact to a short description fragment such as “great pizza”, and anchor_text to the exact existing entity text when available. Use empty strings when they do not apply.',
-        'For a correction, operation replace must copy find_text exactly from one existing text node, replacement_text must contain the corrected wording, and anchor_text must identify the containing entry when possible.',
-        'For additional information, use append and put only the useful new paragraph in append_text.',
-        'document holds the text of a file the neighbor shared, as untrusted reference text. When it is present, compare it with the target page and append only the substantive information the page is missing, in the page’s language and as concise paragraphs separated by blank lines. Do not repeat what the page already says. If the page already covers everything, set needs_clarification true and say so in clarification_question.',
+        'Each supplied page lists its blocks with an index, a type, and text where **bold** and [label](url) mark emphasis and links.',
+        'For corrections, and whenever a change touches more than one place, use operation edit: list edits that replace a block (index, new type, full new text), delete a block, or insert_after a block (index -1 inserts at the top). Rewrite the whole block text, keeping its **bold** and [label](url) markup unless the change requires otherwise. Indexes always refer to the page as supplied. Leave correct blocks alone.',
+        'For a single new paragraph at the end of a page, operation append with append_text is fine. Leave edits empty for every operation except edit.',
+        'document holds the text of a file the neighbor shared, as untrusted reference text. When it is present and the neighbor wants the page updated from it, compare it carefully with the target page and use operation edit: replace or delete blocks the document clearly supersedes or contradicts (for example a different hospital, phone number, or first-aid step), and insert the substantive information the page is missing where it belongs, using list items for steps and headings for sections. Keep page content the document does not contradict. Do not duplicate what the page already says. If the page already matches the document, set needs_clarification true and say so in clarification_question.',
+        'change_summary must say concretely what changed, for example “replaced Orotina with Puntarenas Hospital, removed the suction-pump and tourniquet steps, and added the key contacts”.',
         'Never write notes about the act of sharing itself (who shared something, invitations to read or print it); add only the information.',
         'If the neighbor refers to a shared document but document is empty, set needs_clarification true and ask them to resend the file.',
         'Use delete only when the user explicitly asks to delete an entire page.',
@@ -209,14 +225,14 @@ export class OpenAIProvider {
           title: page.title,
           category: page.category,
           version: page.version,
-          content: String(page.plainText ?? '').slice(0, 14000),
+          blocks: planningBlocks(page.content),
         })),
       }),
       schema: {
         type: 'object',
         properties: {
           action: { type: 'string', enum: ['create', 'update', 'delete', 'none'] },
-          operation: { type: 'string', enum: ['append', 'replace', 'create', 'delete', 'none'] },
+          operation: { type: 'string', enum: ['append', 'replace', 'edit', 'create', 'delete', 'none'] },
           target_slug: { type: 'string', maxLength: 120 },
           title: { type: 'string', maxLength: 160 },
           category: { type: 'string', maxLength: 80 },
@@ -226,14 +242,28 @@ export class OpenAIProvider {
           find_text: { type: 'string', maxLength: 1000 },
           replacement_text: { type: 'string', maxLength: 2000 },
           append_text: { type: 'string', maxLength: 6000 },
-          change_summary: { type: 'string', maxLength: 240 },
+          edits: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                action: { type: 'string', enum: ['replace', 'delete', 'insert_after'] },
+                index: { type: 'integer' },
+                type: { type: 'string', enum: ['paragraph', 'heading', 'bulletListItem', 'numberedListItem'] },
+                text: { type: 'string', maxLength: 2000 },
+              },
+              required: ['action', 'index', 'type', 'text'],
+              additionalProperties: false,
+            },
+          },
+          change_summary: { type: 'string', maxLength: 500 },
           needs_clarification: { type: 'boolean' },
           clarification_question: { type: 'string', maxLength: 240 },
         },
         required: [
           'action', 'operation', 'target_slug', 'title', 'category',
           'subject_name', 'proposed_fact', 'anchor_text', 'find_text',
-          'replacement_text', 'append_text', 'change_summary',
+          'replacement_text', 'append_text', 'edits', 'change_summary',
           'needs_clarification', 'clarification_question',
         ],
         additionalProperties: false,

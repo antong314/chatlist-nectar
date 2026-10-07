@@ -154,9 +154,82 @@ export const replaceWikiText = (content, findText, replacementText, anchorText =
   const target = anchor ? blocks.find((block) => nodeContainsText(block, anchor)) : blocks;
   if (!target) throw new Error(`I could not find the existing “${anchor}” entry.`);
   if (!replaceInNode(target, find, String(replacementText ?? '').trim())) {
-    throw new Error('The page changed before I could find that exact information. Please tell me which wording to replace.');
+    throw new Error('I couldn’t find that exact wording on the page. Which sentence should I change?');
   }
   return serializeBlocks(blocks);
+};
+
+const EDITABLE_BLOCK_TYPES = new Set(['paragraph', 'heading', 'bulletListItem', 'numberedListItem']);
+
+// Inline content as lightweight markdown (**bold**, [label](url)) so a planner can
+// rewrite a block without dropping its emphasis or links.
+const inlineToMarkdown = (content) => (Array.isArray(content) ? content : []).map((node) => {
+  if (node?.type === 'link') return `[${inlineToMarkdown(node.content).replace(/\n/g, ' ')}](${node.href})`;
+  if (node?.type !== 'text') return '';
+  const text = String(node.text ?? '');
+  return node.styles?.bold && text.trim() ? `**${text}**` : text;
+}).join('');
+
+const markdownToInline = (markdown) => {
+  const nodes = [];
+  const pattern = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|\*\*([^*]+)\*\*/g;
+  let last = 0;
+  const pushText = (text, styles = {}) => { if (text) nodes.push({ type: 'text', text, styles }); };
+  for (const match of String(markdown ?? '').matchAll(pattern)) {
+    pushText(markdown.slice(last, match.index));
+    if (match[1]) nodes.push({ type: 'link', href: match[2], content: [textNode(match[1])] });
+    else pushText(match[3], { bold: true });
+    last = match.index + match[0].length;
+  }
+  pushText(String(markdown ?? '').slice(last));
+  return nodes;
+};
+
+// Top-level blocks numbered for a planner to target with applyWikiBlockEdits.
+export const wikiBlocksForPlanning = (content, limit = 200) => parseBlocks(content)
+  .slice(0, limit)
+  .map((block, index) => ({ index, type: String(block?.type ?? 'paragraph'), text: inlineToMarkdown(block?.content) }));
+
+const blockFromEdit = (edit, original = null) => {
+  const type = EDITABLE_BLOCK_TYPES.has(edit.type) ? edit.type : (original?.type ?? 'paragraph');
+  const block = { ...(original ?? {}), type, content: markdownToInline(String(edit.text ?? '').trim()) };
+  delete block.id;
+  if (type === 'heading') block.props = { ...(original?.props ?? {}), level: Number(original?.props?.level) || 3 };
+  else if (block.props) delete block.props.level;
+  if (!original) block.children = [];
+  return block;
+};
+
+// Applies a set of block edits made against wikiBlocksForPlanning's numbering.
+// insert_after with index -1 inserts at the top of the page.
+export const applyWikiBlockEdits = (content, edits) => {
+  const blocks = parseBlocks(content);
+  const replaced = new Map();
+  const deleted = new Set();
+  const inserted = new Map();
+  for (const edit of edits ?? []) {
+    const index = Number(edit?.index);
+    const text = String(edit?.text ?? '').trim();
+    const inRange = Number.isInteger(index) && index >= 0 && index < blocks.length;
+    if (edit?.action === 'insert_after') {
+      if (!(index === -1 || inRange)) throw new Error('A planned addition pointed outside the page.');
+      if (!text) continue;
+      inserted.set(index, [...(inserted.get(index) ?? []), blockFromEdit(edit)]);
+    } else if (edit?.action === 'replace' || edit?.action === 'delete') {
+      if (!inRange) throw new Error('A planned change pointed outside the page.');
+      if (replaced.has(index) || deleted.has(index)) continue;
+      if (edit.action === 'delete' || !text) deleted.add(index);
+      else if (text !== inlineToMarkdown(blocks[index]?.content) || (edit.type && edit.type !== blocks[index]?.type)) {
+        replaced.set(index, blockFromEdit(edit, blocks[index]));
+      }
+    }
+  }
+  const result = [...(inserted.get(-1) ?? [])];
+  blocks.forEach((block, index) => {
+    if (!deleted.has(index)) result.push(replaced.get(index) ?? block);
+    result.push(...(inserted.get(index) ?? []));
+  });
+  return serializeBlocks(result);
 };
 
 export const slugifyWikiTitle = (title) => normalizeText(title).replace(/\s+/g, '-').slice(0, 120);

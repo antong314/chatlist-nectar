@@ -16,6 +16,7 @@ import {
 import {
   appendWikiFactToAnchoredBlock,
   appendWikiParagraph,
+  applyWikiBlockEdits,
   createWikiContent,
   replaceWikiText,
   slugifyWikiTitle,
@@ -388,6 +389,18 @@ export class MachuBot {
         } catch (error) {
           throw new WikiClarificationError(error.message);
         }
+      } else if (plan.operation === 'edit') {
+        if (!Array.isArray(plan.edits) || plan.edits.length === 0) {
+          throw new WikiClarificationError(`What should I change on *${title}*?`);
+        }
+        try {
+          content = applyWikiBlockEdits(page.content, plan.edits.slice(0, 80));
+        } catch (error) {
+          throw new WikiClarificationError(`${error.message} Could you tell me what to change?`);
+        }
+        if (content === applyWikiBlockEdits(page.content, [])) {
+          throw new WikiClarificationError(`*${title}* already says that. What else should change?`);
+        }
       } else if (plan.operation === 'append') {
         if (!String(plan.append_text || '').trim()) {
           throw new WikiClarificationError(`What information should I add to *${title}*?`);
@@ -419,7 +432,9 @@ export class MachuBot {
           title,
           action: plan.action,
           summary: String(plan.change_summary || '').trim(),
-          text: String(plan.append_text || plan.replacement_text || '').trim().slice(0, 1500),
+          text: (plan.operation === 'edit'
+            ? (plan.edits ?? []).filter((edit) => edit.action !== 'delete').map((edit) => edit.text).join('\n')
+            : String(plan.append_text || plan.replacement_text || '')).trim().slice(0, 1500),
           fromDocument: Boolean(attachment),
         },
         ...(attachment ? { attachment } : {}),
