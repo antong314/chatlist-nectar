@@ -39,6 +39,30 @@ test('creates valid simple pages and safe slugs from conversational input', () =
   assert.equal(slugifyWikiTitle('Recycling & Re-use in San Matéo'), 'recycling-re-use-in-san-mateo');
 });
 
+test('writes text nodes BlockNote can load', () => {
+  const textNodes = (serialized) => {
+    const found = [];
+    const walk = (value) => {
+      if (Array.isArray(value)) value.forEach(walk);
+      else if (value && typeof value === 'object') {
+        if (value.type === 'text') found.push(value);
+        Object.values(value).forEach(walk);
+      }
+    };
+    walk(JSON.parse(serialized));
+    return found;
+  };
+  const writes = [
+    createWikiContent('First paragraph.\n\nSecond paragraph.'),
+    appendWikiParagraph(content, 'A neighbor shared this protocol.'),
+    appendWikiParagraph('Legacy plain text page.', 'Another detail.'),
+    replaceWikiText(content, 'Markets', 'Farmers markets'),
+  ];
+  for (const serialized of writes) {
+    for (const node of textNodes(serialized)) assert.deepEqual(typeof node.styles, 'object', JSON.stringify(node));
+  }
+});
+
 test('adds a fact to an existing linked list item without duplicating the entry', () => {
   const restaurants = JSON.stringify([
     {

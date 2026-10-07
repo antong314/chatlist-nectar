@@ -33,8 +33,23 @@ const parseBlocks = (content) => {
     // Legacy plain text is converted to one paragraph below.
   }
   const text = String(content ?? '').trim();
-  return text ? [{ type: 'paragraph', content: [{ type: 'text', text }] }] : [];
+  return text ? [{ type: 'paragraph', content: [textNode(text)] }] : [];
 };
+
+const textNode = (text) => ({ type: 'text', text, styles: {} });
+
+// BlockNote throws while loading a text node without `styles`, which leaves the page blank.
+const withTextStyles = (value) => {
+  if (Array.isArray(value)) {
+    for (const item of value) withTextStyles(item);
+  } else if (value && typeof value === 'object') {
+    if (value.type === 'text' && (!value.styles || typeof value.styles !== 'object')) value.styles = {};
+    for (const nested of Object.values(value)) withTextStyles(nested);
+  }
+  return value;
+};
+
+const serializeBlocks = (blocks) => JSON.stringify(withTextStyles(blocks));
 
 const collectText = (value, output) => {
   if (typeof value === 'string') return;
@@ -57,7 +72,7 @@ export const extractWikiText = (content) => {
   return output.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 };
 
-export const createWikiContent = (text) => JSON.stringify(
+export const createWikiContent = (text) => serializeBlocks(
   String(text ?? '')
     .replace(/\r\n?/g, '\n')
     .split(/\n{2,}/)
@@ -65,7 +80,7 @@ export const createWikiContent = (text) => JSON.stringify(
     .filter(Boolean)
     .map((paragraph) => ({
       type: 'paragraph',
-      content: [{ type: 'text', text: paragraph }],
+      content: [textNode(paragraph)],
     })),
 );
 
@@ -73,8 +88,8 @@ export const appendWikiParagraph = (content, text) => {
   const blocks = parseBlocks(content);
   const paragraph = String(text ?? '').trim();
   if (!paragraph) throw new Error('The wiki addition is empty.');
-  blocks.push({ type: 'paragraph', content: [{ type: 'text', text: paragraph }] });
-  return JSON.stringify(blocks);
+  blocks.push({ type: 'paragraph', content: [textNode(paragraph)] });
+  return serializeBlocks(blocks);
 };
 
 const nodeContainsText = (value, text) => {
@@ -90,7 +105,7 @@ export const appendWikiFactToAnchoredBlock = (content, anchorText, factText) => 
   if (!anchor || !fact) throw new Error('The existing wiki entry or new detail is missing.');
   const block = blocks.find((candidate) => nodeContainsText(candidate, anchor));
   if (!block) throw new Error(`I could not find the existing “${anchor}” entry.`);
-  if (nodeContainsText(block, fact)) return JSON.stringify(blocks);
+  if (nodeContainsText(block, fact)) return serializeBlocks(blocks);
 
   const inlineContent = Array.isArray(block.content) ? block.content : [];
   const trailingText = [...inlineContent].reverse().find((item) => item?.type === 'text');
@@ -99,10 +114,10 @@ export const appendWikiFactToAnchoredBlock = (content, anchorText, factText) => 
     const separator = !existing || /[.;:!?—-]$/.test(existing) ? ' ' : '; ';
     trailingText.text = `${existing}${separator}${fact}`;
   } else {
-    inlineContent.push({ type: 'text', text: ` - ${fact}`, styles: {} });
+    inlineContent.push(textNode(` - ${fact}`));
     block.content = inlineContent;
   }
-  return JSON.stringify(blocks);
+  return serializeBlocks(blocks);
 };
 
 const replaceInNode = (value, findText, replacementText) => {
@@ -141,7 +156,7 @@ export const replaceWikiText = (content, findText, replacementText, anchorText =
   if (!replaceInNode(target, find, String(replacementText ?? '').trim())) {
     throw new Error('The page changed before I could find that exact information. Please tell me which wording to replace.');
   }
-  return JSON.stringify(blocks);
+  return serializeBlocks(blocks);
 };
 
 export const slugifyWikiTitle = (title) => normalizeText(title).replace(/\s+/g, '-').slice(0, 120);

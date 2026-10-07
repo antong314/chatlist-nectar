@@ -17,6 +17,18 @@ interface WikiEditorProps {
   autoFocus?: boolean;
 }
 
+// BlockNote throws while loading a text node without `styles`, which leaves the page blank.
+// Pages written outside the editor (e.g. by the WhatsApp bot) may omit it.
+const withTextStyles = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(withTextStyles);
+  if (!value || typeof value !== 'object') return value;
+  const node = Object.fromEntries(
+    Object.entries(value).map(([key, nested]) => [key, withTextStyles(nested)])
+  ) as Record<string, unknown>;
+  if (node.type === 'text' && (!node.styles || typeof node.styles !== 'object')) node.styles = {};
+  return node;
+};
+
 // Error boundary for catching rendering errors in the editor
 class EditorErrorBoundary extends Component<{ children: ReactNode; fallback: ReactNode }, { hasError: boolean }> {
   constructor(props: { children: ReactNode; fallback: ReactNode }) {
@@ -170,7 +182,7 @@ const WikiEditor: React.FC<WikiEditorProps> = ({
             const parsedContent = JSON.parse(initialContent);
             if (Array.isArray(parsedContent) && parsedContent.length > 0) {
               console.log('Loading/refreshing content into BlockNote editor');
-              editor.replaceBlocks(editor.topLevelBlocks, parsedContent);
+              editor.replaceBlocks(editor.topLevelBlocks, withTextStyles(parsedContent) as typeof parsedContent);
               contentInitialized.current = true;
               // Update our reference to the current content
               contentVersion.current = initialContent;
