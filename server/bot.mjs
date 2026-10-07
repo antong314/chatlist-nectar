@@ -20,6 +20,7 @@ import {
   replaceWikiText,
   slugifyWikiTitle,
 } from './wiki-store.mjs';
+import { MAX_DOCUMENT_CHARS, isReadableDocumentType } from './documents.mjs';
 
 const DESCRIPTION_MAX_LENGTH = 1000;
 const SEARCH_SUMMARY_DESCRIPTION_MAX_LENGTH = 900;
@@ -36,6 +37,13 @@ const HELP_MESSAGE_BODY = [
 ].join('\n');
 
 const stripWhatsappPrefix = (value) => String(value ?? '').replace(/^whatsapp:/i, '');
+
+const documentMediaIndexes = (params) => Array.from(
+  { length: Math.min(Number(params?.NumMedia || 0), 10) },
+  (_, index) => index,
+).filter((index) => isReadableDocumentType(params?.[`MediaContentType${index}`]));
+
+export const hasReadableDocument = (params) => documentMediaIndexes(params).length > 0;
 
 const ensureAbsoluteUrl = (value) => {
   const url = String(value ?? '').trim();
@@ -100,8 +108,29 @@ const requestsWikiChange = (value) => /\b(?:wiki|guide|page)\b.*\b(?:add|change|
 const requestsUndo = (value) => /^(?:undo|undo that|revert|revert that|deshacer|deshaz eso)[?!. ]*$/i.test(String(value ?? '').trim());
 const confirms = (value) => /^(?:yes|yes delete it|confirm|si|sí)[?!. ]*$/i.test(String(value ?? '').trim());
 const affirmsFact = (value) => /^(?:yes|yeah|yep|correct|that’s right|that's right|si|sí)\b[?!. ]*/i.test(String(value ?? '').trim());
+// The neighbor no longer wants Machu to make the pending wiki change.
+const endsWikiEdit = (value) => {
+  const text = String(value ?? '').trim();
+  if (/\b(?:i(?:'|’)?ll|i will|let me|i(?:'|’)?m going to)\s+(?:handle|take care of|figure|fix|do|deal with|sort)\b/i.test(text)) return true;
+  return text.split(/\s+/).length <= 4
+    && /^(?:no|nope|nah|nothing|never ?mind|cancel|stop|forget (?:it|about it)|leave it|all good|no thanks)\b/i.test(text);
+};
+const asksWhatChanged = (value) =>
+  /\bwhat\b[^?]{0,60}\b(?:did|have)\s+you\s+(?:change|update|add|edit|write|put)/i.test(String(value ?? ''))
+  || /\bdid you (?:read|use|look at|open|compare)\b/i.test(String(value ?? ''));
 const declinesFact = (value) => /^(?:no|nope|not really|cancel)\b[?!. ]*/i.test(String(value ?? '').trim());
 const requiresDirectoryContactResult = (value) => /\b(?:contact|phone number|someone|anyone|provider|professional|doctor|physician|plumber|electrician|mechanic|taxi|driver|therapist|masseu(?:r|se)|chef|photographer|dentist|who does|who can)\b/i.test(String(value ?? ''));
+
+const describeLastChange = (change) => {
+  const verb = change.action === 'create' ? 'created' : change.action === 'delete' ? 'deleted' : 'updated';
+  const lines = [`I ${verb} *${change.title}*${change.summary ? `: ${change.summary}` : '.'}`];
+  if (change.text) lines.push(`What I wrote:\n“${change.text}”`);
+  lines.push(change.fromDocument
+    ? 'I based it on the document you sent.'
+    : 'I didn’t read any document for that change—only your message.');
+  lines.push('Reply “undo” to revert it, or tell me what to change.');
+  return lines.join('\n\n');
+};
 
 class WikiClarificationError extends Error {}
 
@@ -187,6 +216,7 @@ export class MachuBot {
     wikiStore = null,
     ai,
     fetchMedia,
+    readDocument = null,
     publicBaseUrl = 'https://www.sanmateo.love',
     signingSecret,
     digest = null,
@@ -196,6 +226,7 @@ export class MachuBot {
     this.wikiStore = wikiStore;
     this.ai = ai;
     this.fetchMedia = fetchMedia;
+    this.readDocument = readDocument;
     this.publicBaseUrl = publicBaseUrl.replace(/\/$/, '');
     this.signingSecret = signingSecret;
   }
@@ -322,6 +353,7 @@ export class MachuBot {
     messageSid,
     conversationKey,
     includeLink = true,
+    attachment = null,
   }) {
     const actionType = `wiki_${plan.action}`;
     let page = pages.find((candidate) => candidate.slug === plan.target_slug) ?? null;
@@ -379,7 +411,19 @@ export class MachuBot {
     });
     await this.wikiStore.setSession({
       conversationKey,
-      context: { mode: 'changed', pageSlugs: [slug], lastEventId: result?.event_id },
+      context: {
+        mode: 'changed',
+        pageSlugs: [slug],
+        lastEventId: result?.event_id,
+        lastChange: {
+          title,
+          action: plan.action,
+          summary: String(plan.change_summary || '').trim(),
+          text: String(plan.append_text || plan.replacement_text || '').trim().slice(0, 1500),
+          fromDocument: Boolean(attachment),
+        },
+        ...(attachment ? { attachment } : {}),
+      },
     });
     const verb = plan.action === 'create' ? 'created' : plan.action === 'delete' ? 'deleted' : 'updated';
     const link = includeLink
@@ -394,20 +438,43 @@ export class MachuBot {
     }];
   }
 
-  async handleWikiChange({ body, classified, wikiSession, senderPhone, profileName, messageSid, conversationKey }) {
+  async handleWikiChange({
+    body,
+    classified,
+    wikiSession,
+    senderPhone,
+    profileName,
+    messageSid,
+    conversationKey,
+    newAttachment = null,
+  }) {
     if (!this.wikiStore) return null;
-    const context = wikiSession?.context ?? {};
+    const { attachment: earlierAttachment, ...context } = wikiSession?.context ?? {};
+    const attachment = newAttachment ?? earlierAttachment ?? null;
     const contextualSlugs = Array.isArray(context.pageSlugs) ? context.pageSlugs : [];
     let pages = [];
     for (const slug of contextualSlugs.slice(0, 4)) {
       const page = await this.wikiStore.getPage(slug);
       if (page) pages.push(page);
     }
-    if (pages.length === 0) pages = await this.wikiStore.searchPages(body, classified?.wiki_search_terms, 4);
-    const combinedMessage = context.mode === 'awaiting_change_details' && context.originalMessage
-      ? `${context.originalMessage}\nAdditional detail from the user: ${body}`
+    // A newly shared document may be about a different page than the last one discussed.
+    if (pages.length === 0 || newAttachment) {
+      const query = newAttachment ? `${body}\n${newAttachment.text.slice(0, 400)}` : body;
+      for (const page of await this.wikiStore.searchPages(query, classified?.wiki_search_terms, 4)) {
+        if (!pages.some((existing) => existing.slug === page.slug)) pages.push(page);
+      }
+      pages = pages.slice(0, 4);
+    }
+    const combinedMessage = !newAttachment && context.mode === 'awaiting_change_details' && context.originalMessage
+      ? `${context.originalMessage}\nAdditional detail from the user: ${body}`.slice(-2000)
       : body;
-    const plan = await this.ai?.planWikiChange?.({ message: combinedMessage, pages, context });
+    const plan = await this.ai?.planWikiChange?.({
+      message: combinedMessage,
+      pages,
+      context,
+      document: attachment?.text ?? '',
+    });
+    const sessionBase = { ...context, ...(attachment ? { attachment } : {}) };
     const requestedSubject = String(extractListAdditionSubject(body) || plan?.subject_name).trim();
     const existingSubject = requestedSubject ? findExistingWikiSubject(pages, requestedSubject) : null;
     const recommendationFact = recommendationFactFromQuestion(context.lastQuestion, plan?.proposed_fact);
@@ -417,7 +484,7 @@ export class MachuBot {
       await this.wikiStore.setSession({
         conversationKey,
         context: {
-          ...context,
+          ...sessionBase,
           mode: 'confirm_existing_wiki_fact',
           pageSlugs: [existingSubject.page.slug],
           pendingFact: {
@@ -437,7 +504,7 @@ export class MachuBot {
       await this.wikiStore.setSession({
         conversationKey,
         context: {
-          ...context,
+          ...sessionBase,
           mode: 'awaiting_change_details',
           originalMessage: combinedMessage,
           pageSlugs: pages.map((page) => page.slug),
@@ -461,13 +528,14 @@ export class MachuBot {
         messageSid,
         conversationKey,
         includeLink: !contextualSlugs.includes(plan.target_slug),
+        attachment,
       });
     } catch (error) {
       if (!(error instanceof WikiClarificationError)) throw error;
       await this.wikiStore.setSession({
         conversationKey,
         context: {
-          ...context,
+          ...sessionBase,
           mode: 'awaiting_change_details',
           originalMessage: combinedMessage,
           pageSlugs: pages.map((page) => page.slug),
@@ -828,6 +896,33 @@ export class MachuBot {
       return this.addContacts(cards, conversationKey, audit);
     }
 
+    const documentIndexes = documentMediaIndexes(params);
+    if (documentIndexes.length > 0 && this.wikiStore) {
+      const texts = [];
+      for (const index of documentIndexes.slice(0, 3)) {
+        try {
+          const text = await this.readDocument?.(params[`MediaUrl${index}`], params[`MediaContentType${index}`]);
+          if (text) texts.push(text);
+        } catch (error) {
+          console.warn('Machu could not read a document:', error.message);
+        }
+      }
+      if (texts.length === 0) {
+        return this.asWikiResponse([{
+          body: 'I couldn’t read any text in that document—it may be a scanned image. Could you paste the key details as a message?',
+        }]);
+      }
+      return this.asWikiResponse(await this.handleWikiChange({
+        body: body || 'Add the useful information from this document to the right wiki page.',
+        wikiSession,
+        senderPhone,
+        profileName,
+        messageSid,
+        conversationKey,
+        newAttachment: { text: texts.join('\n\n---\n\n').slice(0, MAX_DOCUMENT_CHARS) },
+      }));
+    }
+
     if (requestsUndo(body) && this.wikiStore) {
       try {
         const undone = await this.wikiStore.undoLastChange({
@@ -889,6 +984,20 @@ export class MachuBot {
         messageSid,
         conversationKey,
       }));
+    }
+
+    const lastChange = wikiSession?.context?.lastChange;
+    if (lastChange && asksWhatChanged(body)) {
+      return this.asWikiResponse([{ body: describeLastChange(lastChange) }]);
+    }
+
+    if (wikiSession?.context?.mode === 'awaiting_change_details' && endsWikiEdit(body)) {
+      const pageSlugs = wikiSession.context.pageSlugs ?? [];
+      await this.wikiStore.setSession({ conversationKey, context: { mode: 'reading', pageSlugs } });
+      const page = pageSlugs.length === 1 ? await this.wikiStore.getPage(pageSlugs[0]) : null;
+      return this.asWikiResponse([{
+        body: page ? `Okay 🌿 I’ll leave *${page.title}* as it is.` : 'Okay 🌿 I won’t change the wiki.',
+      }]);
     }
 
     if (searchSession && asksForMoreResults(body)) {

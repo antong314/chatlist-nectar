@@ -905,6 +905,7 @@ export class GroupDigest {
     if (!run) return [];
     const summary = await this.summaryFor(run.id);
     await this.store.markSummarySent(run.id);
+    await this.store.markEarlierSummariesSent(run.started_at);
     return summary?.noteworthy ? summary.messages : [];
   }
 

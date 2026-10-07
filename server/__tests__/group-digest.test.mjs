@@ -83,12 +83,18 @@ class MemoryDigestStore {
     const run = {
       id: `run-${this.runs.length + 1}`, run_date: runDate, trigger, mode, status: 'running', stats: {},
       summary_sent_at: null, window_start: windowStart, window_end: windowEnd,
+      started_at: new Date(NOW.getTime() + this.runs.length * 1000).toISOString(),
     };
     this.runs.push(run);
     return run.id;
   }
   async finishRun(id, { status, stats, error }) { Object.assign(this.runs.find((run) => run.id === id), { status, stats, error }); }
   async markSummarySent(id) { this.runs.find((run) => run.id === id).summary_sent_at = NOW.toISOString(); }
+  async markEarlierSummariesSent(startedAt) {
+    for (const run of this.runs) {
+      if (run.status !== 'running' && !run.summary_sent_at && run.started_at <= startedAt) run.summary_sent_at = NOW.toISOString();
+    }
+  }
   async getRun(id) { return this.runs.find((run) => run.id === id) ?? null; }
   async getLatestRun({ status = null } = {}) {
     return [...this.runs].reverse().find((run) => !status || run.status === status) ?? null;
@@ -398,6 +404,27 @@ test('admin commands manage groups, undo, and skip; other messages get the pendi
   assert.match(replies.at(-1).body, /I’m Machu/);
   const nonAdmin = await bot.handle({ Body: 'groups', WaId: '15559990000', From: 'whatsapp:+15559990000' });
   assert.doesNotMatch(nonAdmin[0].body, /listener has joined/);
+});
+
+test('a message to Machu brings only the newest undelivered summary, not a backlog', async () => {
+  const { digest, store } = createDigest({ mode: 'shadow' });
+  await digest.run({ trigger: 'manual' });
+  await digest.run({ trigger: 'manual' });
+  await digest.run({ trigger: 'manual' });
+  assert.equal(store.runs.filter((run) => !run.summary_sent_at).length, 3);
+
+  const bot = new MachuBot({
+    store: { getConversation: async () => null, getSearchSession: async () => null },
+    ai: null,
+    signingSecret: 'secret',
+    digest,
+  });
+  const first = await bot.handle({ Body: 'help', WaId: ADMIN.slice(1), From: `whatsapp:${ADMIN}` });
+  assert.equal(first.filter((reply) => /Machu group digest/.test(reply.body)).length, 1);
+  assert.ok(store.runs.every((run) => run.summary_sent_at));
+
+  const second = await bot.handle({ Body: 'help', WaId: ADMIN.slice(1), From: `whatsapp:${ADMIN}` });
+  assert.ok(second.every((reply) => !/Machu group digest/.test(reply.body)));
 });
 
 test('buildWikiWrite appends, replaces, and refuses to recreate existing pages', async () => {

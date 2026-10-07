@@ -681,3 +681,146 @@ test('asks for missing page content instead of failing an incomplete wiki create
   assert.match(plannedMessages[1], /Add a new wiki page about recycling/);
   assert.match(plannedMessages[1], /Additional detail from the user: Recycling is collected on Tuesdays/);
 });
+
+const snakePage = () => ({
+  id: 'snake', slug: 'snake-bites', title: 'Snake Bites',
+  plainText: 'Keep the victim calm. Call 911.',
+  content: JSON.stringify([{ type: 'paragraph', content: [{ type: 'text', text: 'Keep the victim calm. Call 911.', styles: {} }] }]),
+  category: 'Local Know-How', version: 8, updated_at: '2026-10-07T00:00:00Z', is_published: true,
+});
+
+test('reads a shared PDF and gives its text to the wiki planner', async () => {
+  const wikiStore = new MemoryWikiStore();
+  wikiStore.pages.push(snakePage());
+  const plans = [];
+  const ai = {
+    ...defaultAi,
+    planWikiChange: async (input) => {
+      plans.push(input);
+      return {
+        action: 'update', operation: 'append', target_slug: 'snake-bites', title: 'Snake Bites',
+        category: 'Local Know-How', subject_name: '', proposed_fact: '', anchor_text: '', find_text: '',
+        replacement_text: '', append_text: 'Remove rings and watches from the bitten limb.\n\nDo not apply a tourniquet.',
+        change_summary: 'added two first-aid steps from the protocol that the page was missing',
+        needs_clarification: false, clarification_question: '',
+      };
+    },
+  };
+  const documents = [];
+  const { store } = createBot(new MemoryStore(), ai, wikiStore);
+  const bot = new MachuBot({
+    store,
+    wikiStore,
+    ai,
+    fetchMedia: async () => '',
+    readDocument: async (url, contentType) => {
+      documents.push({ url, contentType });
+      return 'SNAKE BITE PROTOCOL\nKeep the victim calm.\nRemove rings and watches.\nDo not apply a tourniquet.';
+    },
+    signingSecret: 'test-secret',
+  });
+
+  const pdf = inbound({
+    Body: 'Sharing a snake bite protocol for everyone to read.',
+    NumMedia: '1',
+    MediaContentType0: 'application/pdf',
+    MediaUrl0: 'https://api.twilio.test/protocol',
+  });
+  const changed = await bot.handle(pdf);
+  assert.deepEqual(documents, [{ url: 'https://api.twilio.test/protocol', contentType: 'application/pdf' }]);
+  assert.match(plans[0].document, /Remove rings and watches/);
+  assert.equal(plans[0].pages[0].slug, 'snake-bites');
+  assert.match(changed[0].body, /updated \*Snake Bites\*/);
+  const blocks = JSON.parse(wikiStore.pages[0].content);
+  assert.equal(blocks.length, 3, 'each new paragraph becomes its own block');
+
+  const explained = await bot.handle(inbound({ Body: 'what did you update on that page? did you read the pdf?' }));
+  assert.match(explained[0].body, /Remove rings and watches/);
+  assert.match(explained[0].body, /based it on the document/);
+
+  // The document stays available for follow-up requests about it.
+  await bot.handle(inbound({ Body: 'compare the pdf to the page again and add anything missing' }));
+  assert.match(plans.at(-1).document, /SNAKE BITE PROTOCOL/);
+});
+
+test('explains when a change was made without reading a document', async () => {
+  const wikiStore = new MemoryWikiStore();
+  wikiStore.pages.push(snakePage());
+  const ai = {
+    ...defaultAi,
+    classifyMessage: async () => ({ intent: 'wiki_change', category: '', phone: '', name: '', wiki_search_terms: ['snake'] }),
+    planWikiChange: async () => ({
+      action: 'update', operation: 'append', target_slug: 'snake-bites', title: 'Snake Bites',
+      category: 'Local Know-How', subject_name: '', proposed_fact: '', anchor_text: '', find_text: '',
+      replacement_text: '', append_text: 'The Orotina hospital has antivenom.',
+      change_summary: 'noted that Orotina has antivenom', needs_clarification: false, clarification_question: '',
+    }),
+  };
+  const { bot } = createBot(new MemoryStore(), ai, wikiStore);
+  await bot.handle(inbound({ Body: 'Add to the snake page that Orotina hospital has antivenom' }));
+  const explained = await bot.handle(inbound({ Body: 'Did you read the pdf?' }));
+  assert.match(explained[0].body, /didn’t read any document/);
+});
+
+test('stops asking about a wiki change when the neighbor says they will handle it', async () => {
+  const wikiStore = new MemoryWikiStore();
+  wikiStore.pages.push(snakePage());
+  let planned = 0;
+  const ai = {
+    ...defaultAi,
+    classifyMessage: async () => ({ intent: 'wiki_change', category: '', phone: '', name: '', wiki_search_terms: ['snake'] }),
+    planWikiChange: async () => {
+      planned += 1;
+      return {
+        action: 'none', operation: 'none', target_slug: 'snake-bites', title: '', category: '', subject_name: '',
+        proposed_fact: '', anchor_text: '', find_text: '', replacement_text: '', append_text: '', change_summary: '',
+        needs_clarification: true, clarification_question: 'What specific change would you like to make to the Snake Bites page?',
+      };
+    },
+  };
+  const { bot } = createBot(new MemoryStore(), ai, wikiStore);
+  const asked = await bot.handle(inbound({ Body: 'the snake page is now blank!?' }));
+  assert.match(asked[0].body, /What specific change/);
+
+  const done = await bot.handle(inbound({ Body: 'nothing, I’ll take care of that page myself' }));
+  assert.match(done[0].body, /leave \*Snake Bites\* as it is/);
+  assert.equal(planned, 1);
+  assert.equal(wikiStore.sessions.values().next().value.context.mode, 'reading');
+  assert.equal(wikiStore.changes.length, 0);
+});
+
+test('a correction that starts with “no” is still treated as wiki detail', async () => {
+  const wikiStore = new MemoryWikiStore();
+  wikiStore.pages.push(snakePage());
+  const messages = [];
+  const ai = {
+    ...defaultAi,
+    classifyMessage: async () => ({ intent: 'wiki_change', category: '', phone: '', name: '', wiki_search_terms: ['snake'] }),
+    planWikiChange: async ({ message }) => {
+      messages.push(message);
+      return {
+        action: 'none', operation: 'none', target_slug: 'snake-bites', title: '', category: '', subject_name: '',
+        proposed_fact: '', anchor_text: '', find_text: '', replacement_text: '', append_text: '', change_summary: '',
+        needs_clarification: true, clarification_question: 'Which number should I use?',
+      };
+    },
+  };
+  const { bot } = createBot(new MemoryStore(), ai, wikiStore);
+  await bot.handle(inbound({ Body: 'update the hospital number on the snake page' }));
+  await bot.handle(inbound({ Body: 'no, the hospital number is 2285-1911' }));
+  assert.match(messages.at(-1), /Additional detail from the user: no, the hospital number is 2285-1911/);
+});
+
+test('says so when a document has no readable text', async () => {
+  const wikiStore = new MemoryWikiStore();
+  const bot = new MachuBot({
+    store: new MemoryStore(),
+    wikiStore,
+    ai: defaultAi,
+    fetchMedia: async () => '',
+    readDocument: async () => '',
+    signingSecret: 'test-secret',
+  });
+  const reply = await bot.handle(inbound({ NumMedia: '1', MediaContentType0: 'application/pdf', MediaUrl0: 'https://api.twilio.test/scan' }));
+  assert.match(reply[0].body, /couldn’t read any text/);
+});

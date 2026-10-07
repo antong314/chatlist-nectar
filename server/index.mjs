@@ -6,9 +6,10 @@ import { createClient } from '@supabase/supabase-js';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MachuBot, verifyContactMediaSignature } from './bot.mjs';
+import { MachuBot, hasReadableDocument, verifyContactMediaSignature } from './bot.mjs';
 import { createVcard, messagesToTwiml } from './domain.mjs';
 import { DirectoryStore } from './directory-store.mjs';
+import { MAX_DOCUMENT_BYTES, extractDocumentText } from './documents.mjs';
 import { WikiStore } from './wiki-store.mjs';
 import { OpenAIProvider } from './openai-provider.mjs';
 import { GroupDigest, backfillWindow } from './group-digest.mjs';
@@ -57,9 +58,9 @@ const communityVerification = new CommunityVerificationService({
   whatsappFrom: process.env.TWILIO_WHATSAPP_FROM,
 });
 
-const fetchTwilioMedia = async (url) => {
+const fetchTwilioMediaBytes = async (url, { maxBytes, timeoutMs, tooLarge }) => {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8_000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const credentials = Buffer.from(
       `${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`,
@@ -70,14 +71,29 @@ const fetchTwilioMedia = async (url) => {
     });
     if (!response.ok) throw new Error(`Twilio media returned ${response.status}`);
     const contentLength = Number(response.headers.get('content-length') || 0);
-    if (contentLength > 1_000_000) throw new Error('Contact card is too large');
+    if (contentLength > maxBytes) throw new Error(tooLarge);
     const buffer = Buffer.from(await response.arrayBuffer());
-    if (buffer.length > 1_000_000) throw new Error('Contact card is too large');
-    return buffer.toString('utf8');
+    if (buffer.length > maxBytes) throw new Error(tooLarge);
+    return buffer;
   } finally {
     clearTimeout(timeout);
   }
 };
+
+const fetchTwilioMedia = async (url) => (await fetchTwilioMediaBytes(url, {
+  maxBytes: 1_000_000,
+  timeoutMs: 8_000,
+  tooLarge: 'Contact card is too large',
+})).toString('utf8');
+
+const readTwilioDocument = async (url, contentType) => extractDocumentText(
+  await fetchTwilioMediaBytes(url, {
+    maxBytes: MAX_DOCUMENT_BYTES,
+    timeoutMs: 30_000,
+    tooLarge: 'Document is too large',
+  }),
+  contentType,
+);
 
 const digestAdminPhones = String(process.env.ADMIN_WHATSAPP || '')
   .split(',')
@@ -109,6 +125,7 @@ const bot = new MachuBot({
   wikiStore,
   ai,
   fetchMedia: fetchTwilioMedia,
+  readDocument: readTwilioDocument,
   publicBaseUrl,
   signingSecret,
   digest: groupDigest,
@@ -323,6 +340,25 @@ app.post('/bot', express.urlencoded({ extended: false, limit: '256kb' }), async 
         body = 'I could not verify that request. Return to San Mateo Love and create a new verification message.';
       }
       response.type('text/xml').send(messagesToTwiml([{ body }]));
+      return;
+    }
+
+    // Reading a document can outlast Twilio's 15-second webhook timeout, so
+    // acknowledge it now and reply through the API when it's done.
+    if (hasReadableDocument(request.body)) {
+      response.type('text/xml').send(messagesToTwiml([{ body: 'Reading your document 📄 I’ll reply in a moment.' }]));
+      const to = request.body?.From;
+      bot.handle(request.body)
+        .catch((error) => {
+          console.error('Machu document handling failed:', error);
+          return [{ body: 'I hit a snag reading that document 🌱 Please try sending it again in a moment.' }];
+        })
+        .then(async (messages) => {
+          for (const message of messages) {
+            if (message.body) await twilioNotifier.send({ to, body: message.body });
+          }
+        })
+        .catch((error) => console.error('Machu document reply failed:', error));
       return;
     }
 

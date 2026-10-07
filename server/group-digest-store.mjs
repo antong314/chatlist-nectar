@@ -163,6 +163,17 @@ export class GroupDigestStore {
     if (error) throw databaseError('mark the digest summary sent', error);
   }
 
+  // Older undelivered summaries are stale once a newer one goes out.
+  async markEarlierSummariesSent(startedAt) {
+    const { error } = await this.client
+      .from('group_digest_runs')
+      .update({ summary_sent_at: new Date().toISOString() })
+      .in('status', ['completed', 'failed'])
+      .is('summary_sent_at', null)
+      .lte('started_at', startedAt);
+    if (error) throw databaseError('mark earlier digest summaries sent', error);
+  }
+
   async getRun(runId) {
     const { data, error } = await this.client
       .from('group_digest_runs').select(RUN_COLUMNS).eq('id', runId).maybeSingle();

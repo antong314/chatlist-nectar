@@ -86,9 +86,9 @@ export const createWikiContent = (text) => serializeBlocks(
 
 export const appendWikiParagraph = (content, text) => {
   const blocks = parseBlocks(content);
-  const paragraph = String(text ?? '').trim();
-  if (!paragraph) throw new Error('The wiki addition is empty.');
-  blocks.push({ type: 'paragraph', content: [textNode(paragraph)] });
+  const additions = JSON.parse(createWikiContent(text));
+  if (additions.length === 0) throw new Error('The wiki addition is empty.');
+  blocks.push(...additions);
   return serializeBlocks(blocks);
 };
 
